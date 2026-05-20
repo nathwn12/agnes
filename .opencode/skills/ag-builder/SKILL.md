@@ -118,18 +118,6 @@ Every subagent dispatch must include exactly these five fields:
 | Acceptance criteria | How to verify the task is done |
 | Expected output format | What to return (diff, summary, status, concerns) |
 
-#### Model Selection
-
-Choose the model based on work complexity:
-
-| Work Type | Model Tier | Examples |
-|-----------|-----------|---------|
-| Mechanical | Cheapest/fastest | Simple edits, boilerplate, straightforward tests |
-| Mid-tier | Medium cost/speed | Documentation, simple refactors, routine updates |
-| Complex | Most capable | Architecture decisions, complex logic, security review |
-
-Document which model was used per task in plan.md.
-
 #### Four Implementer Statuses
 
 After each task dispatch, the implementer returns one of:
