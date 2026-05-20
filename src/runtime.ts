@@ -1,4 +1,4 @@
-import { findWorkspaceRoot, readStateFile } from './state.js';
+import { findWorkspaceRoot, readStateFile, listStateFiles, getFileStatus } from './state.js';
 
 export interface AgnesRuntimeState {
   hasGoal: boolean;
@@ -13,21 +13,21 @@ export function getCurrentState(): AgnesRuntimeState | null {
   const workspaceRoot = findWorkspaceRoot();
   if (!workspaceRoot) return null;
 
+  const files = listStateFiles(workspaceRoot);
+  const goalActive = getFileStatus(workspaceRoot, 'goal.md') === 'active';
+  const planActive = files.includes('plan.md') && getFileStatus(workspaceRoot, 'plan.md') === 'active';
+  const handoffActive = getFileStatus(workspaceRoot, 'handoff.md') === 'active';
+
   return {
-    hasGoal: readStateFile(workspaceRoot, 'goal.md') !== null,
-    hasPlan: readStateFile(workspaceRoot, 'plan.md') !== null,
-    hasHandoff: readStateFile(workspaceRoot, 'handoff.md') !== null,
-    goalContent: readStateFile(workspaceRoot, 'goal.md'),
-    planContent: readStateFile(workspaceRoot, 'plan.md'),
-    handoffContent: readStateFile(workspaceRoot, 'handoff.md'),
+    hasGoal: goalActive,
+    hasPlan: planActive,
+    hasHandoff: handoffActive,
+    goalContent: goalActive ? readStateFile(workspaceRoot, 'goal.md') : null,
+    planContent: planActive ? readStateFile(workspaceRoot, 'plan.md') : null,
+    handoffContent: handoffActive ? readStateFile(workspaceRoot, 'handoff.md') : null,
   };
 }
 
-/**
- * Phase 3 invariant: plan-before-implementation gate.
- * If goal.md exists but plan.md does not, returns a directive
- * telling the agent to create plan.md before proceeding.
- */
 export function getPlanGate(): string | null {
   const state = getCurrentState();
   if (!state) return null;

@@ -42,8 +42,49 @@ function ensureStateDirectory(): string | null {
   return projectRoot;
 }
 
+function stateDir(workspaceRoot: string): string {
+  return path.join(workspaceRoot, 'docs', 'agnes');
+}
+
+function listStateFiles(workspaceRoot: string): string[] {
+  const dir = stateDir(workspaceRoot);
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+}
+
+function readFrontmatter(workspaceRoot: string, name: string): Record<string, string> | null {
+  const filePath = path.join(stateDir(workspaceRoot), name);
+  if (!fs.existsSync(filePath)) return null;
+
+  const fd = fs.openSync(filePath, 'r');
+  const buffer = Buffer.alloc(4096);
+  const bytesRead = fs.readSync(fd, buffer, 0, 4096, 0);
+  fs.closeSync(fd);
+
+  const head = buffer.toString('utf8', 0, bytesRead);
+  const match = head.match(/^---\r?\n([\s\S]*?)\r?\n?---/);
+  if (!match) return {};
+
+  const result: Record<string, string> = {};
+  for (const line of match[1].split('\n')) {
+    const sep = line.indexOf(':');
+    if (sep > 0) {
+      const key = line.slice(0, sep).trim();
+      const val = line.slice(sep + 1).trim();
+      if (key) result[key] = val;
+    }
+  }
+  return result;
+}
+
+function getFileStatus(workspaceRoot: string, name: string): string {
+  const fm = readFrontmatter(workspaceRoot, name);
+  if (!fm) return 'active';
+  return fm.status || 'active';
+}
+
 function readStateFile(workspaceRoot: string, name: string): string | null {
-  const filePath = path.join(workspaceRoot, 'docs', 'agnes', name);
+  const filePath = path.join(stateDir(workspaceRoot), name);
   if (!fs.existsSync(filePath)) return null;
   return fs.readFileSync(filePath, 'utf8');
 }
@@ -52,12 +93,15 @@ function getStateFileInjections(): string {
   const workspaceRoot = ensureStateDirectory();
   if (!workspaceRoot) return '';
 
-  const goalExists = fs.existsSync(path.join(workspaceRoot, 'docs', 'agnes', 'goal.md'));
-  const handoffExists = fs.existsSync(path.join(workspaceRoot, 'docs', 'agnes', 'handoff.md'));
-  const planExists = fs.existsSync(path.join(workspaceRoot, 'docs', 'agnes', 'plan.md'));
+  const files = listStateFiles(workspaceRoot);
+  const goalStatus = getFileStatus(workspaceRoot, 'goal.md');
+  const handoffStatus = getFileStatus(workspaceRoot, 'handoff.md');
+  const hasGoal = files.includes('goal.md') && goalStatus === 'active';
+  const hasHandoff = files.includes('handoff.md') && handoffStatus === 'active';
+  const hasPlan = files.includes('plan.md') && getFileStatus(workspaceRoot, 'plan.md') === 'active';
 
-  if (!goalExists && !handoffExists) {
-    const agnesDir = path.join(workspaceRoot, 'docs', 'agnes');
+  if (!hasGoal && !hasHandoff) {
+    const agnesDir = stateDir(workspaceRoot);
     return `\n\n## State directory ready
 
 \`${agnesDir}\` created for this project. AGNES uses four files to track work across sessions:
@@ -73,7 +117,7 @@ See \`.opencode/skills/ag-orchestrator/SKILL.md\` → State Management for the f
 **Start by writing your goal to \`docs/agnes/goal.md\`.**`;
   }
 
-  if (handoffExists) {
+  if (hasHandoff) {
     const handoffContent = readStateFile(workspaceRoot, 'handoff.md');
     if (handoffContent) {
       const handoffBlock = `## Active handoff
@@ -93,12 +137,12 @@ ${handoffContent}
     }
   }
 
-  if (goalExists) {
+  if (hasGoal) {
     const goalContent = readStateFile(workspaceRoot, 'goal.md');
     if (goalContent) {
       const goalBlock = `## Active goal
 
-\`docs/agnes/goal.md\` exists — you have an active goal. Re-read it before every delegation wave${planExists ? ', and check \`docs/agnes/plan.md\` for progress' : ''}.
+\`docs/agnes/goal.md\` exists — you have an active goal. Re-read it before every delegation wave${hasPlan ? ', and check \`docs/agnes/plan.md\` for progress' : ''}.
 
 \`\`\`
 ${goalContent}
@@ -110,4 +154,4 @@ ${goalContent}
   return '';
 }
 
-export { getStateFileInjections, findWorkspaceRoot, readStateFile };
+export { getStateFileInjections, findWorkspaceRoot, readStateFile, listStateFiles, readFrontmatter, getFileStatus };

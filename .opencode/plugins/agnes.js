@@ -113,8 +113,48 @@ function ensureStateDirectory() {
   fs2.mkdirSync(agnesDir, { recursive: true });
   return projectRoot;
 }
+function stateDir(workspaceRoot) {
+  return path2.join(workspaceRoot, "docs", "agnes");
+}
+function listStateFiles(workspaceRoot) {
+  const dir = stateDir(workspaceRoot);
+  if (!fs2.existsSync(dir))
+    return [];
+  return fs2.readdirSync(dir).filter((f) => f.endsWith(".md"));
+}
+function readFrontmatter(workspaceRoot, name) {
+  const filePath = path2.join(stateDir(workspaceRoot), name);
+  if (!fs2.existsSync(filePath))
+    return null;
+  const fd = fs2.openSync(filePath, "r");
+  const buffer = Buffer.alloc(4096);
+  const bytesRead = fs2.readSync(fd, buffer, 0, 4096, 0);
+  fs2.closeSync(fd);
+  const head = buffer.toString("utf8", 0, bytesRead);
+  const match = head.match(/^---\r?\n([\s\S]*?)\r?\n?---/);
+  if (!match)
+    return {};
+  const result = {};
+  for (const line of match[1].split(`
+`)) {
+    const sep = line.indexOf(":");
+    if (sep > 0) {
+      const key = line.slice(0, sep).trim();
+      const val = line.slice(sep + 1).trim();
+      if (key)
+        result[key] = val;
+    }
+  }
+  return result;
+}
+function getFileStatus(workspaceRoot, name) {
+  const fm = readFrontmatter(workspaceRoot, name);
+  if (!fm)
+    return "active";
+  return fm.status || "active";
+}
 function readStateFile(workspaceRoot, name) {
-  const filePath = path2.join(workspaceRoot, "docs", "agnes", name);
+  const filePath = path2.join(stateDir(workspaceRoot), name);
   if (!fs2.existsSync(filePath))
     return null;
   return fs2.readFileSync(filePath, "utf8");
@@ -123,11 +163,14 @@ function getStateFileInjections() {
   const workspaceRoot = ensureStateDirectory();
   if (!workspaceRoot)
     return "";
-  const goalExists = fs2.existsSync(path2.join(workspaceRoot, "docs", "agnes", "goal.md"));
-  const handoffExists = fs2.existsSync(path2.join(workspaceRoot, "docs", "agnes", "handoff.md"));
-  const planExists = fs2.existsSync(path2.join(workspaceRoot, "docs", "agnes", "plan.md"));
-  if (!goalExists && !handoffExists) {
-    const agnesDir = path2.join(workspaceRoot, "docs", "agnes");
+  const files = listStateFiles(workspaceRoot);
+  const goalStatus = getFileStatus(workspaceRoot, "goal.md");
+  const handoffStatus = getFileStatus(workspaceRoot, "handoff.md");
+  const hasGoal = files.includes("goal.md") && goalStatus === "active";
+  const hasHandoff = files.includes("handoff.md") && handoffStatus === "active";
+  const hasPlan = files.includes("plan.md") && getFileStatus(workspaceRoot, "plan.md") === "active";
+  if (!hasGoal && !hasHandoff) {
+    const agnesDir = stateDir(workspaceRoot);
     return `
 
 ## State directory ready
@@ -144,7 +187,7 @@ See \`.opencode/skills/ag-orchestrator/SKILL.md\` \u2192 State Management for th
 
 **Start by writing your goal to \`docs/agnes/goal.md\`.**`;
   }
-  if (handoffExists) {
+  if (hasHandoff) {
     const handoffContent = readStateFile(workspaceRoot, "handoff.md");
     if (handoffContent) {
       const handoffBlock = `## Active handoff
@@ -165,12 +208,12 @@ ${handoffContent}
 ` + handoffBlock;
     }
   }
-  if (goalExists) {
+  if (hasGoal) {
     const goalContent = readStateFile(workspaceRoot, "goal.md");
     if (goalContent) {
       const goalBlock = `## Active goal
 
-\`docs/agnes/goal.md\` exists \u2014 you have an active goal. Re-read it before every delegation wave${planExists ? ", and check `docs/agnes/plan.md` for progress" : ""}.
+\`docs/agnes/goal.md\` exists \u2014 you have an active goal. Re-read it before every delegation wave${hasPlan ? ", and check `docs/agnes/plan.md` for progress" : ""}.
 
 \`\`\`
 ${goalContent}
@@ -188,13 +231,17 @@ function getCurrentState() {
   const workspaceRoot = findWorkspaceRoot();
   if (!workspaceRoot)
     return null;
+  const files = listStateFiles(workspaceRoot);
+  const goalActive = getFileStatus(workspaceRoot, "goal.md") === "active";
+  const planActive = files.includes("plan.md") && getFileStatus(workspaceRoot, "plan.md") === "active";
+  const handoffActive = getFileStatus(workspaceRoot, "handoff.md") === "active";
   return {
-    hasGoal: readStateFile(workspaceRoot, "goal.md") !== null,
-    hasPlan: readStateFile(workspaceRoot, "plan.md") !== null,
-    hasHandoff: readStateFile(workspaceRoot, "handoff.md") !== null,
-    goalContent: readStateFile(workspaceRoot, "goal.md"),
-    planContent: readStateFile(workspaceRoot, "plan.md"),
-    handoffContent: readStateFile(workspaceRoot, "handoff.md")
+    hasGoal: goalActive,
+    hasPlan: planActive,
+    hasHandoff: handoffActive,
+    goalContent: goalActive ? readStateFile(workspaceRoot, "goal.md") : null,
+    planContent: planActive ? readStateFile(workspaceRoot, "plan.md") : null,
+    handoffContent: handoffActive ? readStateFile(workspaceRoot, "handoff.md") : null
   };
 }
 function getPlanGate() {
