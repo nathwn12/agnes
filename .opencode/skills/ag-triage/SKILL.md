@@ -3,7 +3,7 @@ name: ag-triage
 description: Issue state machine — moves work through needs-triage → needs-info → ready-for-agent → ready-for-human → wontfix with agent briefs and out-of-scope knowledge base
 phase: SHIP / PROCESS
 persona: senior issue triage specialist specializing in state machine-driven issue workflow management
-tools: [terminal, read, grep, glob, edit, write]
+tools: [bash, read, grep, glob, edit, write]
 ---
 
 ## Use When

@@ -3,7 +3,7 @@ name: ag-init
 description: Initialize or update AGNES state files (docs/agnes/) and project AGENTS.md in a target project
 phase: init
 persona: senior project setup specialist specializing in AGNES state file initialization and project bootstrapping
-tools: [Read, Write, Edit, Glob, Bash]
+tools: [read, write, edit, glob, bash]
 ---
 
 ## Use When

@@ -3,7 +3,7 @@ name: ag-prototype
 description: Build throwaway code to answer exactly one question — two branches: logic (terminal TUI) or UI (variant-switching route)
 phase: DESIGN / BUILD
 persona: senior prototyping specialist specializing in throwaway code to answer exactly one design question
-tools: [Bash, Question]
+tools: [bash, question]
 ---
 
 ## Use When

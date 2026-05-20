@@ -126,11 +126,7 @@ docs/agnes/
 ├── plan.md        Three-status checklist linked to the goal
 ├── session.md     Smart zone tracking and boundary decisions
 ├── handoff.md     Session state for another agent or later continuation
-├── plans/         Implementation plans
-├── specs/         (planned)
-├── prd/           (planned)
-├── architecture/  (planned)
-└── learnings/     (planned)
+└── learnings/    (planned)
 ```
 
 ---

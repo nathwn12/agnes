@@ -4,6 +4,11 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+type PluginConfig = {
+  skills?: { paths?: string[] };
+  [key: string]: unknown;
+};
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, '../..');
 const packageJsonPath = path.join(packageRoot, 'package.json');
@@ -194,7 +199,7 @@ export const AgnesPlugin: Plugin = async ({ client }) => {
   });
 
   return {
-    config: async (config: any) => {
+    config: async (config: PluginConfig) => {
       config.skills = config.skills || {};
       config.skills.paths = config.skills.paths || [];
 
@@ -203,14 +208,19 @@ export const AgnesPlugin: Plugin = async ({ client }) => {
       }
     },
 
-    'experimental.chat.messages.transform': async (_input, output: any) => {
+    'experimental.chat.messages.transform': async (_input: {}, output: {
+      messages: Array<{
+        info: { role: string };
+        parts: Array<{ type: string; text?: string }>;
+      }>;
+    }) => {
       const bootstrap = getBootstrapContent();
       if (!bootstrap || !output.messages?.length) return;
 
-      const firstUser = output.messages.find((m: any) => m.info?.role === 'user');
+      const firstUser = output.messages.find((m) => m.info?.role === 'user');
       if (!firstUser || !firstUser.parts?.length) return;
 
-      if (firstUser.parts.some((p: any) => p.type === 'text' && typeof p.text === 'string' && p.text.includes('EXTREMELY_IMPORTANT'))) return;
+      if (firstUser.parts.some((p) => p.type === 'text' && typeof p.text === 'string' && p.text.includes('EXTREMELY_IMPORTANT'))) return;
 
       const stateInjections = getStateFileInjections();
       const fullBootstrap = bootstrap + stateInjections;
