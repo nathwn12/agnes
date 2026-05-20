@@ -19,7 +19,51 @@ Create a fast, deterministic pass/fail signal:
 - Must produce a clear pass/fail result
 - Iterate: make it faster, sharper, more deterministic
 
-For non-deterministic bugs: Raise the repro rate. Add logging, slow down operations, stress the system — don't stop until the bug is reproducible at least 60% of the time.
+**10 feedback loop strategies (ranked by preference):**
+
+1. **Failing test** — Fastest, most reliable. Write a test that asserts the expected behavior. Red before fix, green after.
+2. **curl / HTTP request** — For API and web bugs. Hit the endpoint directly with known payload, assert response.
+3. **CLI invocation with known input** — For CLI tools. Run with predetermined args, assert stdout/stderr/exit code.
+4. **Headless browser script** — For UI bugs. Script navigation, interaction, and screenshot/assertion checks.
+5. **Replay trace** — Record a real session and replay it deterministically. Captures timing and state.
+6. **Throwaway harness** — Minimal script (5-20 lines) that exercises only the buggy code path. No test framework needed.
+7. **Fuzz** — Random inputs, look for crashes or assertion failures. Good for edge-case discovery.
+8. **Bisection** — Binary search through commits to find where the bug was introduced. `git bisect`.
+9. **Differential loop** — Run working variant and broken variant side by side, diff the output/behavior.
+10. **HITL bash script** — Human-in-the-loop. Last resort when fully automated reproduction is impossible (see pattern below).
+
+**HITL (Human-In-The-Loop) bash script pattern:**
+
+When fully automated reproduction is impossible, create a script that guides the human through the repro steps and captures structured output:
+
+```
+# scripts/hitl-<bug>.sh
+step() { echo "=== STEP: $* ===" >&2; }
+capture() { echo "$1=$2" >> /tmp/hitl-output.txt; }
+
+step "Open the app and navigate to settings"
+read -p "What do you see? " result
+capture "SETTINGS_PAGE" "$result"
+
+step "Click the 'Save' button"
+read -p "Does it show an error? (y/n): " result
+capture "SAVE_ERROR" "$result"
+
+echo "=== HITL complete ==="
+cat /tmp/hitl-output.txt
+```
+
+Use `step()` to describe what the human should do, `capture()` to record structured responses. Outputs `KEY=VALUE` for agent parsing.
+
+**Non-deterministic bug techniques:**
+
+Goal is NOT a clean repro (may be impossible) but HIGHER repro rate:
+- Loop the repro 100x and measure frequency
+- Parallelize to increase contention
+- Add stress (memory pressure, CPU load, network latency)
+- Inject sleeps/delays at suspected race points
+- 50% flake = debuggable; 1% flake = not (move on)
+- Add logging, slow down operations, stress the system — don't stop until the bug is reproducible at least 60% of the time
 
 ### Phase 2: Reproduce
 
@@ -73,7 +117,39 @@ Remove all instrumentation:
 
 ## 3-Fail Rule
 
-If 3+ hypotheses fail to produce a fix → the architecture is wrong, not the code. Stop trying fix #4. Document the architecture findings and recommend a redesign.
+After 3 hypotheses are proven wrong:
+- Stop. The architecture is wrong, not the code.
+- Do NOT attempt a 4th fix.
+- Document what was tried and why each failed
+- Recommend a redesign or deeper investigation
+- Save to `docs/agnes/learnings/` as an architectural learning
+
+## Rationalization Table
+
+| Excuse | Counter |
+|--------|---------|
+| "It should work" | Run it. Now. |
+| "It passed yesterday" | Yesterday's weather. Run it now. |
+| "Works on my machine" | Not a claim, find the environment diff |
+| "I'll check later" | No. Check now or document as assumption |
+| "The test must be wrong" | Prove it. Show why the test is wrong. |
+| "This is a simple fix" | Famous last words. Debug first. |
+| "I don't need to reproduce it" | You ALWAYS need to reproduce it. |
+
+## Backward Tracing Pattern
+
+- Start at the symptom (error message, crash, wrong output)
+- Trace data flow BACKWARD through each layer boundary
+- At each boundary, add diagnostic instrumentation
+- Ask: "What input to THIS layer would produce this output?"
+- Repeat until reaching the root cause layer
+
+## Performance Regression Specific
+
+- Measure FIRST, fix second. Never optimize without baseline.
+- Use profiling tools before guessing bottlenecks.
+- Compare before/after with statistical significance.
+- One change at a time between measurements.
 
 ## Verification Checklist
 
