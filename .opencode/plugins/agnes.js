@@ -295,8 +295,14 @@ var AgnesPlugin = async ({ client }) => {
         return;
       if (firstUser.parts.some((p) => p.type === "text" && typeof p.text === "string" && p.text.includes("EXTREMELY_IMPORTANT")))
         return;
-      const stateInjections = getStateFileInjections();
-      const planGate = getPlanGate();
+      let stateInjections = "";
+      try {
+        stateInjections = getStateFileInjections();
+      } catch {}
+      let planGate = "";
+      try {
+        planGate = getPlanGate() || "";
+      } catch {}
       const fullBootstrap = bootstrap + stateInjections + (planGate || "");
       const ref = firstUser.parts[0];
       firstUser.parts.unshift({

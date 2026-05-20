@@ -41,8 +41,18 @@ export const AgnesPlugin: Plugin = async ({ client }) => {
 
       if (firstUser.parts.some((p) => p.type === 'text' && typeof p.text === 'string' && p.text.includes('EXTREMELY_IMPORTANT'))) return;
 
-      const stateInjections = getStateFileInjections();
-      const planGate = getPlanGate();
+      let stateInjections = '';
+      try {
+        stateInjections = getStateFileInjections();
+      } catch {
+        // State detection failed — safe to skip. Bootstrap still injected.
+      }
+      let planGate = '';
+      try {
+        planGate = getPlanGate() || '';
+      } catch {
+        // Plan gate read failed — safe to skip. Bootstrap still injected.
+      }
       const fullBootstrap = bootstrap + stateInjections + (planGate || '');
 
       const ref = firstUser.parts[0];
