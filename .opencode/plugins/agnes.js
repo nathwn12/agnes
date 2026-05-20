@@ -1,10 +1,14 @@
 // @bun
 // src/plugin.ts
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { fileURLToPath } from "url";
 var __dirname2 = path.dirname(fileURLToPath(import.meta.url));
+var packageRoot = path.resolve(__dirname2, "../..");
+var packageJsonPath = path.join(packageRoot, "package.json");
 var skillsDir = path.resolve(__dirname2, "../skills");
+var opencodePackageCache = path.join(os.homedir(), ".cache", "opencode", "packages");
 function extractFrontmatter(content) {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
   if (!match)
@@ -12,6 +16,16 @@ function extractFrontmatter(content) {
   return { content: match[2] };
 }
 var _bootstrapCache = undefined;
+function getPackageVersion() {
+  if (!fs.existsSync(packageJsonPath))
+    return "unknown";
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+    return packageJson.version || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 function getBootstrapContent() {
   if (_bootstrapCache !== undefined)
     return _bootstrapCache;
@@ -22,6 +36,8 @@ function getBootstrapContent() {
   }
   const fullContent = fs.readFileSync(skillPath, "utf8");
   const { content } = extractFrontmatter(fullContent);
+  const version = getPackageVersion();
+  const cacheNukeCommand = `Remove-Item -Recurse -Force "$env:USERPROFILE\\.cache\\opencode\\packages\\agnes@git+https_*"`;
   const toolMapping = `**Tool Mapping for OpenCode:**
 When skills reference tools you don't have, substitute OpenCode equivalents:
 - \`TodoWrite\` \u2192 \`todowrite\`
@@ -32,6 +48,13 @@ When skills reference tools you don't have, substitute OpenCode equivalents:
 Use OpenCode's native \`skill\` tool to list and load skills.`;
   _bootstrapCache = `<EXTREMELY_IMPORTANT>
 You are AGNES.
+
+**Runtime Identity**
+- Current AGNES version: \`${version}\`
+- Installed AGNES package root: \`${packageRoot}\`
+- Bundled AGNES skills directory: \`${skillsDir}\`
+- OpenCode package cache root: \`${opencodePackageCache}\`
+- If the user explicitly asks to clear or nuke AGNES's OpenCode cache, remove the installed AGNES cache directory or use: \`${cacheNukeCommand}\`, then restart OpenCode.
 
 **IMPORTANT: The ag-orchestrator skill content is below. It is ALREADY LOADED. Do NOT use the skill tool to load "ag-orchestrator" again.**
 

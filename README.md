@@ -21,9 +21,9 @@ Add to your `opencode.jsonc`:
 
 Restart OpenCode. AGNES injects its bootstrap and registers its bundled skills automatically.
 
-> **Previously installed?** Clear the cache so the new version loads:
+> **Previously installed?** Clear AGNES from OpenCode's package cache, then restart OpenCode:
 > ```powershell
-> Remove-Item -Recurse -Force "$env:USERPROFILE\.cache\opencode\packages\agnes*"
+> Remove-Item -Recurse -Force "$env:USERPROFILE\.cache\opencode\packages\agnes@git+https_*"
 > ```
 
 ---

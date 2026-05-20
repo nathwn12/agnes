@@ -26,11 +26,17 @@ and Bun versions pin the resolved git dependency in a lockfile, so a restart
 may not pick up the newest commit. If updates do not appear, clear OpenCode's
 package cache or reinstall the plugin.
 
+PowerShell cache clear for AGNES specifically:
+
+```powershell
+Remove-Item -Recurse -Force "$env:USERPROFILE\.cache\opencode\packages\agnes@git+https_*"
+```
+
 To pin a specific version:
 
 ```json
 {
-  "plugin": ["agnes@git+https://github.com/nathwn12/agnes.git#v0.1.0"]
+  "plugin": ["agnes@git+https://github.com/nathwn12/agnes.git#v0.1.1"]
 }
 ```
 
