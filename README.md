@@ -22,8 +22,20 @@ Add to your `opencode.json`:
 Restart OpenCode. AGNES injects its bootstrap and registers its bundled skills automatically.
 
 > **Previously installed?** Clear AGNES from OpenCode's package cache, then restart:
+>
 > ```powershell
+> # PowerShell
 > Remove-Item -Recurse -Force "$env:USERPROFILE\.cache\opencode\packages\agnes@git+https_*"
+> ```
+>
+> ```bash
+> # Git Bash
+> rm -rf "$USERPROFILE/.cache/opencode/packages/agnes@git+https_"*
+> ```
+>
+> ```cmd
+> :: CMD
+> rmdir /s /q "%USERPROFILE%\.cache\opencode\packages\agnes@git+https_*"
 > ```
 
 ---
