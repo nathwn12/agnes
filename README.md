@@ -1,9 +1,22 @@
 <h1 align="center">AGNES — OpenCode Native Plugin</h1>
 
 <p align="center">
-  <b>Swarm intelligence for OpenCode.</b><br>
-  Routes tasks across 23 fused skills. Delegates relentlessly. Parallelizes by default.
+  <img src="https://img.shields.io/badge/version-0.2.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
+  <img src="https://img.shields.io/badge/skills-23-orange" alt="23 skills">
+  <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
 </p>
+
+<p align="center">
+  <b>Swarm orchestrator for OpenCode.</b><br>
+  Routes every engineering task across 23 specialized skills. Delegates relentlessly. Parallelizes by default. Never writes code directly.
+</p>
+
+---
+
+## Table of Contents
+
+[Install](#install) · [Pipeline](#pipeline) · [Skills](#skills) · [Quick Start](#quick-start) · [Ethos](#ethos) · [State](#state) · [Development](#development) · [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -13,157 +26,85 @@ Add to your `opencode.json`:
 
 ```json
 {
-  "plugin": [
-    "agnes@git+https://github.com/nathwn12/agnes.git"
-  ]
+  "plugin": ["agnes@git+https://github.com/nathwn12/agnes.git"]
 }
 ```
 
-Restart OpenCode. AGNES injects its bootstrap and registers its bundled skills automatically.
-
-> **Previously installed?** Clear AGNES from OpenCode's package cache, then restart:
->
-> ```powershell
-> # PowerShell
-> Remove-Item -Recurse -Force "$env:USERPROFILE\.cache\opencode\packages\agnes@git+https_*"
-> ```
->
-> ```bash
-> # Git Bash
-> rm -rf "$USERPROFILE/.cache/opencode/packages/agnes@git+https_"*
-> ```
->
-> ```cmd
-> :: CMD
-> rmdir /s /q "%USERPROFILE%\.cache\opencode\packages\agnes@git+https_*"
-> ```
+Restart OpenCode. AGNES injects its bootstrap and registers all 23 skills automatically.
 
 ---
-
-<details>
-<summary><b>0. Setup</b></summary>
-
-| Skill | Trigger |
-|-------|---------|
-| **ag-init** | First run in a project, or need to refresh state files / AGENTS.md |
-
-Creates `docs/agnes/` with four convention files and writes/updates `AGENTS.md` at the project root.
-</details>
 
 ## Pipeline
 
+Work flows left to right through 9 phases. When blocked, loops back.
+
 ```
-Clarify → Research → Architect → Plan → Build → Test → Review → Ship → Reflect
+Setup → Clarify → Research → Architect → Design/Plan → Build → Verify/Review → Ship → Reflect
 ```
 
-Work flows left to right. When blocked, loops back.
-
-<details>
-<summary><b>1. Clarify</b></summary>
-
-| Skill | Trigger |
-|-------|---------|
-| **ag-clarifier** | Vague requests, terminology conflicts, before any significant work |
-
-Socratic questioning to build shared understanding. One question at a time.
-</details>
-
-<details>
-<summary><b>2. Research</b></summary>
-
-| Skill | Trigger |
-|-------|---------|
-| **ag-explorer** | Need to understand codebase, find patterns, trace dependencies |
-
-Read-only codebase exploration. Produces structured findings reports.
-</details>
-
-<details>
-<summary><b>3. Architect</b></summary>
-
-| Skill | Trigger |
-|-------|---------|
-| **ag-architect** | Codebase feels hard to change, modules are tightly coupled, need deepening |
-
-Applies the deletion test. Uses Design It Twice pattern with parallel sub-agents.
-</details>
-
-<details>
-<summary><b>4. Design & Plan</b></summary>
-
-| Skill | Trigger |
-|-------|---------|
-| **ag-brandkit** | Visual design, brand identity, mockups, logos |
-| **ag-prototype** | Need to answer one question with throwaway code |
-| **ag-prd** | Requirements are clear enough to write product requirements |
-| **ag-planner** | Spec is approved, need bite-sized implementation tasks |
-| **ag-plan-reviewer** | Plan is written, needs CEO/Eng/Design/DX quality gate |
-
-Design before code. Plans before builds.
-</details>
-
-<details>
-<summary><b>5. Build</b></summary>
-
-| Skill | Trigger |
-|-------|---------|
-| **ag-builder** | Plan is approved, time to execute with subagent swarms |
-| **ag-tdd** | Building features from scratch — red-green-refactor discipline |
-| **ag-tester** | Need comprehensive test coverage |
-
-Builds in isolated worktrees. Two-stage review after every task.
-</details>
-
-<details>
-<summary><b>6. Review & Verify</b></summary>
-
-| Skill | Trigger |
-|-------|---------|
-| **ag-verifier** | Need fresh verification evidence before making claims |
-| **ag-reviewer** | Code is written, needs spec compliance + quality review |
-| **ag-feedback-receiver** | Received review feedback, need to process it correctly |
-
-Iron Law: No completion claims without fresh verification evidence.
-</details>
-
-<details>
-<summary><b>7. Debug</b></summary>
-
-| Skill | Trigger |
-|-------|---------|
-| **ag-debugger** | Need collaborative investigation with the user |
-| **ag-griller** | Complex multi-file bugs, recurring issues, ag-debugger stalled |
-
-3-fail rule: after 3 hypotheses proven wrong, the architecture is wrong, not the code.
-</details>
-
-<details>
-<summary><b>8. Ship</b></summary>
-
-| Skill | Trigger |
-|-------|---------|
-| **ag-triage** | Incoming issues need state-machine management |
-| **ag-shipper** | Code is ready — merge locally, push + PR, keep, or discard |
-
-Four options: merge, push+PR, keep branch, discard.
-</details>
-
-<details>
-<summary><b>9. Reflect</b></summary>
-
-| Skill | Trigger |
-|-------|---------|
-| **ag-documenter** | Post-ship docs, changelog, ADRs, Diataxis framework |
-| **ag-retro** | End of sprint, feature shipped, pattern noticed — capture learnings |
-| **ag-skillwriter** | Gap identified in AGNES itself — create or refine a skill via TDD |
-
-Documentation is not an afterthought. Every ship triggers doc updates.
-</details>
+| Phase | Skills | Purpose |
+|-------|--------|---------|
+| **Setup** | ag-init | Bootstrap `docs/agnes/` and `AGENTS.md` in a project |
+| **Clarify** | ag-clarifier | Socratic questioning to resolve vague requests |
+| **Research** | ag-explorer | Read-only codebase exploration & dependency tracing |
+| **Architect** | ag-architect | Find deepening opportunities, Design It Twice pattern |
+| **Design/Plan** | ag-brandkit, ag-prototype, ag-prd, ag-planner, ag-plan-reviewer | Design before code. Plans before builds. |
+| **Build** | ag-builder, ag-tdd, ag-tester | Disciplined execution in isolated worktrees |
+| **Verify/Review** | ag-verifier, ag-reviewer, ag-feedback-receiver | Iron Law: no claims without fresh verification |
+| **Debug** | ag-debugger, ag-griller | Collaborative + adversarial systematic debugging |
+| **Ship** | ag-triage, ag-shipper | Issue state machine + merge/PR/discard |
+| **Reflect** | ag-documenter, ag-retro, ag-skillwriter | Docs, learnings, meta-skill creation |
 
 ---
 
-<details>
-<summary><b>Swarm Ethos</b></summary>
+## Skills
+
+All 23 skills, their trigger conditions, and what they produce:
+
+| Skill | Phase | When to Use | Output |
+|-------|-------|-------------|--------|
+| **ag-init** | Setup | First run in a project, refresh state files | `docs/agnes/` + `AGENTS.md` |
+| **ag-clarifier** | Think | Vague requests, terminology conflicts | Written, user-approved spec |
+| **ag-explorer** | Research | Need to understand codebase, find patterns | Structured findings report |
+| **ag-architect** | Research / Design | Codebase feels hard to change | Interface designs, seam map |
+| **ag-brandkit** | Design | Visual design, brand identity, mockups | Design assets, brand guidelines |
+| **ag-prototype** | Design / Build | Answer one question with throwaway code | Runnable prototype + answer |
+| **ag-prd** | Plan | Requirements are clear enough for PRD | Published PRD with stories |
+| **ag-planner** | Plan | Spec is approved, need tasks | Bite-sized implementation checklist |
+| **ag-plan-reviewer** | Plan Review | Plan is written, needs quality gate | CEO/Eng/Design/DX review |
+| **ag-builder** | Build | Plan approved, time to execute | Verified, reviewed commits |
+| **ag-tdd** | Test / Build | Building features from scratch | Red-green-refactor vertical slices |
+| **ag-tester** | Test | Need comprehensive test coverage | Tests + coverage gap analysis |
+| **ag-verifier** | Verify | Need fresh verification before claiming | Pass/fail with evidence |
+| **ag-reviewer** | Review | Code is written, needs review | Spec compliance + quality issues |
+| **ag-feedback-receiver** | Review | Received review feedback | Processed, implemented changes |
+| **ag-debugger** | Debug | Need collaborative investigation | Root cause + regression test |
+| **ag-griller** | Debug | Complex multi-file bugs, 3-fail rule | Architecture finding or fix |
+| **ag-triage** | Process | Incoming issues need routing | State-machine triage |
+| **ag-shipper** | Ship | Code is ready to deliver | Merged PR or discarded branch |
+| **ag-documenter** | Reflect | Post-ship docs, changelogs | Diataxis docs, ADRs |
+| **ag-retro** | Reflect | Sprint end, pattern noticed | Learnings document |
+| **ag-skillwriter** | Meta | Gap in AGNES itself to fill | New or refined skill via TDD |
+
+---
+
+## Quick Start
+
+1. **Install** — add to `opencode.json` and restart
+2. **Init** — run `ag-init` in any project to create `docs/agnes/` and `AGENTS.md`
+3. **Work** — every engineering task routes through the pipeline automatically:
+   - Vague request? → ag-clarifier sharpens it
+   - Need to understand code? → ag-explorer researches
+   - Ready to build? → ag-builder dispatches subagents
+   - Bugs? → ag-griller systematically debugs
+4. **Review** — ag-reviewer gate-checks before any merge
+5. **Reflect** — ag-retro captures learnings, ag-documenter produces docs
+
+AGNES never writes code directly. Every task is delegated to a subagent or specialized skill.
+
+---
+
+## Ethos
 
 | Principle | Meaning |
 |-----------|---------|
@@ -173,30 +114,53 @@ Documentation is not an afterthought. Every ship triggers doc updates.
 | **Verify before claiming** | Run the command. Read the output. Then speak. |
 | **Work-steal** | Subagent finished early? Dispatch it with the next task immediately. |
 
-</details>
+---
 
-<details>
-<summary><b>State Management</b></summary>
+## State
+
+AGNES tracks progress across sessions via `docs/agnes/`:
 
 ```
 docs/agnes/
-├── plans/            Implementation plans
-├── goal.md           Completion condition, re-read before each wave
-├── plan.md           Three-status checklist linked to goal
-├── session.md        Smart zone, compaction, clearing, handoff decisions
-├── handoff.md        Session state for next agent or later continuation
-├── specs/            (planned)
-├── prd/              (planned)
-├── architecture/     (planned)
-└── learnings/        (planned)
+├── goal.md        Completion condition — re-read before every wave
+├── plan.md        Three-status checklist linked to the goal
+├── session.md     Smart zone tracking and boundary decisions
+├── handoff.md     Session state for another agent or later continuation
+├── plans/         Implementation plans
+├── specs/         (planned)
+├── prd/           (planned)
+├── architecture/  (planned)
+└── learnings/     (planned)
 ```
-</details>
 
-<details>
-<summary><b>Build</b></summary>
+---
+
+## Development
 
 ```bash
 bun run bundle      # bundles to .opencode/plugins/agnes.js
 bun run typecheck   # type-safety gate
 ```
-</details>
+
+---
+
+## Troubleshooting
+
+### Clear cached installation
+
+```powershell
+# PowerShell
+Remove-Item -Recurse -Force "$env:USERPROFILE\.cache\opencode\packages\agnes@git+https_*"
+```
+
+```bash
+# Git Bash
+rm -rf "$USERPROFILE/.cache/opencode/packages/agnes@git+https_"*
+```
+
+```cmd
+:: CMD
+rmdir /s /q "%USERPROFILE%\.cache\opencode\packages\agnes@git+https_*"
+```
+
+Then restart OpenCode.
