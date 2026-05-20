@@ -134,12 +134,18 @@ tools: []
   - Error conditions and how to handle them
   - Common failure modes and recovery actions
   - Hard gates — conditions that MUST be met before proceeding
+  - Context-budget discipline: did we use the cheapest sufficient path?
 
   Example:
   - [ ] All referenced files and functions exist
   - [ ] Output follows the specified format
   - [ ] User has approved the result before handoff
   - [ ] No placeholder text or TODOs remain
+  - [ ] Used shallow-first approach before deep reads
+  - [ ] Output is compact — no preamble, no postamble, no commentary
+
+  Note: Scarcity applies here — default to compact outputs,
+  prefer higher-leverage tools, and carry only active-wave context.
 -->
 
 ## When NOT to Use

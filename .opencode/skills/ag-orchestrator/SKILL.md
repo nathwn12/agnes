@@ -33,6 +33,16 @@ Skill invocation is free. Wrong invocation costs nothing. Missed invocation cost
 
 This is not negotiable. This is not optional. When uncertain, invoke. Then decide.
 
+### The Scarcity Principle
+
+AGNES treats context as a budget, not an infinite dump. Every tool call, file read, and response byte costs tokens — spend deliberately.
+
+- **Shallow-first by default.** `glob` → `grep` → selective `read`. Only read entire files when the task demands it.
+- **Prefer higher-leverage tools.** One `grep` can replace ten `read` calls. One subagent can replace five sequential tool chains.
+- **Compact outputs.** Return only what was asked. No preamble, no postamble, no commentary.
+- **Carry only the active wave.** When a wave completes, let its context go. Don't carry finished-task context into the next wave.
+- **Scarcity never overrides delegation or verification.** When in doubt, delegate. When at risk of incorrectness, read more. Scarcity manages bloat, not rigor.
+
 ### The Swarm Nudge
 
 AGNES is a swarm intelligence. The orchestrator is its brain. Every skill is a worker. Every subagent is a limb.
@@ -40,6 +50,7 @@ AGNES is a swarm intelligence. The orchestrator is its brain. Every skill is a w
 - CONSTANTLY ask: *"Can I delegate this?"*
 - CONSTANTLY scan: *"Can I parallelize these tasks?"*
 - CONSTANTLY check: *"Is there a skill for this (even 1%)?"*
+- CONSTANTLY weigh: *"Is this the cheapest sufficient path?"*
 - NEVER write code directly. DELEGATE.
 
 ## Precise Vocabulary
@@ -54,6 +65,7 @@ AGNES is a swarm intelligence. The orchestrator is its brain. Every skill is a w
 - **Clear/Compact/Handoff**: the three session-boundary actions used to maintain context quality
 - **Smart zone**: the portion of a session where context is fresh and output quality is high
 - **Dumb zone**: the portion where context has degraded and a boundary action is needed
+- **Scarcity**: the principle of using the cheapest sufficient path first — shallow-first exploration, compact outputs, minimal tool calls, bounded context per wave
 
 ## Context Requirements
 
@@ -157,6 +169,7 @@ Done when: <condition satisfied or N waves elapsed>
 - **Write `handoff.md` on "handoff"/"stop" or when stuck.** Then stop.
 - **Delegate or die.** If you catch yourself writing code, stop and spawn a subagent.
 - **Parallelize by default.** Sequential is the exception, never the rule.
+- **Scarcity: Cheapest sufficient path first.** Start broad and cheap, narrow and deepen only when the task demands it. Prefer `glob` → `grep` → selective `read`. Output compact by default. Carry only the active wave's context.
 
 ## When NOT to Use
 

@@ -41,6 +41,16 @@ Read-only, systematic investigation of codebases, dependencies, and architecture
 
 ## Workflow
 
+### 0. Scarcity: Shallow-first Exploration
+
+Before any deep read, start with the cheapest sufficient path:
+- **glob** the directory structure to understand layout
+- **grep** for specific patterns, terms, or interfaces
+- **read** only files that matched — start with signatures, definitions, and imports
+- **deepen** only when unresolved questions remain
+
+This is the default. Full-file reads are the exception, not the rule.
+
 ### 1. Codebase Exploration
 
 Read file structure, find patterns, understand architecture:
@@ -49,6 +59,7 @@ Read file structure, find patterns, understand architecture:
 - Identify key interfaces, data flows, and entry points
 - Read configuration files (package.json, tsconfig, etc.)
 - Examine test patterns and conventions
+- Apply shallow-first: glob → grep → selective read → deepen only if needed
 
 ### 2. Dependency Research
 
@@ -116,6 +127,8 @@ When 3+ independent areas need investigation:
 - Files examined section lists every file consulted
 - No files were modified during exploration
 - Parallel explorations are synthesized into a single coherent report
+- Shallow-first path was used: glob → grep → selective read → deepen only on unresolved questions
+- No unnecessary full-file reads — every read was justified by a search hit or explicit need
 
 ## When NOT to Use
 
