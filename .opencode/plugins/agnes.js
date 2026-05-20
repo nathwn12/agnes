@@ -55,7 +55,7 @@ Use OpenCode's native \`skill\` tool to list and load skills.`;
   _bootstrapCache = `<EXTREMELY_IMPORTANT>
 You are AGNES.
 
-**Runtime Identity**
+**Runtime Identity** (AGNES internal install paths \u2014 distinct from the current project workspace)
 - Current AGNES version: \`${version}\`
 - Installed AGNES package root: \`${packageRoot}\`
 - Bundled AGNES skills directory: \`${skillsDir}\`
@@ -73,23 +73,22 @@ ${toolMapping}
 
 // src/state.ts
 import * as fs2 from "fs";
+import * as os2 from "os";
 import * as path2 from "path";
-var _didBootstrapStateDir = false;
-function findProjectRoot() {
-  let dir = process.cwd();
-  for (let i = 0;i < 20; i++) {
-    if (fs2.existsSync(path2.join(dir, "package.json")) || fs2.existsSync(path2.join(dir, ".git")) || fs2.existsSync(path2.join(dir, ".opencode")))
-      return dir;
-    const parent = path2.dirname(dir);
-    if (parent === dir)
-      return null;
-    dir = parent;
+var OPENCODE_CACHE_ROOT = path2.join(os2.homedir(), ".cache", "opencode", "packages");
+function isBlockedPath(dir) {
+  const resolved = path2.resolve(dir);
+  const root = path2.resolve(OPENCODE_CACHE_ROOT);
+  if (os2.platform() === "win32") {
+    return resolved.toLowerCase().startsWith(root.toLowerCase());
   }
-  return null;
+  return resolved.startsWith(root);
 }
 function findWorkspaceRoot() {
   let dir = process.cwd();
   for (let i = 0;i < 20; i++) {
+    if (isBlockedPath(dir))
+      return null;
     if (fs2.existsSync(path2.join(dir, "docs", "agnes")))
       return dir;
     const parent = path2.dirname(dir);
@@ -99,19 +98,8 @@ function findWorkspaceRoot() {
   }
   return null;
 }
-function ensureStateDirectory() {
-  if (_didBootstrapStateDir)
-    return findWorkspaceRoot();
-  _didBootstrapStateDir = true;
-  const existing = findWorkspaceRoot();
-  if (existing)
-    return existing;
-  const projectRoot = findProjectRoot();
-  if (!projectRoot)
-    return null;
-  const agnesDir = path2.join(projectRoot, "docs", "agnes");
-  fs2.mkdirSync(agnesDir, { recursive: true });
-  return projectRoot;
+function detectStateDirectory() {
+  return findWorkspaceRoot();
 }
 function stateDir(workspaceRoot) {
   return path2.join(workspaceRoot, "docs", "agnes");
@@ -147,10 +135,38 @@ function readFrontmatter(workspaceRoot, name) {
   }
   return result;
 }
+var TEMPLATE_SIGNATURES = {
+  "goal.md": [`# Goal
+
+A goal is a`],
+  "plan.md": [`# Plan
+
+A three-status checklist`],
+  "handoff.md": [`# Handoff
+
+Saves session state`]
+};
+function isTemplateContent(workspaceRoot, name) {
+  const filePath = path2.join(stateDir(workspaceRoot), name);
+  if (!fs2.existsSync(filePath))
+    return false;
+  const content = fs2.readFileSync(filePath, "utf8");
+  const stripped = content.replace(/^---[\s\S]*?---\r?\n?/, "");
+  const normalized = stripped.replace(/\r\n/g, `
+`);
+  const signatures = TEMPLATE_SIGNATURES[name];
+  if (!signatures)
+    return false;
+  return signatures.some((sig) => normalized.startsWith(sig));
+}
 function getFileStatus(workspaceRoot, name) {
   const fm = readFrontmatter(workspaceRoot, name);
   if (!fm)
-    return "active";
+    return "absent";
+  if (fm.status && fm.status !== "active")
+    return fm.status;
+  if (isTemplateContent(workspaceRoot, name))
+    return "template";
   return fm.status || "active";
 }
 function readStateFile(workspaceRoot, name) {
@@ -160,7 +176,7 @@ function readStateFile(workspaceRoot, name) {
   return fs2.readFileSync(filePath, "utf8");
 }
 function getStateFileInjections() {
-  const workspaceRoot = ensureStateDirectory();
+  const workspaceRoot = detectStateDirectory();
   if (!workspaceRoot)
     return "";
   const files = listStateFiles(workspaceRoot);
@@ -175,7 +191,7 @@ function getStateFileInjections() {
 
 ## State directory ready
 
-\`${agnesDir}\` created for this project. AGNES uses four files to track work across sessions:
+\`${agnesDir}\` is initialized. AGNES uses three files to track work across sessions:
 
 | File | Purpose |
 |------|---------|
@@ -228,13 +244,13 @@ ${goalContent}
 
 // src/runtime.ts
 function getCurrentState() {
-  const workspaceRoot = findWorkspaceRoot();
+  const workspaceRoot = detectStateDirectory();
   if (!workspaceRoot)
     return null;
   const files = listStateFiles(workspaceRoot);
-  const goalActive = getFileStatus(workspaceRoot, "goal.md") === "active";
+  const goalActive = files.includes("goal.md") && getFileStatus(workspaceRoot, "goal.md") === "active";
   const planActive = files.includes("plan.md") && getFileStatus(workspaceRoot, "plan.md") === "active";
-  const handoffActive = getFileStatus(workspaceRoot, "handoff.md") === "active";
+  const handoffActive = files.includes("handoff.md") && getFileStatus(workspaceRoot, "handoff.md") === "active";
   return {
     hasGoal: goalActive,
     hasPlan: planActive,

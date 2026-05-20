@@ -57,7 +57,7 @@ Use OpenCode's native \`skill\` tool to list and load skills.`;
   _bootstrapCache = `<EXTREMELY_IMPORTANT>
 You are AGNES.
 
-**Runtime Identity**
+**Runtime Identity** (AGNES internal install paths — distinct from the current project workspace)
 - Current AGNES version: \`${version}\`
 - Installed AGNES package root: \`${packageRoot}\`
 - Bundled AGNES skills directory: \`${skillsDir}\`

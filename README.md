@@ -1,7 +1,7 @@
 <h1 align="center">AGNES — OpenCode Native Plugin</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.4.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.4.1-blue" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
   <img src="https://img.shields.io/badge/skills-23-orange" alt="23 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
@@ -119,13 +119,12 @@ AGNES never writes code directly. Every task is delegated to a subagent or speci
 
 ## State
 
-AGNES tracks progress across sessions via `docs/agnes/`:
+AGNES tracks progress across sessions via `docs/agnes/` in any project:
 
 ```
 docs/agnes/
 ├── goal.md        Completion condition — re-read before every wave
 ├── plan.md        Three-status checklist linked to the goal
-├── session.md     Smart zone tracking and boundary decisions
 ├── handoff.md     Session state for another agent or later continuation
 └── learnings/    (planned)
 ```

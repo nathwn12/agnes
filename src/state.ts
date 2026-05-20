@@ -1,11 +1,22 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 
-let _didBootstrapStateDir = false;
+const OPENCODE_CACHE_ROOT = path.join(os.homedir(), '.cache', 'opencode', 'packages');
+
+function isBlockedPath(dir: string): boolean {
+  const resolved = path.resolve(dir);
+  const root = path.resolve(OPENCODE_CACHE_ROOT);
+  if (os.platform() === 'win32') {
+    return resolved.toLowerCase().startsWith(root.toLowerCase());
+  }
+  return resolved.startsWith(root);
+}
 
 function findProjectRoot(): string | null {
   let dir = process.cwd();
   for (let i = 0; i < 20; i++) {
+    if (isBlockedPath(dir)) return null;
     if (fs.existsSync(path.join(dir, 'package.json')) ||
         fs.existsSync(path.join(dir, '.git')) ||
         fs.existsSync(path.join(dir, '.opencode'))) return dir;
@@ -19,6 +30,7 @@ function findProjectRoot(): string | null {
 function findWorkspaceRoot(): string | null {
   let dir = process.cwd();
   for (let i = 0; i < 20; i++) {
+    if (isBlockedPath(dir)) return null;
     if (fs.existsSync(path.join(dir, 'docs', 'agnes'))) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) return null;
@@ -27,19 +39,9 @@ function findWorkspaceRoot(): string | null {
   return null;
 }
 
-function ensureStateDirectory(): string | null {
-  if (_didBootstrapStateDir) return findWorkspaceRoot();
-  _didBootstrapStateDir = true;
-
-  const existing = findWorkspaceRoot();
-  if (existing) return existing;
-
-  const projectRoot = findProjectRoot();
-  if (!projectRoot) return null;
-
-  const agnesDir = path.join(projectRoot, 'docs', 'agnes');
-  fs.mkdirSync(agnesDir, { recursive: true });
-  return projectRoot;
+/** Read-only detection — never creates directories, never side-effects. */
+function detectStateDirectory(): string | null {
+  return findWorkspaceRoot();
 }
 
 function stateDir(workspaceRoot: string): string {
@@ -77,9 +79,31 @@ function readFrontmatter(workspaceRoot: string, name: string): Record<string, st
   return result;
 }
 
+const TEMPLATE_SIGNATURES: Record<string, string[]> = {
+  'goal.md': ['# Goal\n\nA goal is a'],
+  'plan.md': ['# Plan\n\nA three-status checklist'],
+  'handoff.md': ['# Handoff\n\nSaves session state'],
+};
+
+function isTemplateContent(workspaceRoot: string, name: string): boolean {
+  const filePath = path.join(stateDir(workspaceRoot), name);
+  if (!fs.existsSync(filePath)) return false;
+
+  const content = fs.readFileSync(filePath, 'utf8');
+  const stripped = content.replace(/^---[\s\S]*?---\r?\n?/, '');
+  const normalized = stripped.replace(/\r\n/g, '\n');
+
+  const signatures = TEMPLATE_SIGNATURES[name];
+  if (!signatures) return false;
+
+  return signatures.some(sig => normalized.startsWith(sig));
+}
+
 function getFileStatus(workspaceRoot: string, name: string): string {
   const fm = readFrontmatter(workspaceRoot, name);
-  if (!fm) return 'active';
+  if (!fm) return 'absent';
+  if (fm.status && fm.status !== 'active') return fm.status;
+  if (isTemplateContent(workspaceRoot, name)) return 'template';
   return fm.status || 'active';
 }
 
@@ -90,7 +114,7 @@ function readStateFile(workspaceRoot: string, name: string): string | null {
 }
 
 function getStateFileInjections(): string {
-  const workspaceRoot = ensureStateDirectory();
+  const workspaceRoot = detectStateDirectory();
   if (!workspaceRoot) return '';
 
   const files = listStateFiles(workspaceRoot);
@@ -104,7 +128,7 @@ function getStateFileInjections(): string {
     const agnesDir = stateDir(workspaceRoot);
     return `\n\n## State directory ready
 
-\`${agnesDir}\` created for this project. AGNES uses four files to track work across sessions:
+\`${agnesDir}\` is initialized. AGNES uses three files to track work across sessions:
 
 | File | Purpose |
 |------|---------|
@@ -154,4 +178,4 @@ ${goalContent}
   return '';
 }
 
-export { getStateFileInjections, findWorkspaceRoot, readStateFile, listStateFiles, readFrontmatter, getFileStatus };
+export { getStateFileInjections, detectStateDirectory, findWorkspaceRoot, readStateFile, listStateFiles, readFrontmatter, getFileStatus };

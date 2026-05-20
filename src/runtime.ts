@@ -1,4 +1,4 @@
-import { findWorkspaceRoot, readStateFile, listStateFiles, getFileStatus } from './state.js';
+import { detectStateDirectory, readStateFile, listStateFiles, getFileStatus } from './state.js';
 
 export interface AgnesRuntimeState {
   hasGoal: boolean;
@@ -10,13 +10,13 @@ export interface AgnesRuntimeState {
 }
 
 export function getCurrentState(): AgnesRuntimeState | null {
-  const workspaceRoot = findWorkspaceRoot();
+  const workspaceRoot = detectStateDirectory();
   if (!workspaceRoot) return null;
 
   const files = listStateFiles(workspaceRoot);
-  const goalActive = getFileStatus(workspaceRoot, 'goal.md') === 'active';
+  const goalActive = files.includes('goal.md') && getFileStatus(workspaceRoot, 'goal.md') === 'active';
   const planActive = files.includes('plan.md') && getFileStatus(workspaceRoot, 'plan.md') === 'active';
-  const handoffActive = getFileStatus(workspaceRoot, 'handoff.md') === 'active';
+  const handoffActive = files.includes('handoff.md') && getFileStatus(workspaceRoot, 'handoff.md') === 'active';
 
   return {
     hasGoal: goalActive,
