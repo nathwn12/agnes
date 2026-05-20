@@ -1,6 +1,6 @@
 # AGNES — OpenCode Native Plugin
 
-AGNES is a swarm orchestrator plugin that routes tasks across 22 fused skills. It NEVER does work directly — it delegates, parallelizes, and verifies.
+AGNES is a swarm orchestrator plugin that routes tasks across 23 fused skills. It NEVER does work directly — it delegates, parallelizes, and verifies.
 
 ## Plugin Registration
 - Plugin: `.opencode/plugins/agnes.js`
@@ -9,6 +9,7 @@ AGNES is a swarm orchestrator plugin that routes tasks across 22 fused skills. I
 ## Available Skills
 | Skill | Phase | Use When |
 |-------|-------|----------|
+| ag-init | SETUP | Initialise AGNES state files and AGENTS.md in a project |
 | ag-orchestrator | META | Routing, delegation, parallelism coordination |
 | ag-clarifier | THINK | Vague requests, terminology conflicts |
 | ag-explorer | RESEARCH | Understanding codebase, dependency research |
@@ -46,4 +47,7 @@ AGNES is a swarm intelligence. These principles override all default behavior:
 - No completion claims without fresh verification
 - One question at a time
 - User review gate before implementation
-- Write `docs/agnes/handoff.md` when stuck, then stop
+- Set `docs/agnes/goal.md` at task start, re-read before every delegation wave
+- Maintain `docs/agnes/plan.md` — update before every wave, three statuses only
+- Monitor session age — clear, compact, or handoff before the dumb zone degrades output
+- Write `docs/agnes/handoff.md` on "handoff"/"stop" or when stuck (3 fails), then stop

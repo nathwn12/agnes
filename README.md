@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>Swarm intelligence for OpenCode.</b><br>
-  Routes tasks across 22 fused skills. Delegates relentlessly. Parallelizes by default.
+  Routes tasks across 23 fused skills. Delegates relentlessly. Parallelizes by default.
 </p>
 
 ---
@@ -27,6 +27,16 @@ Restart OpenCode. AGNES injects its bootstrap and registers its bundled skills a
 > ```
 
 ---
+
+<details>
+<summary><b>0. Setup</b></summary>
+
+| Skill | Trigger |
+|-------|---------|
+| **ag-init** | First run in a project, or need to refresh state files / AGENTS.md |
+
+Creates `docs/agnes/` with four convention files and writes/updates `AGENTS.md` at the project root.
+</details>
 
 ## Pipeline
 
@@ -159,9 +169,10 @@ Documentation is not an afterthought. Every ship triggers doc updates.
 ```
 docs/agnes/
 ├── plans/            Implementation plans
-├── goal.md           (planned)
-├── plan.md           (planned)
-├── handoff.md        (planned)
+├── goal.md           Completion condition, re-read before each wave
+├── plan.md           Three-status checklist linked to goal
+├── session.md        Smart zone, compaction, clearing, handoff decisions
+├── handoff.md        Session state for next agent or later continuation
 ├── specs/            (planned)
 ├── prd/              (planned)
 ├── architecture/     (planned)
