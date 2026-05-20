@@ -155,6 +155,6 @@ docs/agnes/
 ## Build
 
 ```bash
-bun run build       # bundles to .opencode/plugins/agnes.js
+bun run bundle      # bundles to .opencode/plugins/agnes.js
 bun run typecheck   # type-safety gate
 ```

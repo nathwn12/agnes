@@ -8,8 +8,8 @@
   "keywords": ["opencode", "plugin", "agent", "orchestrator", "skills"],
   "license": "MIT",
   "scripts": {
-    "build": "bun build src/plugin.ts --outfile .opencode/plugins/agnes.js --target bun",
-    "build:watch": "bun build src/plugin.ts --outfile .opencode/plugins/agnes.js --target bun --watch",
+    "bundle": "bun build src/plugin.ts --outfile .opencode/plugins/agnes.js --target bun",
+    "bundle:watch": "bun build src/plugin.ts --outfile .opencode/plugins/agnes.js --target bun --watch",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
