@@ -1,27 +1,35 @@
 ---
 name: ag-init
 description: Initialize or update AGNES state files (docs/agnes/) and project AGENTS.md in a target project
+phase: init
+persona: senior project setup specialist specializing in AGNES state file initialization and project bootstrapping
+tools: [Read, Write, Edit, Glob, Bash]
 ---
 
-# ag-init
+## Use When
 
-Initialises a project to work with AGNES. Creates `docs/agnes/` with four convention files and writes/updates `AGENTS.md` in the project root.
+You need to set up AGNES in a new project, or update an existing project's AGENTS.md and state files in `docs/agnes/`.
+
+## Core Concept
+
+Initialises a project to work with AGNES. Creates `docs/agnes/` with four convention files and writes or updates `AGENTS.md` in the project root.
 
 The project AGENTS.md is minimal by design — everything in it pays a token cost every turn. Always-on swarm ethos and state rules only; everything else lives in skills.
 
-## What it produces
+## Precise Vocabulary
 
-```
-<project-root>/
-├── AGENTS.md              Always-on rules + pointer to docs/agnes/
-└── docs/agnes/
-    ├── goal.md            Completion condition format
-    ├── plan.md            Three-status checklist format
-    ├── session.md         Smart zone, compaction, clearing, handoff
-    └── handoff.md         Session state for next agent
-```
+- **Project root** — the first ancestor directory containing `package.json`, `.git`, or `.opencode`
+- **State files** — the four files in `docs/agnes/`: `goal.md`, `plan.md`, `session.md`, `handoff.md`
+- **AGENTS.md** — project root config file consumed by the agent every turn
+- **Handoff** — saved session state for another agent or future continuation
 
-## Instructions
+## Context Requirements
+
+- A target project directory. The skill walks up from the current working directory to find the project root.
+- Write permission to create `docs/agnes/` and modify `AGENTS.md` in the project root.
+- Existing state files with real content are preserved; only empty templates are overwritten.
+
+## Workflow
 
 ### 1. Find the project root
 
@@ -90,6 +98,7 @@ Goal: <copied from goal.md>
 3. Pending items MAY tag a handler with `@`
 4. No commentary. No free text.
 5. Update before every delegation wave.
+```
 ```
 
 #### `docs/agnes/session.md`
@@ -221,3 +230,37 @@ This project uses AGNES, a swarm orchestrator that routes tasks across fused ski
 1. Confirm `docs/agnes/goal.md`, `plan.md`, `session.md`, `handoff.md` all exist with content
 2. Confirm `AGENTS.md` exists and contains the AGNES block
 3. Report the project is initialised
+
+## Tool Requirements
+
+| Tool | Used For |
+|------|----------|
+| Bash | Finding project root, creating directories, verifying output |
+| Read | Checking existing file content before overwriting |
+| Write | Creating new state files and AGENTS.md |
+| Edit | Prepending AGNES block to existing AGENTS.md |
+| Glob | Detecting project root markers (package.json, .git, .opencode) |
+
+## Output
+
+```
+<project-root>/
+├── AGENTS.md              Always-on rules + pointer to docs/agnes/
+└── docs/agnes/
+    ├── goal.md            Completion condition format
+    ├── plan.md            Three-status checklist format
+    ├── session.md         Smart zone, compaction, clearing, handoff
+    └── handoff.md         Session state for next agent
+```
+
+## Quality Criteria
+
+1. All four state files in `docs/agnes/` exist with content (not empty placeholders)
+2. `AGENTS.md` exists and contains the AGNES identity block at the top
+3. Existing state files with real content are unchanged
+
+## When NOT to Use
+
+- The project is not meant to work with AGNES (no swarm orchestration needed)
+- Only a single skill or subagent is needed without the full AGNES workflow
+- The project already has a complete AGNES setup verified by the quality criteria

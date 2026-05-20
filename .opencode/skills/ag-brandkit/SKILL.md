@@ -1,13 +1,39 @@
 ---
 name: ag-brandkit
 description: Visual design and brand identity — generates design systems, brand guidelines, logo concepts, UI mockups, and image assets
+phase: DESIGN
+persona: senior visual designer specializing in brand identity systems, logo design, and design language creation
+tools: []
 ---
 
-## Phase: DESIGN
+## Use When
 
-Use when: starting a new project with no design system, redesigning existing UI, needing visual assets for marketing or docs, before ag-planner if design direction affects architecture.
+Starting a new project with no design system, redesigning existing UI, needing visual assets for marketing or docs, before ag-planner if design direction affects architecture.
 
-## Modes
+## Core Concept
+
+Brand Kit is a complete visual identity system encompassing logo design, color palettes, typography, spacing, and UI mockups. Every element is intentional, consistent, accessible, scalable, and on-brand — a single system with no ad-hoc decisions.
+
+## Precise Vocabulary
+
+- **Design System**: Complete set of visual standards and components defining a brand's look and feel
+- **Logo Concepting**: Generating multiple logo directions — monogram, icon, wordmark, combination mark — aligned to brand values
+- **Color Palette**: Primary, secondary, accent colors; light/dark modes; semantic colors (success, warning, error, info); WCAG 2.1 AA compliant
+- **Typography**: Heading font (display/editorial), body font (reading/UI), monospace font (code/data), with a 6-8 size type scale and defined usage
+- **Spacing System**: 4px or 8px base unit with scale (xs, sm, md, lg, xl, xxl) and component padding/margin guidelines
+- **Design-Shotgun**: Generating multiple visual variants simultaneously for comparison and structured feedback
+- **Section-by-Section Mockups**: One image per UI section with consistent palette and composition variety
+- **WCAG 2.1 AA**: Minimum contrast ratio standard for web accessibility
+
+## Context Requirements
+
+- Project name and domain
+- Brand values and positioning (if available)
+- Target audience
+- Existing brand assets (if any)
+- Design direction preferences or constraints
+
+## Workflow
 
 ### 1. Brand System Design
 
@@ -34,8 +60,6 @@ Create a complete design system:
 - 4px or 8px base unit
 - Defined spacing scale (xs, sm, md, lg, xl, xxl)
 - Component padding and margin guidelines
-
-**Output:** `DESIGN.md` as source of truth at project root.
 
 ### 2. Design Exploration
 
@@ -65,7 +89,20 @@ Create visual assets:
 - Minimalist, cinematic, or dark-tech aesthetic
 - Art-directed imagery with intentional composition
 
-## Design Principles
+## Tool Requirements
+
+- Image generation (DALL-E, Midjourney, or equivalent)
+- Design tooling for mockups and prototypes
+- Color palette analysis for WCAG contrast checking
+
+## Output
+
+- `DESIGN.md` — Design system source of truth (always)
+- `docs/design/mockups/` — Generated mockup images
+- `docs/design/brand/` — Logo assets, brand guidelines
+- Color and font preview pages as HTML if needed
+
+## Quality Criteria
 
 - **Minimalist**: Clean, intentional, no decoration without purpose
 - **Consistent**: Single system, no ad-hoc decisions
@@ -73,9 +110,8 @@ Create visual assets:
 - **Scalable**: Works at every breakpoint
 - **On-brand**: Every element reinforces the brand
 
-## Output Files
+## When NOT to Use
 
-- `DESIGN.md` — Design system source of truth (always)
-- `docs/design/mockups/` — Generated mockup images
-- `docs/design/brand/` — Logo assets, brand guidelines
-- Color and font preview pages as HTML if needed
+- Project already has a comprehensive design system needing only minor tweaks
+- No visual assets or mockups are required
+- Design direction does not affect architecture decisions

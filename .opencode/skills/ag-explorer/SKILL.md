@@ -1,15 +1,45 @@
 ---
 name: ag-explorer
 description: Read-only codebase research and exploration — understands architecture, finds patterns, researches dependencies, and produces structured findings reports
+phase: RESEARCH
+persona: senior codebase analyst specializing in architecture discovery and dependency research
+tools: [read, grep, glob, task, ag_delegate]
 ---
 
-## Phase: RESEARCH
+## Use When
 
-Use when: understanding an unfamiliar codebase, researching dependencies before planning, debugging (first phase investigation), needing architecture overview.
+Understanding an unfamiliar codebase, researching dependencies before planning, debugging (first phase investigation), needing architecture overview.
 
 **Always read-only.** Never modifies files.
 
-## Modes
+## Core Concept
+
+Read-only, systematic investigation of codebases, dependencies, and architectures. The skill produces structured findings reports that map modules, identify patterns, trace data flows, and document interfaces — without ever modifying files. It operates in four modes (Codebase Exploration, Dependency Research, Zoom Out, Parallel Exploration) depending on the investigation depth and breadth needed.
+
+## Precise Vocabulary
+
+| Term | Meaning |
+|------|---------|
+| Codebase Exploration | Reading file structure, finding patterns, understanding architecture |
+| Dependency Research | Investigating unfamiliar libraries — vendor check, source inspection, cross-reference |
+| Zoom Out | Going up a layer of abstraction to show the big picture and relationships |
+| Parallel Exploration | Dispatching independent investigations across multiple subagents simultaneously |
+| Module | A discrete unit of code (file, directory, package) with a defined responsibility |
+| Interface | The public API surface of a module (exports, types, function signatures) |
+| Data Flow | The path data takes through the system from source to transformation to sink |
+| Entry Point | Top-level invocation points (main, handlers, routes, event listeners) |
+| Caller | Code that depends on or invokes a given module or function |
+| Findings Report | Structured markdown document synthesizing exploration results |
+
+## Context Requirements
+
+- Project file structure and directory layout
+- Domain glossary vocabulary (check `CONTEXT.md`, `AGENTS.md`)
+- Configuration files (package.json, tsconfig, etc.)
+- Existing test patterns and conventions
+- When doing dependency research: access to vendored or cached dependency source
+
+## Workflow
 
 ### 1. Codebase Exploration
 
@@ -46,7 +76,17 @@ When 3+ independent areas need investigation:
 - Each returns structured findings
 - Synthesize results into a unified report
 
-## Findings Report Format
+## Tool Requirements
+
+| Tool | Usage |
+|------|-------|
+| `read` | Exploring file structure and content |
+| `grep` | Finding patterns, usages, and cross-references |
+| `glob` | Locating files by pattern |
+| `task` | Running parallel exploration of independent domains |
+| `ag_delegate` | Dispatching subagents per domain during parallel exploration |
+
+## Output
 
 ```markdown
 ## Exploration Report
@@ -67,7 +107,17 @@ When 3+ independent areas need investigation:
 [If this was pre-planning, what should the plan consider?]
 ```
 
-## When NOT to use
+## Quality Criteria
+
+- All findings are backed by file evidence (no speculation)
+- Every module mapped includes its key interfaces and relationships
+- Clear distinction between observed facts and interpreted recommendations
+- Report uses the canonical Findings Report format
+- Files examined section lists every file consulted
+- No files were modified during exploration
+- Parallel explorations are synthesized into a single coherent report
+
+## When NOT to Use
 
 - Do not use when the codebase is already well-understood (proceed to ag-planner)
 - Do not use when the task is purely implementation (use ag-builder)

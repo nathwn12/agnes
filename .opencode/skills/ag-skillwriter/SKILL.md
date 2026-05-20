@@ -1,19 +1,41 @@
 ---
 name: ag-skillwriter
 description: Create and refine AGNES skills via TDD — write pressure scenarios first, watch agents fail without the skill (RED), write the skill (GREEN), close loopholes (REFACTOR)
+phase: Reflect / Meta
+persona: senior skill designer specializing in test-driven skill development and process documentation
+tools: [read, write, edit, bash, glob, grep]
 ---
+## Use When
 
-## Phase: REFLECT / META
+Creating a brand-new AGNES skill, editing/improving an existing skill, closing a gap identified during retro, or when an agent demonstrably behaves wrongly without documented guidance.
 
-Use when: creating a brand-new AGNES skill, editing/improving an existing skill, closing a gap identified during retro, or when an agent demonstrably behaves wrongly without documented guidance.
-
-## Iron Law
+## Core Concept
 
 > **NO SKILL WITHOUT A FAILING TEST FIRST**
 
 This applies to new skills AND edits to existing skills. If you can't describe a scenario where the agent behaves wrongly without the skill, you don't know what the skill should enforce. Writing the scenario IS the analysis. Everything else is decoration.
 
-## The TDD Cycle for Skills
+## Precise Vocabulary
+
+| Term | Definition |
+|------|------------|
+| **RED** | Phase where pressure scenarios are written before any skill code exists |
+| **GREEN** | Phase where minimal skill is written to address only the pressure scenarios |
+| **REFACTOR** | Phase where loopholes are closed and the skill is bulletproofed |
+| **Pressure scenario** | Concrete test case capturing one specific failure mode the skill must prevent |
+| **Rationalization** | An excuse an agent might use to bypass the skill's rules |
+| **Skill type** | Classification of skills: discipline-enforcing, technique, pattern, reference |
+| **Verb-first gerund naming** | Skills named after the ACTION not the THING (e.g. ag-skillwriter not ag-skill-creation) |
+
+## Context Requirements
+
+- Access to `.opencode/skills/<name>/` directory structure for creating skill packages
+- Existing skill files to study for naming and formatting conventions
+- Real observed agent failures or test outputs to ground pressure scenarios
+- Understanding of agent behavior patterns and common rationalizations
+- This skill produces the candidate skill package; ag-shipper handles final landing
+
+## Workflow
 
 ### RED — Write Pressure Scenarios
 
@@ -54,7 +76,27 @@ Close loopholes before shipping:
 3. **Spirit vs letter** — if an agent could follow every rule literally yet violate the intent, add clarifying rules
 4. **Re-run** all pressure scenarios; repeat until bulletproof
 
-## Skill Types
+## Tool Requirements
+
+- **read** — to study existing skills and pressure scenarios
+- **write** — to create new skill files and pressure scenarios
+- **edit** — to modify existing skills during GREEN and REFACTOR phases
+- **bash** — to run verification commands against pressure scenarios
+- **glob** — to locate skill files and test directories
+- **grep** — to search for patterns in existing skills
+
+## Output
+
+```
+.opencode/skills/<skill-name>/
+├── SKILL.md
+└── tests/
+    └── pressure-scenarios.md
+```
+
+## Quality Criteria
+
+### Skill Types
 
 | Type | Flexibility | Example | Format |
 |------|------------|---------|--------|
@@ -63,27 +105,7 @@ Close loopholes before shipping:
 | **Pattern** | Open — apply principles, not procedures | ag-architect | Heuristics, questions |
 | **Reference** | Passive — look up as needed | skill registry | Tables, checklists |
 
-## CSO (Claude Search Optimization)
-
-- The `description` field MUST say "Use when..." NOT "What it does"
-- Agents discover skills by matching descriptions against current task
-- A description that summarises workflow causes the agent to skip reading the full skill
-- Good: "Use when you need to investigate a failing test in a CI pipeline"
-- Bad: "Investigates failing tests by reading logs, reproducing locally, and bisecting"
-
-## Token Efficiency
-
-- Frequently-loaded skills: target <200 words
-- All others: target <500 words
-- Every word must justify its existence. Cut filler. No greeting, no preamble.
-
-## Active Naming
-
-- Verb-first gerunds: ag-skillwriter (not ag-skill-creation)
-- Names describe the ACTION, not the THING
-- Existing examples: ag-clarifier, ag-explorer, ag-shipper
-
-## Bulletproofing Techniques
+### Bulletproofing Techniques
 
 1. **Close every loophole explicitly**: "Applies to X AND Y" not "Applies to X"
 2. **Address spirit vs letter**: "Violating the spirit of these rules is violating the rules"
@@ -91,7 +113,7 @@ Close loopholes before shipping:
 4. **Red flags**: watch for "should", "probably", "I'll check later"
 5. **Even 1% rule**: If a pressure scenario has even 1% chance of recurring, address it
 
-## Anti-Pattern Table
+### Anti-Pattern Table
 
 | Rationalization | Counter |
 |-----------------|---------|
@@ -102,15 +124,29 @@ Close loopholes before shipping:
 | "I tested this in my head" | Head tests pass every time. Run actual commands. |
 | "The old scenarios still pass, I don't need to re-run" | Run them again. Fresh verification or it didn't happen. |
 
-## Wiring
+### CSO (Claude Search Optimization)
 
-When this skill produces a new skill, the output directory must be:
+- The `description` field MUST say "Use when..." NOT "What it does"
+- Agents discover skills by matching descriptions against current task
+- A description that summarises workflow causes the agent to skip reading the full skill
+- Good: "Use when you need to investigate a failing test in a CI pipeline"
+- Bad: "Investigates failing tests by reading logs, reproducing locally, and bisecting"
 
-```
-.opencode/skills/<skill-name>/
-├── SKILL.md
-└── tests/
-    └── pressure-scenarios.md
-```
+### Token Efficiency
 
-Ag-shipper handles the final landing. This skill produces the candidate.
+- Frequently-loaded skills: target <200 words
+- All others: target <500 words
+- Every word must justify its existence. Cut filler. No greeting, no preamble.
+
+### Active Naming
+
+- Verb-first gerunds: ag-skillwriter (not ag-skill-creation)
+- Names describe the ACTION, not the THING
+- Existing examples: ag-clarifier, ag-explorer, ag-shipper
+
+## When NOT to Use
+
+- **No observable failure pattern**: If you cannot produce at least 3 real-world scenarios where an agent behaves wrongly without the skill, do not write it.
+- **Pure informational content**: If the material is reference-only with no behavioral guardrails, consider a reference document instead of a skill.
+- **Already covered**: If an existing skill already addresses the failure mode, extend it rather than creating a new one.
+- **Final landing**: This skill produces the candidate only; ag-shipper handles the final shipping — do not use this skill for the deployment step.

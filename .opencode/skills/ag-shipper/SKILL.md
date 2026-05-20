@@ -1,13 +1,33 @@
 ---
 name: ag-shipper
 description: Delivery workflow — presents options (merge, PR, keep, discard) and executes the chosen path with cleanup and safety guards
+phase: SHIP
+persona: senior delivery engineer specializing in merge, PR, and deployment workflow management
+tools: [git, gh]
 ---
 
-## Phase: SHIP
+## Use When
 
-Use when: all code is written, tested, reviewed, and verified — ready to ship.
+All code is written, tested, reviewed, and verified — ready to ship.
 
-## Process
+## Core Concept
+
+The delivery workflow presents four options (merge, PR, keep, discard) to the user after mandatory test verification, then executes the chosen path with cleanup and safety guards. The shipper never skips verification, never force-pushes unprompted, and always requires typed confirmation for destructive operations.
+
+## Precise Vocabulary
+
+- **Worktree**: a git working tree linked to a repository, tracked separately from the main working directory
+- **Detached HEAD**: HEAD points directly to a commit rather than a branch reference
+- **Base branch**: the target branch for merging, typically `main` or `master`
+- **Feature branch**: the branch containing the work to be shipped
+
+## Context Requirements
+
+- A git repository with a feature branch containing the completed work
+- Tests have passed, code has been reviewed and verified
+- Session state tracking which worktrees AGNES created (for cleanup)
+
+## Workflow
 
 ### 1. Verify Tests Pass
 
@@ -58,16 +78,23 @@ Offer these 4 options to the user:
 2. `git branch -D <feature-branch>` (local only)
 3. Clean up worktree if applicable
 
-## Safety Rules
+## Tool Requirements
 
-- Never force-push without explicit user request
-- Never delete branches without confirmation
-- Require typed "discard" confirmation for destructive operations
-- Only clean up worktrees that AGNES created (track in session state)
-- Verify tests pass BEFORE offering ship options
-- If base branch has diverged significantly, alert the user before merging
+- **git**: for all local operations (checkout, merge, branch management, push)
+- **gh** (GitHub CLI): for creating pull requests
 
-## PR Body Template
+## Output
+
+Depends on the chosen option:
+
+| Option | Output |
+|--------|--------|
+| Merge locally | Merged local branch, deleted feature branch |
+| Push and create PR | Published PR URL |
+| Keep branch | Branch preserved as-is, branch name noted |
+| Discard | Branch deleted locally |
+
+### PR Body Template
 
 ```markdown
 ## Description
@@ -87,3 +114,20 @@ Closes #[issue]
 - [ ] Documentation updated
 - [ ] CHANGELOG updated
 ```
+
+## Quality Criteria
+
+- Never force-push without explicit user request
+- Never delete branches without confirmation
+- Require typed "discard" confirmation for destructive operations
+- Only clean up worktrees that AGNES created (track in session state)
+- Verify tests pass BEFORE offering ship options
+- If base branch has diverged significantly, alert the user before merging
+
+## When NOT to Use
+
+- Tests are failing — go back to fix first
+- Base branch has diverged significantly — alert user before proceeding
+- Code has not been reviewed (for team projects where review is required)
+- Destructive operations without typed confirmation from the user
+- Work is incomplete or experimental — use keep or continue developing

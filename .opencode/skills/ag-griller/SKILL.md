@@ -1,15 +1,48 @@
 ---
 name: ag-griller
 description: Adversarial systematic debugging — AGNES-led 6-phase discipline with feedback loop, hypothesis testing, tagged instrumentation, and regression cleanup
+phase: "DEBUG (adversarial)"
+persona: "expert debugger specializing in adversarial root-cause analysis and systematic fault isolation"
+tools: [bash, read, grep, write, edit, task, question]
 ---
 
-## Phase: DEBUG (adversarial)
+## Use When
 
-Use when: ag-debugger has narrowed but not resolved, complex multi-file bugs with no clear hypothesis, recurring issues that were "fixed" before.
+ag-debugger has narrowed but not resolved, complex multi-file bugs with no clear hypothesis, recurring issues that were "fixed" before.
+
+## Core Concept
 
 **Tone:** AGNES-led. You take full control of the debugging cycle. You're relentless but methodical.
 
-## 6-Phase Debugging Discipline
+Debugging is an adversarial process. The griller owns the full cycle — building a fast feedback loop, generating ranked falsifiable hypotheses, instrumenting precisely one variable at a time, then fixing with a regression test that proves the root cause. The 6-phase discipline is the backbone. The 3-fail rule is the safety valve: if three hypotheses are wrong, the architecture is wrong, not the code.
+
+**Backward Tracing Pattern:**
+
+- Start at the symptom (error message, crash, wrong output)
+- Trace data flow BACKWARD through each layer boundary
+- At each boundary, add diagnostic instrumentation
+- Ask: "What input to THIS layer would produce this output?"
+- Repeat until reaching the root cause layer
+
+## Precise Vocabulary
+
+- **Feedback loop:** A fast, deterministic pass/fail signal that reproduces the bug in one command and produces a clear pass/fail result
+- **HITL (Human-In-The-Loop):** A bash script pattern that guides a human through manual repro steps and captures structured KEY=VALUE output for agent parsing, used when full automation is impossible
+- **Falsifiable hypothesis:** A ranked prediction of root cause with a specific "if true, then X" consequence and an exact test to prove or disprove it
+- **Instrumentation:** Tagged debug logs using the pattern `[DEBUG-<random4>]` for easy identification and cleanup during the cleanup phase
+- **Regression test:** A test that fails before the fix (proves it tests the right thing), passes after the fix (proves the fix works), and runs in <100ms
+- **3-Fail Rule:** After three proven-wrong hypotheses, stop — the architecture is wrong, not the code — document and recommend redesign
+- **Seam:** An architecture boundary where a test can meaningfully isolate a layer; the presence or absence of correct seams determines whether a regression test can be written
+- **Non-deterministic bug:** A bug that doesn't reproduce reliably; the goal shifts from clean repro to achieving >60% repro rate through looping, parallelization, stress, or delay injection
+
+## Context Requirements
+
+- A bug report or symptom description (error message, crash, wrong output, performance regression)
+- ag-debugger has been applied and has narrowed the scope but not resolved the root cause
+- Access to the codebase, test infrastructure, and reproduction environment
+- For HITL scenarios: a collaborating human who can follow scripted interaction steps
+
+## Workflow
 
 ### Phase 1: Build Feedback Loop
 
@@ -115,7 +148,7 @@ Remove all instrumentation:
 - Confirm the regression test passes
 - Document root cause in `docs/agnes/learnings/`
 
-## 3-Fail Rule
+### 3-Fail Rule
 
 After 3 hypotheses are proven wrong:
 - Stop. The architecture is wrong, not the code.
@@ -124,7 +157,43 @@ After 3 hypotheses are proven wrong:
 - Recommend a redesign or deeper investigation
 - Save to `docs/agnes/learnings/` as an architectural learning
 
-## Rationalization Table
+### Performance Regression Specific
+
+- Measure FIRST, fix second. Never optimize without baseline.
+- Use profiling tools before guessing bottlenecks.
+- Compare before/after with statistical significance.
+- One change at a time between measurements.
+
+## Tool Requirements
+
+- **bash** — Running feedback loops, scripts, git bisect, CLI commands, test runners
+- **read** — Reading source code, logs, error messages, configuration files
+- **grep** — Searching codebase for relevant code, finding `[DEBUG-*]` tags during cleanup
+- **write** — Creating test files, HITL scripts, harnesses, documentation
+- **edit** — Applying fixes, adding/removing instrumentation
+- **task** — Delegating sub-work (spawning subagents for parallel investigation)
+- **question** — Presenting hypotheses to the user for veto, gathering HITL input
+
+## Output
+
+- **Root cause** identified and documented
+- **Regression test** that fails before fix and passes after (runs in <100ms)
+- **Fixed code** with all instrumentation removed
+- **Clean codebase** — all `[DEBUG-*]` tags, temporary files, and harnesses removed
+- **Architecture finding** (if 3-fail rule triggered) saved to `docs/agnes/learnings/`
+- **Learnings document** in `docs/agnes/learnings/` describing root cause and fix
+
+## Quality Criteria
+
+- [ ] Feedback loop exists and is fast (<5s)
+- [ ] Bug reproduces reliably
+- [ ] Root cause identified and documented
+- [ ] Regression test written (red before fix, green after)
+- [ ] All `[DEBUG-*]` instrumentation removed
+- [ ] Original repro no longer reproduces
+- [ ] Architecture findings documented (if 3-fail rule triggered)
+
+**Rationalization Table:**
 
 | Excuse | Counter |
 |--------|---------|
@@ -136,27 +205,9 @@ After 3 hypotheses are proven wrong:
 | "This is a simple fix" | Famous last words. Debug first. |
 | "I don't need to reproduce it" | You ALWAYS need to reproduce it. |
 
-## Backward Tracing Pattern
+## When NOT to Use
 
-- Start at the symptom (error message, crash, wrong output)
-- Trace data flow BACKWARD through each layer boundary
-- At each boundary, add diagnostic instrumentation
-- Ask: "What input to THIS layer would produce this output?"
-- Repeat until reaching the root cause layer
-
-## Performance Regression Specific
-
-- Measure FIRST, fix second. Never optimize without baseline.
-- Use profiling tools before guessing bottlenecks.
-- Compare before/after with statistical significance.
-- One change at a time between measurements.
-
-## Verification Checklist
-
-- [ ] Feedback loop exists and is fast (<5s)
-- [ ] Bug reproduces reliably
-- [ ] Root cause identified and documented
-- [ ] Regression test written (red before fix, green after)
-- [ ] All `[DEBUG-*]` instrumentation removed
-- [ ] Original repro no longer reproduces
-- [ ] Architecture findings documented (if 3-fail rule triggered)
+- For simple, obvious bugs that ag-debugger can resolve — griller is overkill for single-file, single-cause issues with clear symptom-to-source mappings
+- When the bug cannot be reproduced at least 60% of the time after exhausting non-deterministic techniques — move on rather than spinning
+- When the necessary architecture understanding or reproduction environment is unavailable (use ag-explorer or setup tooling first)
+- When the user expects a quick fix without systematic investigation — the griller is methodical by design

@@ -2,6 +2,8 @@
 name: ag-prototype
 description: Build throwaway code to answer exactly one question — two branches: logic (terminal TUI) or UI (variant-switching route)
 phase: DESIGN / BUILD
+persona: senior prototyping specialist specializing in throwaway code to answer exactly one design question
+tools: [Bash, Question]
 ---
 
 ## Use When
@@ -12,7 +14,7 @@ Need to explore a design before committing, sanity-check a data model, mock up U
 
 Build throwaway code that answers **exactly one question**. No persistence. No tests. No polish. Capture the answer, then delete or fold into real code.
 
-## Branches
+Two branches exist depending on the nature of the question:
 
 ### LOGIC branch — "Does this logic / state model feel right?"
 
@@ -33,13 +35,22 @@ Build throwaway code that answers **exactly one question**. No persistence. No t
 - Shareable via URL (variant in query string)
 - Hidden in production builds (`NODE_ENV !== 'production'`)
 
-## Anti-patterns (Enforced)
+## Precise Vocabulary
 
-- No tests (you're exploring, not verifying)
-- No real database or persistence
-- No generalisation (solve exactly ONE question)
-- Do NOT share too much code between UI variants (they should be structurally different)
-- Do NOT promote prototype code directly to production (rewrite with proper architecture)
+| Term | Meaning |
+|------|---------|
+| LOGIC branch | Terminal TUI prototype exploring a state model or business logic |
+| UI branch | Visual prototype exploring structural UI layout variations |
+| LIFTED | Logic module extracted from prototype into production code without the TUI shell |
+| Variant | One of 3–5 structurally different UI implementations in a UI prototype |
+| Throwaway code | Code written to answer exactly one question, then discarded |
+
+## Context Requirements
+
+- The exact question the prototype must answer
+- Whether the question is about logic/state models (LOGIC branch) or UI/layout (UI branch)
+- For LOGIC branch: the domain language and data model to use
+- For UI branch: the existing route or page that will host the variants
 
 ## Workflow
 
@@ -49,3 +60,26 @@ Build throwaway code that answers **exactly one question**. No persistence. No t
 4. Explore until the question is answered
 5. Capture the answer
 6. Delete prototype OR manually fold logic module into production
+
+## Tool Requirements
+
+- **Bash**: Run the prototype (terminal TUI for LOGIC branch, dev server for UI branch)
+- **Question**: Clarify and state the exact question being explored
+
+## Output
+
+Throwaway code answering exactly one question. LOGIC branch produces a cleanly separated state module ready for LIFTING into production. UI branch produces 3–5 structurally different UI variants gated behind a `?variant=` query parameter, hidden in production builds.
+
+## Quality Criteria
+
+- The question is answered with confidence (yes / no / direction chosen)
+- Exactly one question was explored — no scope creep
+- LOGIC branch: state module is independently portable and testable
+- UI branch: variants are structurally different, not just cosmetic
+
+## When NOT to Use
+
+- When tests are needed (prototypes explore, they don't verify)
+- When real persistence or a database is required
+- When generalisation is the goal (solve exactly ONE question, not all of them)
+- When prototype code should be promoted directly to production — rewrite with proper architecture first

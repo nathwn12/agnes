@@ -1,13 +1,38 @@
 ---
 name: ag-builder
 description: Disciplined plan execution — creates isolated worktrees, dispatches subagents per task, and runs the verify-review-commit cycle
+phase: build
+persona: senior build engineer specializing in disciplined plan execution and parallel workflow orchestration
+tools: [read, grep, task, bash, write, edit]
 ---
 
-## Phase: BUILD
+## Use When
 
-Use when: a plan has been reviewed and approved by ag-plan-reviewer, implementation is ready to start.
+A plan has been reviewed and approved by ag-plan-reviewer, implementation is ready to start.
 
-## Setup
+## Core Concept
+
+Disciplined plan execution that creates isolated worktrees, dispatches subagents per task, and runs the verify-review-commit cycle. Each task follows a Build → Test → Verify → Review → Commit pipeline with strict status reporting and parallel dispatch where dependencies allow.
+
+## Precise Vocabulary
+
+- **Worktree**: Isolated git working tree created via `git worktree add` to keep implementation separate from the base branch
+- **Subagent dispatch**: Delegating a task to a separate agent with structured context (task description, file paths, skill instructions, acceptance criteria, expected output format)
+- **DONE / DONE_WITH_CONCERNS / NEEDS_CONTEXT / BLOCKED**: The four implementer statuses returned after task dispatch
+- **Stage 1 (Spec Compliance)**: Checks implementation matches the plan/spec exactly
+- **Stage 2 (Code Quality)**: Checks tests, types, naming, patterns, security, performance
+- **Conventional commit**: Commit format `<type>(<scope>): <description>` with types feat, fix, refactor, test, docs, chore, style
+
+## Context Requirements
+
+- A reviewed and approved implementation plan must exist
+- Plan tasks must be scoped to individual, independently dispatchable units
+- Clean baseline with passing tests before any changes begin
+- Dependencies installed (bun install or equivalent)
+
+## Workflow
+
+### Setup
 
 1. **Detect or create isolated worktree**:
    - Check if currently in a worktree via `git rev-parse --git-common-dir`
@@ -16,11 +41,11 @@ Use when: a plan has been reviewed and approved by ag-plan-reviewer, implementat
 2. **Install dependencies**: `bun install` or equivalent
 3. **Verify clean baseline**: Tests pass before any changes
 
-## Execution Loop (per task in plan)
+### Execution Loop (per task in plan)
 
 For each task in the implementation plan:
 
-### 1. Build
+#### 1. Build
 
 Write code for the task. Follow the spec exactly. Include complete code — no placeholders.
 
@@ -37,14 +62,14 @@ On DONE_WITH_CONCERNS: review flagged concerns with the user before continuing. 
 On NEEDS_CONTEXT: identify the exact gap, fill it, re-dispatch the same task.
 On BLOCKED: write handoff.md with Progress, Evidence, and Next sections. Then stop.
 
-### 2. Test
+#### 2. Test
 
 Write and run tests for the change:
 - Unit tests for new functions/components
 - Integration tests for cross-module changes
 - Verify existing tests still pass
 
-### 3. Verify
+#### 3. Verify
 
 Dispatch ag-verifier gate:
 - Type check: `tsc --noEmit`
@@ -53,7 +78,7 @@ Dispatch ag-verifier gate:
 - Build: `bun run build` or equivalent
 - Capture actual output as evidence
 
-### 4. Review (Two-Stage)
+#### 4. Review (Two-Stage)
 
 Dispatch two separate review subagents. Never combine into one.
 
@@ -68,7 +93,7 @@ Dispatch two separate review subagents. Never combine into one.
 - Checks: tests exist and pass, types are correct, naming is consistent, patterns match codebase, no security issues, no performance regressions
 - Fix any Critical or Important issues
 
-### 5. Commit
+#### 5. Commit
 
 Conventional commit message format:
 ```
@@ -79,9 +104,9 @@ Conventional commit message format:
 
 Types: feat, fix, refactor, test, docs, chore, style
 
-## Subagent Dispatch
+### Subagent Dispatch
 
-### Prompt Structure
+#### Prompt Structure
 
 Every subagent dispatch must include exactly these five fields:
 
@@ -93,7 +118,7 @@ Every subagent dispatch must include exactly these five fields:
 | Acceptance criteria | How to verify the task is done |
 | Expected output format | What to return (diff, summary, status, concerns) |
 
-### Model Selection
+#### Model Selection
 
 Choose the model based on work complexity:
 
@@ -105,7 +130,7 @@ Choose the model based on work complexity:
 
 Document which model was used per task in plan.md.
 
-### Four Implementer Statuses
+#### Four Implementer Statuses
 
 After each task dispatch, the implementer returns one of:
 
@@ -114,7 +139,7 @@ After each task dispatch, the implementer returns one of:
 - **NEEDS_CONTEXT** — implementer couldn't proceed. Identify the exact missing context, provide it, re-dispatch.
 - **BLOCKED** — external blocker. Write handoff.md (Progress / Evidence / Next). Stop.
 
-### Parallel Task Dispatch
+#### Parallel Task Dispatch
 
 When tasks are independent (no shared state, no ordering requirement), dispatch multiple implementers simultaneously:
 
@@ -123,7 +148,7 @@ When tasks are independent (no shared state, no ordering requirement), dispatch 
 3. **Dependent tasks** → order by dependency chain
 4. **While waiting** for dependent results, prepare context (files, specs, acceptance criteria) for the next wave
 
-### When NOT to Parallelize
+#### When NOT to Parallelize
 
 Do NOT parallelize when:
 
@@ -136,7 +161,7 @@ Do NOT parallelize when:
 
 When in doubt, run sequentially.
 
-### Anti-Patterns
+#### Anti-Patterns
 
 | Anti-Pattern | Symptom | Fix |
 |--------------|---------|-----|
@@ -145,15 +170,52 @@ When in doubt, run sequentially.
 | No constraints | Subagent doesn't know what NOT to do | State boundaries: "don't touch X", "stay in Y module" |
 | Vague output | Subagent doesn't know what to return | Always specify expected output format in prompt |
 
-### Pipeline
+#### Pipeline
 
 - Fresh subagent per task (isolated context, no carryover state)
 - Implementer → verifier → reviewer pipeline per task
 - Pass: task description, relevant file paths, skill instructions, acceptance criteria
 
-## Worktree Management
+### Worktree Management
 
 - Create worktree at start, track the path
 - Clean up worktrees when done (after merge or discard)
 - Never run git commands that affect other branches without explicit intent
 - If a worktree already exists, reuse it rather than creating a new one
+
+## Tool Requirements
+
+- **bash**: Running git commands (worktree, commit), dependency installation, test/lint/build execution
+- **read/write/edit**: File manipulation for implementation and documentation
+- **grep**: Codebase search and pattern discovery
+- **task**: Subagent dispatch with structured prompts
+- **git** (via bash): Worktree management, branching, committing
+- **bun** (via bash): Dependency installation, test runner, linter, bundler
+
+## Output
+
+Completed tasks verified through the gate pipeline, with:
+- Tests passing
+- Type checks passing
+- Lint passing
+- Build succeeding
+- Spec compliance confirmed
+- Code quality confirmed
+- Conventional commits on an isolated feature branch
+
+## Quality Criteria
+
+- Every task passes ag-verifier gate before review
+- Stage 1 (Spec Compliance) must pass before Stage 2 (Code Quality)
+- No Critical or Important issues remain after review
+- Complete code with no placeholders
+- All acceptance criteria met
+- No scope drift from the approved plan
+
+## When NOT to Use
+
+- No approved implementation plan exists (use ag-planner first)
+- Tasks share mutable state that would cause concurrent write conflicts
+- One task produces artifacts another depends on (sequential required)
+- First task's findings inform the second task's direction (exploratory)
+- Combined context is needed across tasks for coherence (e.g., cross-cutting refactors)

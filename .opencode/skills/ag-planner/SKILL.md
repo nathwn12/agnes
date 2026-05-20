@@ -1,13 +1,36 @@
 ---
 name: ag-planner
 description: Writing specs and implementation plans — takes clarified requirements and produces structured design documents with bite-sized tasks
+phase: plan
+persona: senior technical planner specializing in specification writing and implementation design
+tools: [read, write, task, skill]
 ---
 
-## Phase: PLAN
+## Use When
 
-Use when: requirements are clear, before any implementation begins, needs architecture decisions documented.
+Requirements are clear, before any implementation begins, needs architecture decisions documented.
 
-## Process
+## Core Concept
+
+The ag-planner skill transforms clarified requirements into structured design documents and actionable implementation plans. It enforces a disciplined workflow: explore context, propose approaches with trade-offs, design incrementally with user approval per section, produce a formal spec and plan, self-review for quality, and gate on user approval before any implementation begins.
+
+## Precise Vocabulary
+
+- **Spec** — A structured design document in `docs/agnes/specs/` covering architecture, data model, component tree, data flow, API surface, error handling, and testing strategy.
+- **Implementation Plan** — An ordered task list in `docs/agnes/plans/` where each task is a single action (2-5 minutes) with exact code and file paths.
+- **ADR** — Architecture Decision Record; past decisions that constrain current design choices.
+- **Vertical Slice** — An independently completable issue that adds user-visible value.
+- **Task Granularity** — Each task is one action taking 2-5 minutes, with complete code and exact file paths.
+
+## Context Requirements
+
+Requires codebase context before planning:
+- Insufficient context triggers a call to ag-explorer first
+- Existing specs in `docs/agnes/specs/` must be read
+- ADRs must be checked for past architecture decisions
+- File layout and conventions must be understood
+
+## Workflow
 
 ### 1. Explore Project Context
 
@@ -98,3 +121,32 @@ If using an issue tracker, decompose into vertical-slice issues:
 - Each issue is independently completable
 - Each issue adds user-visible value
 - Order by dependency: foundational first
+
+## Tool Requirements
+
+- **read** — Explore existing specs, ADRs, codebase files, and conventions
+- **write** — Create spec and plan documents
+- **task** — Delegate context-gathering to subagents when insufficient
+- **skill** — Invoke ag-explorer when deeper codebase research is needed
+
+## Output
+
+Two document types written to the project:
+
+1. **Design Spec** at `docs/agnes/specs/YYYY-MM-DD-<topic>-design.md` — covers overview, architecture, data model, implementation modules, testing strategy, and open questions.
+
+2. **Implementation Plan** at `docs/agnes/plans/YYYY-MM-DD-<feature>.md` — ordered list of granular tasks (2-5 minutes each) with exact code and file paths, and a placeholder/polish pass at the end.
+
+## Quality Criteria
+
+- **Placeholder scan**: No "TODO", "FIXME", or incomplete sections remain
+- **Consistency**: All referenced files and functions exist or are explicitly marked for creation
+- **Scope**: Every task belongs to the feature; no scope creep
+- **Ambiguity**: All decisions are explicit; nothing deferred to "figure out later"
+
+## When NOT to Use
+
+- When requirements are unclear or still being explored (use ag-clarifier first)
+- When no implementation will follow the planning phase
+- When architecture decisions do not need formal documentation
+- When the task is purely exploratory with no design decisions to make

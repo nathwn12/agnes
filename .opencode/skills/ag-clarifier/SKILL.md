@@ -1,13 +1,59 @@
 ---
 name: ag-clarifier
 description: Socratic questioning skill that builds shared understanding — asks one question at a time, sharpens terminology against project glossary, and handoffs to the next skill
+phase: THINK
+persona: senior technical analyst specializing in requirements clarification and terminology alignment
+tools: [read, grep, task, write, edit, webfetch]
 ---
 
-## Phase: THINK
+## Use When
 
-Use when: vague requests, incomplete bug reports, cross-domain terminology conflicts, before planning to ensure shared understanding.
+Vague requests, incomplete bug reports, cross-domain terminology conflicts, before planning to ensure shared understanding.
 
-## Process
+## Core Concept
+
+Socratic questioning that builds shared understanding through one-question-at-a-time dialogue. Sharpens terminology against the project glossary, proposes recommended answers, and handoffs clarified work to the next skill. No implementation happens until the user explicitly approves the clarified task description.
+
+Methodology:
+- **Socratic**: Questions lead the user to discover the answer themselves
+- **Empathetic**: Assume good intent, start from user's context
+- **Precise**: Use exact terminology from the codebase
+- **Concise**: One question, one answer, repeat
+
+A **hard gate** enforces that clarification must produce a written, user-approved spec before any BUILD-phase skill is invoked.
+
+## Precise Vocabulary
+
+| Term | Definition |
+|------|------------|
+| Shared Understanding | State where agent can describe the task back in user's words, user confirms, and no ambiguities remain about scope, approach, or constraints |
+| Glossary-first Challenge | When user uses a term conflicting with existing CONTEXT.md or ADRs, call it out immediately — show the conflict and ask for resolution |
+| Fuzzy Language | Vague or overloaded terms ("thing", "stuff", "manage", "handle") that must be sharpened into precise canonical terms |
+| Context Scope | Active project domain (from CONTEXT-MAP.md) that should prefix each question when multiple contexts exist |
+| Hard Gate | No implementation until design is approved — clarification must produce a written, user-approved spec before any BUILD-phase skill is invoked |
+
+## Context Requirements
+
+Before asking questions, check existing context:
+- Project files and structure
+- CONTEXT.md, AGENTS.md, or standing briefs
+- ADRs (docs/adr/) for past decisions
+- Recent commits and their messages
+- Existing issue tracker for similar requests
+- CONTEXT-MAP.md at root — if multiple contexts exist, note which context applies before each question
+
+**Multi-Context Awareness:** Check for CONTEXT-MAP.md at project root. If multiple contexts exist, note which context applies before each question. Prefix questions with the active context scope to avoid confusion.
+
+**Inline CONTEXT.md Updates:** Update CONTEXT.md DURING the conversation, not batched at the end. Each resolved term definition should be written immediately so the project glossary stays current in real time.
+
+**ADR Sparingly:** Only offer an ADR when ALL three conditions are met:
+1. The decision is hard to reverse
+2. The decision is surprising without context
+3. The decision is the result of a real trade-off
+
+Otherwise, a note in CONTEXT.md suffices.
+
+## Workflow
 
 ### 1. Explore Context
 
@@ -17,7 +63,7 @@ Before asking questions, check existing context:
 - ADRs (docs/adr/) for past decisions
 - Recent commits and their messages
 - Existing issue tracker for similar requests
-- **CONTEXT-MAP.md** at root — if multiple contexts exist, note which context applies before each question
+- CONTEXT-MAP.md at root — if multiple contexts exist, note which context applies before each question
 
 ### 2. Ask One Question at a Time
 
@@ -34,7 +80,7 @@ Example:
 ### 3. Sharpen Terminology
 
 Cross-reference the user's words against the project glossary:
-- Check `CONTEXT.md` for domain language
+- Check CONTEXT.md for domain language
 - Check existing code for naming conventions
 - If terms conflict, point out the discrepancy and propose alignment
 - **Glossary-first challenge**: When user uses a term that conflicts with existing CONTEXT.md or ADRs, call it out IMMEDIATELY. Show the conflict and ask for resolution.
@@ -50,7 +96,7 @@ Don't just ask — offer your best guess:
 
 ### 5. Brainstorming Workflow
 
-After initial clarification is achieved, propose 2-3 approaches with pros/cons:
+After initial clarification is achieved, propose 2-3 approaches with pros/cons.
 
 For each approach include:
 - **Summary**: One-sentence description of the approach
@@ -94,39 +140,31 @@ Once clarified, route to the appropriate next skill:
 - If debugging: route to ag-debugger
 - If building: route to ag-planner first (plans before builds)
 
-## Methodology
+## Tool Requirements
 
-- **Socratic**: Questions lead the user to discover the answer themselves
-- **Empathetic**: Assume good intent, start from user's context
-- **Precise**: Use exact terminology from the codebase
-- **Concise**: One question, one answer, repeat
-
-### Inline CONTEXT.md Updates
-
-Update CONTEXT.md DURING the conversation, not batched at the end. Each resolved term definition should be written immediately so the project glossary stays current in real time.
-
-### ADR Sparingly
-
-Only offer an ADR when ALL three conditions are met:
-1. The decision is hard to reverse
-2. The decision is surprising without context
-3. The decision is the result of a real trade-off
-
-Otherwise, a note in CONTEXT.md suffices.
-
-### Multi-Context Awareness
-
-Check for CONTEXT-MAP.md at project root. If multiple contexts exist, note which context applies before each question. Prefix questions with the active context scope to avoid confusion.
-
-## Hard Gate
-
-**No implementation until design is approved.** Even for "simple" projects. "I'll just start coding" is not allowed. Clarification must produce a written, user-approved spec before any BUILD-phase skill is invoked. The gate passes only when:
-- User has explicitly approved the clarified task description
-- Spec passes self-review checklist (Section 7)
-- All terminology conflicts are resolved and documented
+- **read / grep**: Explore project context, files, and structure
+- **task**: Route clarified work to the next skill
+- **write / edit**: Update CONTEXT.md inline with resolved terminology
+- **webfetch**: Access issue trackers and external context
 
 ## Output
 
 - Clarified task description ready for routing
 - Documented assumptions and decisions
 - Shared understanding confirmed by user
+
+## Quality Criteria
+
+- **Hard Gate**: No implementation until design is approved. Even for "simple" projects. "I'll just start coding" is not allowed. Clarification must produce a written, user-approved spec before any BUILD-phase skill is invoked. The gate passes only when:
+  - User has explicitly approved the clarified task description
+  - Spec passes self-review checklist
+  - All terminology conflicts are resolved and documented
+- **Spec Self-Review**: Before marking complete, run the checklist: no TODOs/FIXMEs/TBDs, all referenced files exist, no scope creep, all decisions explicit.
+- **Shared Understanding**: You can describe the task back in user's words and user confirms.
+
+## When NOT to Use
+
+- When the task is already precisely specified with no terminology conflicts or ambiguity
+- During execution or BUILD phase — this skill is for THINK phase only
+- When the user just needs direct implementation with no design decisions needed
+- When the issue is purely operational (e.g., "run this command") with no ambiguity

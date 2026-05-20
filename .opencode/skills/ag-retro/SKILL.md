@@ -1,13 +1,36 @@
 ---
 name: ag-retro
 description: Engineering retrospective and learnings management — analyzes work patterns, captures wins and improvements, manages cross-session memory
+phase: reflect
+persona: senior engineering retrospectives specialist specializing in work pattern analysis and cross-session learning management
+tools: [git, grep, bash]
 ---
+## Use When
 
-## Phase: REFLECT — RETRO
+Run when:
+- It's the end of the week or sprint
+- A significant feature shipped
+- AGNES notices a pattern: "This is the third time we've had this issue"
+- The user explicitly requests it
 
-Use when: weekly (end of sprint/week), after shipping a significant feature, when AGNES notices a pattern repeating.
+## Core Concept
 
-## Retro Process
+Systematic reflection on engineering work to capture learnings, identify improvements, and build cross-session memory. Transforms implicit experience into explicit knowledge that persists across AGNES sessions.
+
+## Precise Vocabulary
+
+- **Retrospective**: Structured reflection session analyzing completed work for patterns and improvements
+- **Learning**: Captured insight from past work, stored for future reference
+- **Velocity**: Rate of task or commit completion over a time period
+- **Cross-session memory**: Persistent knowledge that survives across AGNES sessions, housed in `docs/agnes/learnings/`
+
+## Context Requirements
+
+- Git repository with recent commit history (past 7 days minimum)
+- `docs/agnes/learnings/` directory exists for saving outputs
+- `AGENTS.md` for cross-session persistence export
+
+## Workflow
 
 ### 1. Analyze Commit History
 
@@ -44,7 +67,24 @@ Domain knowledge, project-specific gotchas:
 
 ### 5. Save Learnings
 
-Output: `docs/agnes/learnings/YYYY-MM-DD-retro.md`
+Output retro document to `docs/agnes/learnings/YYYY-MM-DD-retro.md`.
+
+### 6. Manage Learnings
+
+- **Search existing learnings** before repeating a mistake: `grep -r "<topic>" docs/agnes/learnings/`
+- **Prune stale learnings**: read learnings older than 60 days; if superseded mark deprecated; if irrelevant archive or delete
+- **Export to AGENTS.md**: project-specific high-value learnings as bullet points; remove outdated before adding new
+
+## Tool Requirements
+
+| Tool | Usage |
+|------|-------|
+| git | Commit history analysis |
+| grep / bash | Searching existing learnings |
+
+## Output
+
+Retro document at `docs/agnes/learnings/YYYY-MM-DD-retro.md` in the following format:
 
 ```markdown
 # Retro: YYYY-MM-DD
@@ -59,32 +99,17 @@ Output: `docs/agnes/learnings/YYYY-MM-DD-retro.md`
 - [Item]
 ```
 
-## Learnings Management
+## Quality Criteria
 
-### Search Existing Learnings
+- All four analysis dimensions covered (velocity, patterns, bottlenecks, time)
+- At least one actionable improvement identified
+- Learnings are concrete, project-specific, and actionable (not vague observations)
+- Stale learnings pruned before new ones are added
+- Output saved to correct path before session ends
 
-Before repeating a mistake, search existing learnings:
-```bash
-grep -r "<topic>" docs/agnes/learnings/
-```
+## When NOT to Use
 
-### Prune Stale Learnings
-
-- Read learnings older than 60 days
-- If superseded, mark as deprecated
-- If no longer relevant, archive or delete
-
-### Export to AGENTS.md
-
-For cross-session persistence, export key learnings to AGENTS.md:
-- Only include project-specific, high-value learnings
-- Format as bullet points in the relevant section
-- Remove outdated learnings before adding new ones
-
-## Triggers
-
-Run retro when:
-- It's the end of the week or sprint
-- A significant feature shipped
-- AGNES notices a pattern: "This is the third time we've had this issue"
-- The user explicitly requests it
+- During active debugging or incident response (use ag-debugger or ag-griller instead)
+- Mid-task when focus is required (schedule for a natural break)
+- For trivial or single-commit work without meaningful patterns to extract
+- When the user explicitly declines a retro

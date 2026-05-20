@@ -1,23 +1,32 @@
 ---
 name: ag-prd
 description: Synthesize current conversation context into a Product Requirements Document and publish it — does NOT interview the user, uses what it already knows
+phase: plan
+persona: senior product manager specializing in synthesizing conversation context into structured product requirements documents
+tools: [read, write, webfetch, bash]
 ---
 
-## Phase: PLAN
+## Use When
 
-Use when: a feature request has been discussed enough to write requirements, before detailed implementation planning begins. Distinct from ag-planner (which writes implementation specs) — this captures the WHAT and WHY, not the HOW.
+A feature request has been discussed enough to write requirements, before detailed implementation planning begins. Distinct from ag-planner (which writes implementation specs) — this captures the WHAT and WHY, not the HOW.
 
 ## Core Concept
 
 Synthesize what you already know into a structured PRD. Do NOT interview the user for more information — work from existing context. If context is insufficient, the PRD will reflect that with open questions.
 
-## Key Rules
+## Precise Vocabulary
 
-- **Do NOT interview the user** — just synthesize what you already know
-- **Do NOT include implementation details** (file paths, code snippets) — those go in the implementation plan
-- **Exception:** prototype snippets that encode decisions precisely are OK
-- **Look for deep module opportunities** — modules that encapsulate lots of functionality behind a simple interface
-- **Publish with `ready-for-agent` label** — no additional triage needed
+- **PRD (Product Requirements Document):** A structured document capturing what needs to be built and why, distinct from implementation specs
+- **ready-for-agent label:** Issue tracker label indicating no additional triage needed
+- **deep module:** A module that encapsulates rich functionality behind a simple interface
+- **Implementation Decisions:** Architecture constraints and technology choices that constrain implementation, not implementation details like file paths or code
+- **User Stories:** Structured requirements from an actor's perspective following the pattern "As a [actor], I want [feature] so that [benefit]"
+
+## Context Requirements
+
+- Existing conversation context containing feature discussion
+- Repo architecture understanding — domain glossary, ADRs, existing patterns
+- Issue tracker access for publishing
 
 ## Workflow
 
@@ -38,7 +47,16 @@ Use the PRD template below. Output to `docs/agnes/prd/YYYY-MM-DD-<feature>-prd.m
 ### 5. Publish to Issue Tracker
 Create an issue with `ready-for-agent` label — no additional triage needed.
 
-## PRD Template
+## Tool Requirements
+
+- `read` — explore repo files, ADRs, domain glossary
+- `write` — write PRD to `docs/agnes/prd/`
+- `webfetch` — research links, competitor analysis, prior art
+- `bash` — git operations, issue tracker CLI
+
+## Output
+
+`docs/agnes/prd/YYYY-MM-DD-<feature>-prd.md` following the template below:
 
 ```markdown
 # [Feature Name] — Product Requirements Document
@@ -70,6 +88,18 @@ _(Not implementation details — the DECISIONS that constrain implementation)_
 [Anything else — research links, competitor analysis, prior art]
 ```
 
-## Output
+## Quality Criteria
 
-`docs/agnes/prd/YYYY-MM-DD-<feature>-prd.md`
+- Do NOT interview the user — synthesize only from existing context
+- Do NOT include implementation details (file paths, code snippets)
+- Exception: prototype snippets that encode decisions precisely are OK
+- Look for deep module opportunities
+- Publish with `ready-for-agent` label — no additional triage needed
+- All PRD template sections populated or explicitly marked N/A
+
+## When NOT to Use
+
+- When the feature has not been sufficiently discussed and context is too thin for a meaningful PRD
+- When the user needs to be interviewed for more information (use ag-clarifier instead)
+- When the task is implementation planning (use ag-planner instead)
+- When writing tutorials, how-to guides, or reference docs (use ag-documenter instead)
