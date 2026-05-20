@@ -13,13 +13,13 @@ Add to your `opencode.jsonc`:
 
 ```jsonc
 {
-  "plugins": [
+  "plugin": [
     "agnes@git+https://github.com/nathwn12/agnes.git"
   ]
 }
 ```
 
-Restart OpenCode. Skills auto-discover. Everything else is automatic.
+Restart OpenCode. AGNES injects its bootstrap and registers its bundled skills automatically.
 
 > **Previously installed?** Clear the cache so the new version loads:
 > ```powershell

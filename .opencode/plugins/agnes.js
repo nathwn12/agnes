@@ -46,6 +46,13 @@ var AgnesPlugin = async ({ client }) => {
     body: { service: "agnes", level: "info", message: "AGNES plugin loaded successfully" }
   });
   return {
+    config: async (config) => {
+      config.skills = config.skills || {};
+      config.skills.paths = config.skills.paths || [];
+      if (!config.skills.paths.includes(skillsDir)) {
+        config.skills.paths.push(skillsDir);
+      }
+    },
     "experimental.chat.messages.transform": async (_input, output) => {
       const bootstrap = getBootstrapContent();
       if (!bootstrap || !output.messages?.length)

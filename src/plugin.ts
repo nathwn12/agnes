@@ -54,6 +54,15 @@ export const AgnesPlugin: Plugin = async ({ client }) => {
   });
 
   return {
+    config: async (config: any) => {
+      config.skills = config.skills || {};
+      config.skills.paths = config.skills.paths || [];
+
+      if (!config.skills.paths.includes(skillsDir)) {
+        config.skills.paths.push(skillsDir);
+      }
+    },
+
     'experimental.chat.messages.transform': async (_input, output: any) => {
       const bootstrap = getBootstrapContent();
       if (!bootstrap || !output.messages?.length) return;

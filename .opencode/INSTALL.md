@@ -15,7 +15,7 @@ Add AGNES to the `plugin` array in your `opencode.json` (global or project-level
 ```
 
 Restart OpenCode. The plugin installs through OpenCode's plugin manager and
-registers all 15 fused skills.
+registers its bundled skills with OpenCode automatically.
 
 Verify by asking: "Tell me about yourself, AGNES"
 
