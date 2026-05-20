@@ -15,6 +15,14 @@ AGNES is an orchestrator plugin that routes tasks across 15 fused skills.
 
 Restart OpenCode. Skills auto-discover. Everything else is automatic.
 
+### Clear Cached Install
+
+If AGNES was previously installed, clear OpenCode's package cache so the new version loads:
+
+```powershell
+Remove-Item -Recurse -Force "$env:USERPROFILE\.cache\opencode\packages\agnes*"
+```
+
 ## Skills
 
 | Skill | Phase | Use When |
