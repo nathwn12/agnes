@@ -146,7 +146,7 @@ Remove all instrumentation:
 - Remove temporary test files and harnesses
 - Confirm the original bug no longer reproduces
 - Confirm the regression test passes
-- Document root cause in `docs/agnes/learnings/`
+- Document root cause in `docs/learnings/`
 
 ### 3-Fail Rule
 
@@ -155,7 +155,7 @@ After 3 hypotheses are proven wrong:
 - Do NOT attempt a 4th fix.
 - Document what was tried and why each failed
 - Recommend a redesign or deeper investigation
-- Save to `docs/agnes/learnings/` as an architectural learning
+- Save to `docs/learnings/` as an architectural learning
 
 ### Performance Regression Specific
 
@@ -180,8 +180,8 @@ After 3 hypotheses are proven wrong:
 - **Regression test** that fails before fix and passes after (runs in <100ms)
 - **Fixed code** with all instrumentation removed
 - **Clean codebase** — all `[DEBUG-*]` tags, temporary files, and harnesses removed
-- **Architecture finding** (if 3-fail rule triggered) saved to `docs/agnes/learnings/`
-- **Learnings document** in `docs/agnes/learnings/` describing root cause and fix
+- **Architecture finding** (if 3-fail rule triggered) saved to `docs/learnings/`
+- **Learnings document** in `docs/learnings/` describing root cause and fix
 
 ## Quality Criteria
 

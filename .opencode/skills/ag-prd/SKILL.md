@@ -42,7 +42,7 @@ Present module sketch to the user:
 - Which modules should have tests?
 
 ### 4. Write PRD
-Use the PRD template below. Output to `docs/agnes/prd/YYYY-MM-DD-<feature>-prd.md`.
+Use the PRD template below. Output to `docs/prd/YYYY-MM-DD-<feature>-prd.md`.
 
 ### 5. Publish to Issue Tracker
 Create an issue with `ready-for-agent` label — no additional triage needed.
@@ -50,13 +50,13 @@ Create an issue with `ready-for-agent` label — no additional triage needed.
 ## Tool Requirements
 
 - `read` — explore repo files, ADRs, domain glossary
-- `write` — write PRD to `docs/agnes/prd/`
+- `write` — write PRD to `docs/prd/`
 - `webfetch` — research links, competitor analysis, prior art
 - `bash` — git operations, issue tracker CLI
 
 ## Output
 
-`docs/agnes/prd/YYYY-MM-DD-<feature>-prd.md` following the template below:
+`docs/prd/YYYY-MM-DD-<feature>-prd.md` following the template below:
 
 ```markdown
 # [Feature Name] — Product Requirements Document

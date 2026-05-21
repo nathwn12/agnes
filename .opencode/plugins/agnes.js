@@ -89,12 +89,12 @@ function isBlockedPath(dir) {
   }
   return resolved.startsWith(root);
 }
-function findWorkspaceRoot() {
-  let dir = process.cwd();
+function findProjectRoot(startDir) {
+  let dir = startDir ? path2.resolve(startDir) : process.cwd();
   for (let i = 0;i < 20; i++) {
     if (isBlockedPath(dir))
       return null;
-    if (fs2.existsSync(path2.join(dir, "docs", "agnes")))
+    if (fs2.existsSync(path2.join(dir, ".cache", "agnes", "index.json")))
       return dir;
     const parent = path2.dirname(dir);
     if (parent === dir)
@@ -103,152 +103,101 @@ function findWorkspaceRoot() {
   }
   return null;
 }
-function detectStateDirectory() {
-  return findWorkspaceRoot();
-}
-function stateDir(workspaceRoot) {
-  return path2.join(workspaceRoot, "docs", "agnes");
-}
-function listStateFiles(workspaceRoot) {
-  const dir = stateDir(workspaceRoot);
-  if (!fs2.existsSync(dir))
-    return [];
-  return fs2.readdirSync(dir).filter((f) => f.endsWith(".md"));
-}
-var TEMPLATE_SIGNATURES = {
-  "goal.md": [`# Goal
-
-A goal is a`],
-  "plan.md": [`# Plan
-
-A three-status checklist`],
-  "handoff.md": [`# Handoff
-
-Saves session state`]
-};
-function getTemplateStatus(body, name) {
-  const signatures = TEMPLATE_SIGNATURES[name];
-  if (!signatures)
+function readPlanIndex(projectRoot) {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root)
     return null;
-  const normalized = body.replace(/\r\n/g, `
-`);
-  return signatures.some((sig) => normalized.startsWith(sig)) ? "template" : null;
-}
-function loadFileData(workspaceRoot, name) {
-  const filePath = path2.join(stateDir(workspaceRoot), name);
-  if (!fs2.existsSync(filePath))
+  const indexPath = path2.join(root, ".cache", "agnes", "index.json");
+  try {
+    const raw = fs2.readFileSync(indexPath, "utf8");
+    return JSON.parse(raw);
+  } catch {
     return null;
-  const content = fs2.readFileSync(filePath, "utf8");
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n?---/);
-  if (!match) {
-    const status2 = getTemplateStatus(content, name) || "active";
-    return { content, frontmatter: {}, status: status2 };
   }
-  const frontmatter = {};
-  for (const line of match[1].split(`
-`)) {
-    const sep = line.indexOf(":");
-    if (sep > 0) {
-      const key = line.slice(0, sep).trim();
-      const val = line.slice(sep + 1).trim();
-      if (key)
-        frontmatter[key] = val;
+}
+function getLatestActivePlan(projectRoot) {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root)
+    return null;
+  const index = readPlanIndex(root);
+  if (!index)
+    return null;
+  const activeStatuses = ["draft", "in_progress", "blocked"];
+  let target;
+  if (index.activePlanId) {
+    const entry = index.plans.find((p) => p.id === index.activePlanId);
+    if (entry && activeStatuses.includes(entry.status)) {
+      target = entry;
     }
   }
-  const body = content.slice(match[0].length).replace(/^\r?\n/, "");
-  const status = frontmatter.status && frontmatter.status !== "active" ? frontmatter.status : getTemplateStatus(body, name) || frontmatter.status || "active";
-  return { content, frontmatter, status };
+  if (!target) {
+    const sorted = [...index.plans].filter((p) => activeStatuses.includes(p.status)).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    target = sorted[0];
+  }
+  if (!target)
+    return null;
+  const planPath = path2.join(root, ".cache", "agnes", target.file);
+  try {
+    const content = fs2.readFileSync(planPath, "utf8");
+    return { entry: target, content };
+  } catch {
+    return null;
+  }
 }
-function getStateSnapshot(workspaceRoot) {
-  return {
-    files: listStateFiles(workspaceRoot),
-    goal: loadFileData(workspaceRoot, "goal.md"),
-    plan: loadFileData(workspaceRoot, "plan.md"),
-    handoff: loadFileData(workspaceRoot, "handoff.md")
-  };
-}
-function buildStateInjectionStrings(workspaceRoot, snapshot) {
-  const snap = snapshot ?? getStateSnapshot(workspaceRoot);
-  const { files, goal, handoff, plan } = snap;
-  const hasGoal = files.includes("goal.md") && goal?.status === "active";
-  const hasHandoff = files.includes("handoff.md") && handoff?.status === "active";
-  const hasPlan = files.includes("plan.md") && plan?.status === "active";
-  if (!hasGoal && !hasHandoff) {
-    const agnesDir = stateDir(workspaceRoot);
-    return `
-
-## State directory ready
-
-\`${agnesDir}\` is initialized. AGNES uses three files to track work across sessions:
-
-| File | Purpose |
-|------|---------|
-| \`goal.md\` | One-sentence completion condition. Write first. |
-| \`plan.md\` | Three-status checklist toward the goal. Write second. |
-| \`handoff.md\` | Session state for another agent or later continuation. Write when stopping. |
-
-See \`.opencode/skills/ag-orchestrator/SKILL.md\` \u2192 State Management for the full discipline.
-
-**Start by writing your goal to \`docs/agnes/goal.md\`.**`;
-  }
-  if (hasHandoff && handoff) {
-    const handoffBlock = `## Active handoff
-
-\`docs/agnes/handoff.md\` exists \u2014 you are receiving a handoff.
-
-1. Read the handoff content below
-2. Restore \`goal.md\` \u2014 copy the \`Goal:\` from handoff into \`docs/agnes/goal.md\`
-3. Restore \`plan.md\` \u2014 write the \`## Pending\` items into \`docs/agnes/plan.md\` as \`[ ] pending\`
-4. Delete \`docs/agnes/handoff.md\` \u2014 prevents reprocessing next session
-5. Begin work \u2014 start with \`## Next\`
-
-\`\`\`
-${handoff.content}
-\`\`\``;
-    return `
-
-` + handoffBlock;
-  }
-  if (hasGoal && goal) {
-    const goalBlock = `## Active goal
-
-\`docs/agnes/goal.md\` exists \u2014 you have an active goal. Re-read it before every delegation wave${hasPlan ? ", and check `docs/agnes/plan.md` for progress" : ""}.
-
-\`\`\`
-${goal.content}
-\`\`\``;
-    return `
-
-` + goalBlock;
-  }
-  return "";
+function buildPlanSummary(projectRoot) {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root)
+    return "No active plan. Create one before delegating work.";
+  const index = readPlanIndex(root);
+  if (!index || index.plans.length === 0)
+    return "No active plan. Create one before delegating work.";
+  const active = getLatestActivePlan(root);
+  if (!active)
+    return "No active plan. Create one before delegating work.";
+  const { entry } = active;
+  const goalMatch = active.content.match(/^Goal:\s*(.+)$/m);
+  const goal = goalMatch ? goalMatch[1] : "";
+  return `Active Plan: ${entry.id} (${entry.status}) \u2014 ${entry.completed}/${entry.total} tasks done
+Goal: ${goal}
+Latest update: ${entry.updatedAt}`;
 }
 
 // src/runtime.ts
-function getCurrentState(workspaceRoot, snapshot) {
+function getCurrentState(workspaceRoot) {
   if (workspaceRoot === undefined) {
-    workspaceRoot = detectStateDirectory();
+    workspaceRoot = findProjectRoot();
   }
   if (!workspaceRoot)
     return null;
-  const snap = snapshot ?? getStateSnapshot(workspaceRoot);
-  const { files, goal, handoff, plan } = snap;
-  const goalActive = files.includes("goal.md") && goal?.status === "active";
-  const planActive = files.includes("plan.md") && plan?.status === "active";
-  const handoffActive = files.includes("handoff.md") && handoff?.status === "active";
+  const index = readPlanIndex(workspaceRoot);
+  if (!index) {
+    return {
+      hasActivePlan: false,
+      activePlanId: null,
+      planContent: null,
+      planEntry: null
+    };
+  }
+  const active = getLatestActivePlan(workspaceRoot);
+  if (!active) {
+    return {
+      hasActivePlan: false,
+      activePlanId: null,
+      planContent: null,
+      planEntry: null
+    };
+  }
   return {
-    hasGoal: goalActive,
-    hasPlan: planActive,
-    hasHandoff: handoffActive,
-    goalContent: goalActive ? goal.content : null,
-    planContent: planActive ? plan.content : null,
-    handoffContent: handoffActive ? handoff.content : null
+    hasActivePlan: true,
+    activePlanId: active.entry.id,
+    planContent: active.content,
+    planEntry: active.entry
   };
 }
 function getPlanGateFromState(state) {
-  if (state.hasGoal && !state.hasPlan) {
+  if (!state.hasActivePlan) {
     return `
-**PLAN REQUIRED:** \`docs/agnes/plan.md\` does not exist but \`docs/agnes/goal.md\` does. Create \`docs/agnes/plan.md\` with a task checklist before any implementation work.`;
+**PLAN REQUIRED:** No active plan found. Create a plan with \`.cache/agnes/\` before any implementation work.`;
   }
   return null;
 }
@@ -277,21 +226,22 @@ var AgnesPlugin = async ({ client }) => {
         return;
       if (firstUser.parts.some((p) => p.type === "text" && typeof p.text === "string" && p.text.includes("EXTREMELY_IMPORTANT")))
         return;
-      let stateInjections = "";
+      let planSummary = "";
       let planGate = "";
       try {
-        const workspaceRoot = detectStateDirectory();
+        const workspaceRoot = findProjectRoot();
         if (workspaceRoot) {
-          const snapshot = getStateSnapshot(workspaceRoot);
-          stateInjections = buildStateInjectionStrings(workspaceRoot, snapshot);
-          const state = getCurrentState(workspaceRoot, snapshot);
+          planSummary = buildPlanSummary(workspaceRoot);
+          const state = getCurrentState(workspaceRoot);
           if (state)
             planGate = getPlanGateFromState(state) || "";
         }
       } catch (err) {
         console.debug("agnes: state read failed \u2014", err);
       }
-      const fullBootstrap = bootstrap + stateInjections + (planGate || "");
+      const fullBootstrap = bootstrap + (planSummary ? `
+
+` + planSummary : "") + (planGate || "");
       const ref = firstUser.parts[0];
       firstUser.parts.unshift({
         id: randomUUID(),

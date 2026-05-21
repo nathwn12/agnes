@@ -1,7 +1,7 @@
 <h1 align="center">AGNES — OpenCode Native Plugin</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.4.4-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.5.0-blue" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
   <img src="https://img.shields.io/badge/skills-23-orange" alt="23 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
@@ -44,7 +44,7 @@ Setup → Clarify → Research → Architect → Design/Plan → Build → Verif
 
 | Phase | Skills | Purpose |
 |-------|--------|---------|
-| **Setup** | ag-init | Bootstrap `docs/agnes/` and `AGENTS.md` in a project |
+| **Setup** | ag-init | Bootstrap `.cache/agnes/` and `AGENTS.md` in a project |
 | **Clarify** | ag-clarifier | Socratic questioning to resolve vague requests |
 | **Research** | ag-explorer | Read-only codebase exploration & dependency tracing |
 | **Architect** | ag-architect | Find deepening opportunities, Design It Twice pattern |
@@ -64,7 +64,7 @@ All 23 skills, their trigger conditions, and what they produce:
 | Skill | Phase | When to Use | Output |
 |-------|-------|-------------|--------|
 | **ag-orchestrator** | META | Routing, delegation, parallelism | Delegation waves, goal/plan state |
-| **ag-init** | Setup | First run in a project, refresh state files | `docs/agnes/` + `AGENTS.md` |
+| **ag-init** | Setup | First run in a project, refresh state files | `.cache/agnes/` + `AGENTS.md` |
 | **ag-clarifier** | Think | Vague requests, terminology conflicts | Written, user-approved spec |
 | **ag-explorer** | Research | Need to understand codebase, find patterns | Structured findings report |
 | **ag-architect** | Research / Design | Codebase feels hard to change | Interface designs, seam map |
@@ -92,7 +92,7 @@ All 23 skills, their trigger conditions, and what they produce:
 ## Quick Start
 
 1. **Install** — add to `opencode.json` and restart
-2. **Init** — run `ag-init` in any project to create `docs/agnes/` and `AGENTS.md`
+2. **Init** — run `ag-init` in any project to create `.cache/agnes/` and `AGENTS.md`
 3. **Work** — every engineering task routes through the pipeline automatically:
    - Vague request? → ag-clarifier sharpens it
    - Need to understand code? → ag-explorer researches
@@ -120,15 +120,18 @@ AGNES never writes code directly. Every task is delegated to a subagent or speci
 
 ## State
 
-AGNES tracks progress across sessions via `docs/agnes/` in any project:
+AGNES tracks progress via `.cache/agnes/` in any project:
 
 ```
-docs/agnes/
-├── goal.md        Completion condition — re-read before every wave
-├── plan.md        Three-status checklist linked to the goal
-├── handoff.md     Session state for another agent or later continuation
-└── learnings/    (not yet implemented)
+.cache/agnes/
+├── index.json        Searchable plan index — read once, filter instantly
+├── plan-001.md       First immutable plan iteration
+├── plan-002.md       Second iteration (append-only, never edited)
+└── ...
 ```
+
+Plan files are immutable — every state change creates a new `plan-NNN.md`.
+Search by project/status through `index.json` without re-reading old plan files.
 
 ---
 

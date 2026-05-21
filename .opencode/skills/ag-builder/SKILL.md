@@ -56,11 +56,11 @@ The implementer returns one of four statuses after dispatch:
 | DONE | Task complete, ready for review | Proceed to Verify → Review |
 | DONE_WITH_CONCERNS | Complete but implementer flagged uncertainties | Surface concerns with evidence before proceeding |
 | NEEDS_CONTEXT | Implementer couldn't proceed (missing info) | Provide missing context, re-dispatch |
-| BLOCKED | External blocker (dep, permission, env) | Write `handoff.md`, stop |
+| BLOCKED | External blocker (dep, permission, env) | Create a new blocked plan iteration. Then stop. |
 
 On DONE_WITH_CONCERNS: review flagged concerns with the user before continuing. Do not silently skip.
 On NEEDS_CONTEXT: identify the exact gap, fill it, re-dispatch the same task.
-On BLOCKED: write handoff.md with Progress, Evidence, and Next sections. Then stop.
+On BLOCKED: Create a new blocked plan iteration. Then stop.
 
 #### 2. Test
 
@@ -125,7 +125,7 @@ After each task dispatch, the implementer returns one of:
 - **DONE** — task complete, proceed to Verify → Review
 - **DONE_WITH_CONCERNS** — task complete but implementer flagged uncertainties. Surface concerns with evidence before continuing.
 - **NEEDS_CONTEXT** — implementer couldn't proceed. Identify the exact missing context, provide it, re-dispatch.
-- **BLOCKED** — external blocker. Write handoff.md (Progress / Evidence / Next). Stop.
+- **BLOCKED** — external blocker. Create a new blocked plan iteration. Then stop.
 
 #### Parallel Task Dispatch
 

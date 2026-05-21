@@ -13,11 +13,46 @@ function isBlockedPath(dir: string): boolean {
   return resolved.startsWith(root);
 }
 
-function findWorkspaceRoot(): string | null {
-  let dir = process.cwd();
+export type PlanStatus =
+  | "draft"
+  | "in_progress"
+  | "blocked"
+  | "done"
+  | "abandoned";
+
+export interface PlanIndexEntry {
+  id: string;
+  status: PlanStatus;
+  createdAt: string;
+  updatedAt: string;
+  parent?: string;
+  summary: string;
+  total: number;
+  completed: number;
+  blocked: number;
+  file: string;
+}
+
+export interface PlanIndex {
+  agnesVersion: string;
+  schemaVersion: 2;
+  projectDir: string;
+  projectName: string;
+  updatedAt: string;
+  activePlanId: string | null;
+  plans: PlanIndexEntry[];
+}
+
+export interface ActivePlan {
+  entry: PlanIndexEntry;
+  content: string;
+}
+
+export function findProjectRoot(startDir?: string): string | null {
+  let dir = startDir ? path.resolve(startDir) : process.cwd();
   for (let i = 0; i < 20; i++) {
     if (isBlockedPath(dir)) return null;
-    if (fs.existsSync(path.join(dir, 'docs', 'agnes'))) return dir;
+    if (fs.existsSync(path.join(dir, '.cache', 'agnes', 'index.json'))) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) return null;
     dir = parent;
@@ -25,177 +60,293 @@ function findWorkspaceRoot(): string | null {
   return null;
 }
 
-/** Read-only detection — never creates directories, never side-effects. */
-function detectStateDirectory(): string | null {
-  return findWorkspaceRoot();
+export function cacheDir(projectRoot?: string): string | null {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root) return null;
+  return path.join(root, '.cache', 'agnes');
 }
 
-function stateDir(workspaceRoot: string): string {
-  return path.join(workspaceRoot, 'docs', 'agnes');
-}
-
-function listStateFiles(workspaceRoot: string): string[] {
-  const dir = stateDir(workspaceRoot);
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir).filter(f => f.endsWith('.md'));
-}
-
-// --- Internal: single-read per-file helper ---
-
-interface FileData {
-  content: string;
-  frontmatter: Record<string, string>;
-  status: string;
-}
-
-const TEMPLATE_SIGNATURES: Record<string, string[]> = {
-  'goal.md': ['# Goal\n\nA goal is a'],
-  'plan.md': ['# Plan\n\nA three-status checklist'],
-  'handoff.md': ['# Handoff\n\nSaves session state'],
-};
-
-function getTemplateStatus(body: string, name: string): string | null {
-  const signatures = TEMPLATE_SIGNATURES[name];
-  if (!signatures) return null;
-  const normalized = body.replace(/\r\n/g, '\n');
-  return signatures.some(sig => normalized.startsWith(sig)) ? 'template' : null;
-}
-
-function loadFileData(workspaceRoot: string, name: string): FileData | null {
-  const filePath = path.join(stateDir(workspaceRoot), name);
-  if (!fs.existsSync(filePath)) return null;
-
-  const content = fs.readFileSync(filePath, 'utf8');
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n?---/);
-
-  if (!match) {
-    const status = getTemplateStatus(content, name) || 'active';
-    return { content, frontmatter: {}, status };
+export function readPlanIndex(projectRoot?: string): PlanIndex | null {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root) return null;
+  const indexPath = path.join(root, '.cache', 'agnes', 'index.json');
+  try {
+    const raw = fs.readFileSync(indexPath, 'utf8');
+    return JSON.parse(raw) as PlanIndex;
+  } catch {
+    return null;
   }
+}
 
-  const frontmatter: Record<string, string> = {};
-  for (const line of match[1].split('\n')) {
-    const sep = line.indexOf(':');
-    if (sep > 0) {
-      const key = line.slice(0, sep).trim();
-      const val = line.slice(sep + 1).trim();
-      if (key) frontmatter[key] = val;
+export function writePlanIndex(index: PlanIndex, projectRoot?: string): void {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root) throw new Error('Cannot write plan index: no project root found');
+  const dir = path.join(root, '.cache', 'agnes');
+  fs.mkdirSync(dir, { recursive: true });
+  const filePath = path.join(dir, 'index.json');
+  const tmp = filePath + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(index, null, 2), 'utf8');
+  fs.renameSync(tmp, filePath);
+}
+
+export function getLatestActivePlan(projectRoot?: string): ActivePlan | null {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root) return null;
+  const index = readPlanIndex(root);
+  if (!index) return null;
+
+  const activeStatuses: PlanStatus[] = ['draft', 'in_progress', 'blocked'];
+
+  let target: PlanIndexEntry | undefined;
+
+  if (index.activePlanId) {
+    const entry = index.plans.find(p => p.id === index.activePlanId);
+    if (entry && activeStatuses.includes(entry.status)) {
+      target = entry;
     }
   }
 
-  const body = content.slice(match[0].length).replace(/^\r?\n/, '');
-  const status = frontmatter.status && frontmatter.status !== 'active'
-    ? frontmatter.status
-    : (getTemplateStatus(body, name) || frontmatter.status || 'active');
+  if (!target) {
+    const sorted = [...index.plans]
+      .filter(p => activeStatuses.includes(p.status))
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    target = sorted[0];
+  }
 
-  return { content, frontmatter, status };
+  if (!target) return null;
+
+  const planPath = path.join(root, '.cache', 'agnes', target.file);
+  try {
+    const content = fs.readFileSync(planPath, 'utf8');
+    return { entry: target, content };
+  } catch {
+    return null;
+  }
 }
 
-// --- Public API (backward-compatible signatures) ---
+export function buildPlanSummary(projectRoot?: string): string {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root) return 'No active plan. Create one before delegating work.';
 
-function readFrontmatter(workspaceRoot: string, name: string): Record<string, string> | null {
-  const data = loadFileData(workspaceRoot, name);
-  return data ? data.frontmatter : null;
+  const index = readPlanIndex(root);
+  if (!index || index.plans.length === 0) return 'No active plan. Create one before delegating work.';
+
+  const active = getLatestActivePlan(root);
+  if (!active) return 'No active plan. Create one before delegating work.';
+
+  const { entry } = active;
+
+  const goalMatch = active.content.match(/^Goal:\s*(.+)$/m);
+  const goal = goalMatch ? goalMatch[1] : '';
+
+  return `Active Plan: ${entry.id} (${entry.status}) \u2014 ${entry.completed}/${entry.total} tasks done\nGoal: ${goal}\nLatest update: ${entry.updatedAt}`;
 }
 
-function getFileStatus(workspaceRoot: string, name: string): string {
-  const data = loadFileData(workspaceRoot, name);
-  return data ? data.status : 'absent';
+export function getNextPlanId(projectRoot?: string): string {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root) return 'plan-001';
+
+  const cache = path.join(root, '.cache', 'agnes');
+  if (!fs.existsSync(cache)) return 'plan-001';
+
+  let max = 0;
+  try {
+    const files = fs.readdirSync(cache);
+    for (const f of files) {
+      const match = f.match(/^plan-(\d+)\.md$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > max) max = num;
+      }
+    }
+  } catch {
+    // fall through
+  }
+
+  return `plan-${String(max + 1).padStart(3, '0')}`;
 }
 
-function readStateFile(workspaceRoot: string, name: string): string | null {
-  const data = loadFileData(workspaceRoot, name);
-  return data ? data.content : null;
+function writePlanFile(root: string, id: string, content: string): string {
+  const file = `${id}.md`;
+  const filePath = path.join(root, '.cache', 'agnes', file);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, 'utf8');
+  return file;
 }
 
-// --- Snapshot for multi-file consumers ---
+export function createPlan(input: {
+  summary: string;
+  goal: string;
+  check: string;
+  tasks: string[];
+  parent?: string;
+  status?: PlanStatus;
+  notes?: string[];
+  projectRoot?: string;
+}): ActivePlan {
+  const root = input.projectRoot ?? findProjectRoot();
+  if (!root) throw new Error('Cannot create plan: no project root found');
 
-export interface StateSnapshot {
-  files: string[];
-  goal: FileData | null;
-  plan: FileData | null;
-  handoff: FileData | null;
-}
+  const now = new Date().toISOString();
+  const id = getNextPlanId(root);
+  const status = input.status ?? 'draft';
+  const total = input.tasks.length;
+  const completed = 0;
+  const blocked = 0;
 
-function getStateSnapshot(workspaceRoot: string): StateSnapshot {
-  return {
-    files: listStateFiles(workspaceRoot),
-    goal: loadFileData(workspaceRoot, 'goal.md'),
-    plan: loadFileData(workspaceRoot, 'plan.md'),
-    handoff: loadFileData(workspaceRoot, 'handoff.md'),
+  const tasksMd = input.tasks.map(t => {
+    if (/^- \[[ x\/]\]/.test(t)) return t;
+    return `- [ ] ${t.replace(/^- /, '')}`;
+  }).join('\n');
+
+  let content = `---
+id: ${id}
+status: ${status}
+createdAt: ${now}
+updatedAt: ${now}
+${input.parent ? `parent: ${input.parent}\n` : ''}total: ${total}
+completed: ${completed}
+blocked: ${blocked}
+---
+
+Goal: ${input.goal}
+
+Check: ${input.check}
+
+Tasks:
+${tasksMd}
+
+${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n}`).join('\n')}\n\n` : ''}Next:
+- <first executable action>
+`;
+
+  const file = writePlanFile(root, id, content);
+
+  const entry: PlanIndexEntry = {
+    id,
+    status,
+    createdAt: now,
+    updatedAt: now,
+    parent: input.parent,
+    summary: input.summary,
+    total,
+    completed,
+    blocked,
+    file,
   };
+
+  const index = readPlanIndex(root) ?? {
+    agnesVersion: '0.4.4',
+    schemaVersion: 2 as const,
+    projectDir: root,
+    projectName: path.basename(root),
+    updatedAt: now,
+    activePlanId: null,
+    plans: [],
+  };
+
+  index.plans.push(entry);
+  index.updatedAt = now;
+  index.activePlanId = id;
+  writePlanIndex(index, root);
+
+  return { entry, content };
 }
 
-function buildStateInjectionStrings(workspaceRoot: string, snapshot?: StateSnapshot): string {
-  const snap = snapshot ?? getStateSnapshot(workspaceRoot);
-  const { files, goal, handoff, plan } = snap;
+export function createPlanIteration(input: {
+  parent: string;
+  summary: string;
+  goal: string;
+  check: string;
+  tasksMarkdown: string;
+  status: PlanStatus;
+  completed: number;
+  blocked: number;
+  notes?: string[];
+  projectRoot?: string;
+}): ActivePlan {
+  const root = input.projectRoot ?? findProjectRoot();
+  if (!root) throw new Error('Cannot create plan iteration: no project root found');
 
-  const hasGoal = files.includes('goal.md') && goal?.status === 'active';
-  const hasHandoff = files.includes('handoff.md') && handoff?.status === 'active';
-  const hasPlan = files.includes('plan.md') && plan?.status === 'active';
+  const now = new Date().toISOString();
+  const id = getNextPlanId(root);
+  const total = (input.tasksMarkdown.match(/^- \[.?\]/gm) || []).length;
 
-  if (!hasGoal && !hasHandoff) {
-    const agnesDir = stateDir(workspaceRoot);
-    return `\n\n## State directory ready
+  let content = `---
+id: ${id}
+status: ${input.status}
+createdAt: ${now}
+updatedAt: ${now}
+parent: ${input.parent}
+total: ${total}
+completed: ${input.completed}
+blocked: ${input.blocked}
+---
 
-\`${agnesDir}\` is initialized. AGNES uses three files to track work across sessions:
+Goal: ${input.goal}
 
-| File | Purpose |
-|------|---------|
-| \`goal.md\` | One-sentence completion condition. Write first. |
-| \`plan.md\` | Three-status checklist toward the goal. Write second. |
-| \`handoff.md\` | Session state for another agent or later continuation. Write when stopping. |
+Check: ${input.check}
 
-See \`.opencode/skills/ag-orchestrator/SKILL.md\` → State Management for the full discipline.
+Tasks:
+${input.tasksMarkdown}
 
-**Start by writing your goal to \`docs/agnes/goal.md\`.**`;
+${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n}`).join('\n')}\n\n` : ''}Next:
+- <first executable action>
+`;
+
+  const file = writePlanFile(root, id, content);
+
+  const entry: PlanIndexEntry = {
+    id,
+    status: input.status,
+    createdAt: now,
+    updatedAt: now,
+    parent: input.parent,
+    summary: input.summary,
+    total,
+    completed: input.completed,
+    blocked: input.blocked,
+    file,
+  };
+
+  const index = readPlanIndex(root);
+  if (!index) throw new Error('Cannot create plan iteration: no index found');
+
+  index.plans.push(entry);
+  index.updatedAt = now;
+  const isTerminal = input.status === 'done' || input.status === 'abandoned';
+  if (!isTerminal) {
+    index.activePlanId = id;
   }
+  writePlanIndex(index, root);
 
-  if (hasHandoff && handoff) {
-    const handoffBlock = `## Active handoff
-
-\`docs/agnes/handoff.md\` exists — you are receiving a handoff.
-
-1. Read the handoff content below
-2. Restore \`goal.md\` — copy the \`Goal:\` from handoff into \`docs/agnes/goal.md\`
-3. Restore \`plan.md\` — write the \`## Pending\` items into \`docs/agnes/plan.md\` as \`[ ] pending\`
-4. Delete \`docs/agnes/handoff.md\` — prevents reprocessing next session
-5. Begin work — start with \`## Next\`
-
-\`\`\`
-${handoff.content}
-\`\`\``;
-    return '\n\n' + handoffBlock;
-  }
-
-  if (hasGoal && goal) {
-    const goalBlock = `## Active goal
-
-\`docs/agnes/goal.md\` exists — you have an active goal. Re-read it before every delegation wave${hasPlan ? ', and check \`docs/agnes/plan.md\` for progress' : ''}.
-
-\`\`\`
-${goal.content}
-\`\`\``;
-    return '\n\n' + goalBlock;
-  }
-
-  return '';
+  return { entry, content };
 }
 
-function getStateFileInjections(): string {
-  const workspaceRoot = detectStateDirectory();
-  if (!workspaceRoot) return '';
-  return buildStateInjectionStrings(workspaceRoot);
-}
+export function updatePlanStatus(input: {
+  id: string;
+  status: PlanStatus;
+  completed?: number;
+  blocked?: number;
+  projectRoot?: string;
+}): PlanIndexEntry | null {
+  const root = input.projectRoot ?? findProjectRoot();
+  if (!root) return null;
 
-export {
-  getStateFileInjections,
-  buildStateInjectionStrings,
-  getStateSnapshot,
-  detectStateDirectory,
-  findWorkspaceRoot,
-  readStateFile,
-  listStateFiles,
-  readFrontmatter,
-  getFileStatus,
-};
+  const index = readPlanIndex(root);
+  if (!index) return null;
+
+  const entry = index.plans.find(p => p.id === input.id);
+  if (!entry) return null;
+
+  const now = new Date().toISOString();
+  entry.status = input.status;
+  entry.updatedAt = now;
+  if (input.completed !== undefined) entry.completed = input.completed;
+  if (input.blocked !== undefined) entry.blocked = input.blocked;
+
+  index.updatedAt = now;
+  writePlanIndex(index, root);
+
+  return entry;
+}

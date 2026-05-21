@@ -1,6 +1,6 @@
 ---
 name: ag-init
-description: Initialize or update AGNES state files (docs/agnes/) and project AGENTS.md in a target project
+description: Initialize or update AGNES state files (.cache/agnes/) and project AGENTS.md in a target project
 phase: init
 persona: senior project setup specialist specializing in AGNES state file initialization and project bootstrapping
 tools: [read, write, edit, glob, bash]
@@ -8,25 +8,25 @@ tools: [read, write, edit, glob, bash]
 
 ## Use When
 
-You need to set up AGNES in a new project, or update an existing project's AGENTS.md and state files in `docs/agnes/`.
+You need to set up AGNES in a new project, or update an existing project's AGENTS.md and state files in `.cache/agnes/`.
 
 ## Core Concept
 
-Initialises a project to work with AGNES. Creates `docs/agnes/` with three state files and writes or updates `AGENTS.md` in the project root.
+Initialises a project to work with AGNES. Creates `.cache/agnes/index.json` and an immutable `plan-NNN.md` and writes or updates `AGENTS.md` in the project root.
 
 The project AGENTS.md is minimal by design — everything in it pays a token cost every turn. Always-on swarm ethos and state rules only; everything else lives in skills.
 
 ## Precise Vocabulary
 
 - **Project root** — the first ancestor directory containing `package.json`, `.git`, or `.opencode`
-- **State files** — the three state files in `docs/agnes/`: `goal.md`, `plan.md`, `handoff.md`
+- **State files** — `.cache/agnes/index.json` and immutable `plan-NNN.md` iterations
 - **AGENTS.md** — project root config file consumed by the agent every turn
 - **Handoff** — saved session state for another agent or future continuation
 
 ## Context Requirements
 
 - A target project directory. The skill walks up from the current working directory to find the project root.
-- Write permission to create `docs/agnes/` and modify `AGENTS.md` in the project root.
+- Write permission to create `.cache/agnes/` and modify `AGENTS.md` in the project root.
 - Existing state files with real content are preserved; only empty templates are overwritten.
 
 ## Workflow
@@ -35,132 +35,58 @@ The project AGENTS.md is minimal by design — everything in it pays a token cos
 
 Walk up from the current working directory. The project root is the first directory containing `package.json`, `.git`, or `.opencode`.
 
-### 2. Create or update `docs/agnes/`
+### 2. Create or update `.cache/agnes/`
 
-Create `docs/agnes/` if it doesn't exist. Write each file below.
+Create `.cache/agnes/` if it doesn't exist. Write two artifacts:
 
-If a file already exists and has real content (not just a template/placeholder), leave it unchanged — the project already has active state.
+#### `.cache/agnes/index.json`
 
-#### `docs/agnes/goal.md`
+```json
+{
+  "agnesVersion": "0.4.4",
+  "schemaVersion": 2,
+  "projectDir": "<project-root>",
+  "projectName": "<project-basename>",
+  "updatedAt": "<ISO timestamp>",
+  "activePlanId": null,
+  "plans": []
+}
+```
+
+#### `.cache/agnes/plan-001.md`
+
+Template plan file — the user will fill in the goal and tasks:
 
 ```markdown
-# Goal
-
-A goal is a completion condition. Write it at task start. Re-read before every delegation wave.
-
-**Format:**
-
-```
-Goal: <sentence>
-Check: <how to verify>
-Constrained by: <what must not change, optional>
-Done when: <condition satisfied or N waves elapsed>
-```
-
-**Evaluation:** After each delegation wave, check if the condition is met. If yes → report done. If no → delegate next wave.
-
-**Examples:**
-
-```
-Goal: Auth module migrated to new API, all call sites updated
-Check: npm run typecheck && npm t -- --testPathPattern=auth
-Constrained by: no other module imports are changed
-Done when: both commands exit 0
-```
-
-```
-Goal: Queue of 12 issues in ready-for-agent is empty
-Check: gh issue list --label ready-for-agent --json id | jq length
-Done when: 0
-```
-```
-
-#### `docs/agnes/plan.md`
-
-```markdown
-# Plan
-
-A three-status checklist tracking progress toward the goal.
-
-**Format:**
-
-```
-Goal: <copied from goal.md>
-
-- [x] <done task>
-- [/] <blocked task> (reason: <why>)
-- [ ] <pending task> (@<handler>)
-```
-
-**Rules:**
-1. Three statuses only: `[x]` `/` `[ ]`
-2. Blocked items MUST have a parenthetical reason
-3. Pending items MAY tag a handler with `@`
-4. No commentary. No free text.
-5. Update before every delegation wave.
-```
-```
-
-#### `docs/agnes/handoff.md`
-
-```markdown
-# Handoff
-
-Saves session state for another agent or a future session.
-
-**Write when:** User says "handoff" or "stop", or 3 failed hypotheses during debugging.
-
-**Format:**
-
-```
-Goal: <copied from goal.md>
-
-## State
-- Plan: <path to plan.md>
-- Branch: <git branch, if any>
-- Working dir: <absolute path>
-
-## Progress
-<completed items with key results>
-
-## Pending
-<remaining items, copied from plan.md>
-
-## Evidence
-<files changed, test output, command results>
-
-## Context
-<decisions, assumptions, things the next agent must know>
-
-## Next
-<one concrete action to start with>
-
+---
+id: plan-001
+status: draft
+createdAt: <now>
+updatedAt: <now>
+total: 1
+completed: 0
+blocked: 0
 ---
 
-## Stuck section (only for 3-fail)
-### Failed hypotheses
-1. <hypothesis> — ruled out by: <evidence>
-2. <hypothesis> — ruled out by: <evidence>
-3. <hypothesis> — ruled out by: <evidence>
+Goal: <describe what you want to accomplish>
 
-### Suspected root cause
-### Suggested redesign
+Check: <how to verify completion>
+
+Tasks:
+- [ ] First task
+
+Files:
+- path: <unknown>
+  owner: none
+  mode: unknown
+
+Notes:
+
+Next:
+- clarify goal or delegate first implementation wave
 ```
 
-**Rules:**
-1. Copy Goal from goal.md
-2. Copy Pending from plan.md
-3. Next must be one concrete action
-4. Update plan.md before writing
-5. Write → commit (if applicable) → stop
-
-**Receiving a handoff:**
-1. Read handoff.md → get Goal, Progress, Pending, Next
-2. Restore goal.md — write Goal into docs/agnes/goal.md
-3. Restore plan.md — write Pending items as `[ ] pending`
-4. Delete handoff.md
-5. Begin work
-```
+Preserve existing files: if `index.json` already exists with real content (has plans), leave it unchanged. If `plan-001.md` already exists with real content, leave it unchanged.
 
 ### 3. Create or update `AGENTS.md`
 
@@ -177,16 +103,27 @@ This project uses AGNES, a swarm orchestrator that routes tasks across fused ski
 2. **Parallelize by default.** Scan every task set for independence. Sequential is the exception.
 3. **1% Rule.** If even 1% chance a skill applies → invoke it.
 4. **Verify before claiming.** Run command, read output, then speak.
-5. **Work-steal.** Subagent finished early? Dispatch it with the next task.
+5. **Scarcity: Cheapest sufficient path first.** Start broad and cheap, narrow only when needed.
+6. **Work-steal.** Subagent finished early? Dispatch it with the next task.
+7. **Main context is clean.** AGNES talks, plans, reports, deploys, and manages `.cache/agnes/`. No direct source work.
+8. **One task = N subagents.** Parallelize by independent work unit.
+9. **Fresh wave = fresh subagents.** No subagent reuse across waves.
+10. **Closed-loop execution.** Subagents execute PLAN→REVIEW→IMPLEMENT→TEST or FIX→REVIEW→VERIFY.
+11. **No shared file edits.** Never assign two subagents to edit the same file in the same wave.
+12. **Self-audit before every response.** Boundary violation means blocked handoff iteration.
 
 ## Key Rules
-- No completion claims without fresh verification
-- One question at a time
-- User review gate before implementation
-- Set `docs/agnes/goal.md` at task start, re-read before every wave
-- Maintain `docs/agnes/plan.md` — three-status checklist, update every wave
-- Monitor session age — clear, compact, or handoff before the dumb zone
-- Write `docs/agnes/handoff.md` on "handoff"/"stop" or when stuck
+
+- No completion claims without fresh verification.
+- One question at a time.
+- User review gate before implementation.
+- At task start, check `.cache/agnes/index.json` for existing active plans.
+- No active plan? Create `plan-NNN.md` and update `index.json` — the plan IS the goal.
+- Plan files are immutable after creation.
+- Every state change creates a new `plan-NNN.md` iteration.
+- Update `index.json` after every new plan iteration.
+- Stuck or stopping? Create a blocked plan iteration.
+- Search plans by project/status through `index.json`.
 
 ---
 
@@ -195,9 +132,10 @@ This project uses AGNES, a swarm orchestrator that routes tasks across fused ski
 
 ### 4. Verify
 
-1. Confirm `docs/agnes/goal.md`, `plan.md`, `handoff.md` all exist with content
-2. Confirm `AGENTS.md` exists and contains the AGNES block
-3. Report the project is initialised
+1. Confirm `.cache/agnes/index.json` exists and is valid JSON
+2. Confirm `.cache/agnes/plan-001.md` exists with frontmatter
+3. Confirm `AGENTS.md` contains the AGNES block
+4. Report the project is initialised
 
 ## Tool Requirements
 
@@ -213,18 +151,18 @@ This project uses AGNES, a swarm orchestrator that routes tasks across fused ski
 
 ```
 <project-root>/
-├── AGENTS.md              Always-on rules + pointer to docs/agnes/
-└── docs/agnes/
-    ├── goal.md            Completion condition format
-    ├── plan.md            Three-status checklist format
-    └── handoff.md         Session state for next agent
+├── AGENTS.md                     Always-on rules
+└── .cache/agnes/
+    ├── index.json                Searchable plan index
+    └── plan-001.md               First immutable plan file
 ```
 
 ## Quality Criteria
 
-1. All three state files in `docs/agnes/` exist with content (not empty placeholders)
-2. `AGENTS.md` exists and contains the AGNES identity block at the top
-3. Existing state files with real content are unchanged
+1. `.cache/agnes/index.json` exists and is valid JSON
+2. `.cache/agnes/plan-001.md` exists with valid frontmatter
+3. `AGENTS.md` contains the AGNES identity block at the top
+4. Existing state files with real content are unchanged
 
 ## When NOT to Use
 

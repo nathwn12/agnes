@@ -16,8 +16,8 @@ The ag-planner skill transforms clarified requirements into structured design do
 
 ## Precise Vocabulary
 
-- **Spec** — A structured design document in `docs/agnes/specs/` covering architecture, data model, component tree, data flow, API surface, error handling, and testing strategy.
-- **Implementation Plan** — An ordered task list in `docs/agnes/plans/` where each task is a single action (2-5 minutes) with exact code and file paths.
+- **Spec** — A structured design document in `docs/specs/` covering architecture, data model, component tree, data flow, API surface, error handling, and testing strategy.
+- **Implementation Plan** — An ordered task list in `docs/plans/` where each task is a single action (2-5 minutes) with exact code and file paths.
 - **ADR** — Architecture Decision Record; past decisions that constrain current design choices.
 - **Vertical Slice** — An independently completable issue that adds user-visible value.
 - **Task Granularity** — Each task is one action taking 2-5 minutes, with complete code and exact file paths.
@@ -26,7 +26,7 @@ The ag-planner skill transforms clarified requirements into structured design do
 
 Requires codebase context before planning:
 - Insufficient context triggers a call to ag-explorer first
-- Existing specs in `docs/agnes/specs/` must be read
+- Existing specs in `docs/specs/` must be read
 - ADRs must be checked for past architecture decisions
 - File layout and conventions must be understood
 
@@ -36,7 +36,7 @@ Requires codebase context before planning:
 
 Understand the existing codebase before planning:
 - If context is insufficient, call ag-explorer first
-- Read existing specs in `docs/agnes/specs/`
+- Read existing specs in `docs/specs/`
 - Check ADRs for past architecture decisions
 - Understand file layout and conventions
 
@@ -61,7 +61,7 @@ Get approval per section before moving to the next:
 
 ### 4. Write Spec
 
-Output: `docs/agnes/specs/YYYY-MM-DD-<topic>-design.md`
+Output: `docs/specs/YYYY-MM-DD-<topic>-design.md`
 
 Structure:
 ```markdown
@@ -88,7 +88,7 @@ Structure:
 
 ### 5. Write Implementation Plan
 
-Output: `docs/agnes/plans/YYYY-MM-DD-<feature>.md`
+Output: `docs/plans/YYYY-MM-DD-<feature>.md`
 
 Structure:
 ```markdown
@@ -133,9 +133,9 @@ If using an issue tracker, decompose into vertical-slice issues:
 
 Two document types written to the project:
 
-1. **Design Spec** at `docs/agnes/specs/YYYY-MM-DD-<topic>-design.md` — covers overview, architecture, data model, implementation modules, testing strategy, and open questions.
+1. **Design Spec** at `docs/specs/YYYY-MM-DD-<topic>-design.md` — covers overview, architecture, data model, implementation modules, testing strategy, and open questions.
 
-2. **Implementation Plan** at `docs/agnes/plans/YYYY-MM-DD-<feature>.md` — ordered list of granular tasks (2-5 minutes each) with exact code and file paths, and a placeholder/polish pass at the end.
+2. **Implementation Plan** at `docs/plans/YYYY-MM-DD-<feature>.md` — ordered list of granular tasks (2-5 minutes each) with exact code and file paths, and a placeholder/polish pass at the end.
 
 ## Quality Criteria
 

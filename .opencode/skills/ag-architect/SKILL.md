@@ -92,7 +92,7 @@ Walk design tree with user. Side effects: update `CONTEXT.md`, offer ADRs when u
 
 ## Output
 
-Write to `docs/agnes/architecture/YYYY-MM-DD-<topic>-deepening.md`
+Write to `docs/architecture/YYYY-MM-DD-<topic>-deepening.md`
 
 ## Quality Criteria
 

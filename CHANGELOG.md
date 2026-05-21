@@ -2,6 +2,30 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.5.0 (2026-05-22)
+
+### Added
+
+- **Delegation Contract**: Five hard rules bootstrapped every session — main context restricted to communication and state management only; dynamic subagent count per wave; fresh subagents per wave; closed-loop execution (PLAN→REVIEW→IMPLEMENT→TEST / FIX→REVIEW→VERIFY); self-audit gate before every response. (verified: `bun run typecheck`, `bun test`)
+- **Self-audit gate**: Before every user-facing response, AGNES silently checks for boundary violations. If found — creates a blocked plan iteration and stops. No self-correction in the same message. (verified: `bun test`)
+- **Immutable plan iteration model**: Plan files are append-only. Every state transition creates `plan-NNN+1.md` with parent reference. No edits to existing plan files. (verified: `bun test`)
+
+### Changed
+
+- **State system migrated**: Replaced `docs/agnes/goal.md + plan.md + handoff.md` with `.cache/agnes/index.json + plan-NNN.md`. Index serves as searchable metadata hub — read once, filter by status/project without re-reading old files. (verified: `bun test`)
+- **Bootstrap injection**: Now injects active plan summary (plan ID, status, task counts, goal) instead of old goal/handoff blocks. Missing plan produces explicit instruction. (verified: `bun run typecheck`)
+- **ag-init output**: Now generates `.cache/agnes/index.json` and `plan-001.md` instead of `docs/agnes/` state files. (verified: code review)
+- **Design output paths**: Moved from `docs/agnes/<type>/` to `docs/<type>/` (specs, plans, PRDs, learnings, architecture docs) — no longer conflated with state directory. (verified: `grep` confirms zero stale `docs/agnes` references in active code)
+
+### Removed
+
+- **Legacy state APIs**: `detectStateDirectory()`, `listStateFiles()`, `loadFileData()`, `readFrontmatter()`, `getFileStatus()`, `readStateFile()`, `getStateSnapshot()`, `buildStateInjectionStrings()` — all replaced by PlanIndex CRUD functions. (verified: `bun run typecheck`)
+
+### Fixed
+
+- **Plugin build staleness**: Rebuilt `.opencode/plugins/agnes.js` from updated source — OpenCode was loading old docs/agnes plugin code. (verified: `grep` confirms zero stale references in built output)
+- **Stale reference cleanup**: All 6 skill files, README, and orchestrator SKILL.md reference section updated to reflect new state system. (verified: `grep`)
+
 ## 0.4.4 (2026-05-21)
 
 ### Fixed

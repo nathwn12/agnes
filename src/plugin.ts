@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getBootstrapContent } from './bootstrap.js';
-import { detectStateDirectory, buildStateInjectionStrings, getStateSnapshot } from './state.js';
+import { findProjectRoot, buildPlanSummary } from './state.js';
 import { getCurrentState, getPlanGateFromState } from './runtime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -37,20 +37,19 @@ export const AgnesPlugin: Plugin = async ({ client }) => {
 
       if (firstUser.parts.some((p) => p.type === 'text' && typeof p.text === 'string' && p.text.includes('EXTREMELY_IMPORTANT'))) return;
 
-      let stateInjections = '';
+      let planSummary = '';
       let planGate = '';
       try {
-        const workspaceRoot = detectStateDirectory();
+        const workspaceRoot = findProjectRoot();
         if (workspaceRoot) {
-          const snapshot = getStateSnapshot(workspaceRoot);
-          stateInjections = buildStateInjectionStrings(workspaceRoot, snapshot);
-          const state = getCurrentState(workspaceRoot, snapshot);
+          planSummary = buildPlanSummary(workspaceRoot);
+          const state = getCurrentState(workspaceRoot);
           if (state) planGate = getPlanGateFromState(state) || '';
         }
       } catch (err) {
         console.debug('agnes: state read failed —', err);
       }
-      const fullBootstrap = bootstrap + stateInjections + (planGate || '');
+      const fullBootstrap = bootstrap + (planSummary ? '\n\n' + planSummary : '') + (planGate || '');
 
       const ref = firstUser.parts[0];
       firstUser.parts.unshift({

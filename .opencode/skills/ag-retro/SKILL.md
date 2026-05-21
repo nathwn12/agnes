@@ -22,12 +22,12 @@ Systematic reflection on engineering work to capture learnings, identify improve
 - **Retrospective**: Structured reflection session analyzing completed work for patterns and improvements
 - **Learning**: Captured insight from past work, stored for future reference
 - **Velocity**: Rate of task or commit completion over a time period
-- **Cross-session memory**: Persistent knowledge that survives across AGNES sessions, housed in `docs/agnes/learnings/`
+- **Cross-session memory**: Persistent knowledge that survives across AGNES sessions, housed in `docs/learnings/`
 
 ## Context Requirements
 
 - Git repository with recent commit history (past 7 days minimum)
-- `docs/agnes/learnings/` directory exists for saving outputs
+- `docs/learnings/` directory exists for saving outputs
 - `AGENTS.md` for cross-session persistence export
 
 ## Workflow
@@ -67,11 +67,11 @@ Domain knowledge, project-specific gotchas:
 
 ### 5. Save Learnings
 
-Output retro document to `docs/agnes/learnings/YYYY-MM-DD-retro.md`.
+Output retro document to `docs/learnings/YYYY-MM-DD-retro.md`.
 
 ### 6. Manage Learnings
 
-- **Search existing learnings** before repeating a mistake: `grep -r "<topic>" docs/agnes/learnings/`
+- **Search existing learnings** before repeating a mistake: `grep -r "<topic>" docs/learnings/`
 - **Prune stale learnings**: read learnings older than 60 days; if superseded mark deprecated; if irrelevant archive or delete
 - **Export to AGENTS.md**: project-specific high-value learnings as bullet points; remove outdated before adding new
 
@@ -84,7 +84,7 @@ Output retro document to `docs/agnes/learnings/YYYY-MM-DD-retro.md`.
 
 ## Output
 
-Retro document at `docs/agnes/learnings/YYYY-MM-DD-retro.md` in the following format:
+Retro document at `docs/learnings/YYYY-MM-DD-retro.md` in the following format:
 
 ```markdown
 # Retro: YYYY-MM-DD
