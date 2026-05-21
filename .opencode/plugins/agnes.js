@@ -115,31 +115,6 @@ function listStateFiles(workspaceRoot) {
     return [];
   return fs2.readdirSync(dir).filter((f) => f.endsWith(".md"));
 }
-function readFrontmatter(workspaceRoot, name) {
-  const filePath = path2.join(stateDir(workspaceRoot), name);
-  if (!fs2.existsSync(filePath))
-    return null;
-  const fd = fs2.openSync(filePath, "r");
-  const buffer = Buffer.alloc(4096);
-  const bytesRead = fs2.readSync(fd, buffer, 0, 4096, 0);
-  fs2.closeSync(fd);
-  const head = buffer.toString("utf8", 0, bytesRead);
-  const match = head.match(/^---\r?\n([\s\S]*?)\r?\n?---/);
-  if (!match)
-    return {};
-  const result = {};
-  for (const line of match[1].split(`
-`)) {
-    const sep = line.indexOf(":");
-    if (sep > 0) {
-      const key = line.slice(0, sep).trim();
-      const val = line.slice(sep + 1).trim();
-      if (key)
-        result[key] = val;
-    }
-  }
-  return result;
-}
 var TEMPLATE_SIGNATURES = {
   "goal.md": [`# Goal
 
@@ -151,42 +126,53 @@ A three-status checklist`],
 
 Saves session state`]
 };
-function isTemplateContent(workspaceRoot, name) {
-  const filePath = path2.join(stateDir(workspaceRoot), name);
-  if (!fs2.existsSync(filePath))
-    return false;
-  const content = fs2.readFileSync(filePath, "utf8");
-  const stripped = content.replace(/^---[\s\S]*?---\r?\n?/, "");
-  const normalized = stripped.replace(/\r\n/g, `
-`);
+function getTemplateStatus(body, name) {
   const signatures = TEMPLATE_SIGNATURES[name];
   if (!signatures)
-    return false;
-  return signatures.some((sig) => normalized.startsWith(sig));
+    return null;
+  const normalized = body.replace(/\r\n/g, `
+`);
+  return signatures.some((sig) => normalized.startsWith(sig)) ? "template" : null;
 }
-function getFileStatus(workspaceRoot, name) {
-  const fm = readFrontmatter(workspaceRoot, name);
-  if (!fm)
-    return "absent";
-  if (fm.status && fm.status !== "active")
-    return fm.status;
-  if (isTemplateContent(workspaceRoot, name))
-    return "template";
-  return fm.status || "active";
-}
-function readStateFile(workspaceRoot, name) {
+function loadFileData(workspaceRoot, name) {
   const filePath = path2.join(stateDir(workspaceRoot), name);
   if (!fs2.existsSync(filePath))
     return null;
-  return fs2.readFileSync(filePath, "utf8");
+  const content = fs2.readFileSync(filePath, "utf8");
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n?---/);
+  if (!match) {
+    const status2 = getTemplateStatus(content, name) || "active";
+    return { content, frontmatter: {}, status: status2 };
+  }
+  const frontmatter = {};
+  for (const line of match[1].split(`
+`)) {
+    const sep = line.indexOf(":");
+    if (sep > 0) {
+      const key = line.slice(0, sep).trim();
+      const val = line.slice(sep + 1).trim();
+      if (key)
+        frontmatter[key] = val;
+    }
+  }
+  const body = content.slice(match[0].length).replace(/^\r?\n/, "");
+  const status = frontmatter.status && frontmatter.status !== "active" ? frontmatter.status : getTemplateStatus(body, name) || frontmatter.status || "active";
+  return { content, frontmatter, status };
 }
-function buildStateInjectionStrings(workspaceRoot) {
-  const files = listStateFiles(workspaceRoot);
-  const goalStatus = getFileStatus(workspaceRoot, "goal.md");
-  const handoffStatus = getFileStatus(workspaceRoot, "handoff.md");
-  const hasGoal = files.includes("goal.md") && goalStatus === "active";
-  const hasHandoff = files.includes("handoff.md") && handoffStatus === "active";
-  const hasPlan = files.includes("plan.md") && getFileStatus(workspaceRoot, "plan.md") === "active";
+function getStateSnapshot(workspaceRoot) {
+  return {
+    files: listStateFiles(workspaceRoot),
+    goal: loadFileData(workspaceRoot, "goal.md"),
+    plan: loadFileData(workspaceRoot, "plan.md"),
+    handoff: loadFileData(workspaceRoot, "handoff.md")
+  };
+}
+function buildStateInjectionStrings(workspaceRoot, snapshot) {
+  const snap = snapshot ?? getStateSnapshot(workspaceRoot);
+  const { files, goal, handoff, plan } = snap;
+  const hasGoal = files.includes("goal.md") && goal?.status === "active";
+  const hasHandoff = files.includes("handoff.md") && handoff?.status === "active";
+  const hasPlan = files.includes("plan.md") && plan?.status === "active";
   if (!hasGoal && !hasHandoff) {
     const agnesDir = stateDir(workspaceRoot);
     return `
@@ -205,10 +191,8 @@ See \`.opencode/skills/ag-orchestrator/SKILL.md\` \u2192 State Management for th
 
 **Start by writing your goal to \`docs/agnes/goal.md\`.**`;
   }
-  if (hasHandoff) {
-    const handoffContent = readStateFile(workspaceRoot, "handoff.md");
-    if (handoffContent) {
-      const handoffBlock = `## Active handoff
+  if (hasHandoff && handoff) {
+    const handoffBlock = `## Active handoff
 
 \`docs/agnes/handoff.md\` exists \u2014 you are receiving a handoff.
 
@@ -219,49 +203,46 @@ See \`.opencode/skills/ag-orchestrator/SKILL.md\` \u2192 State Management for th
 5. Begin work \u2014 start with \`## Next\`
 
 \`\`\`
-${handoffContent}
+${handoff.content}
 \`\`\``;
-      return `
+    return `
 
 ` + handoffBlock;
-    }
   }
-  if (hasGoal) {
-    const goalContent = readStateFile(workspaceRoot, "goal.md");
-    if (goalContent) {
-      const goalBlock = `## Active goal
+  if (hasGoal && goal) {
+    const goalBlock = `## Active goal
 
 \`docs/agnes/goal.md\` exists \u2014 you have an active goal. Re-read it before every delegation wave${hasPlan ? ", and check `docs/agnes/plan.md` for progress" : ""}.
 
 \`\`\`
-${goalContent}
+${goal.content}
 \`\`\``;
-      return `
+    return `
 
 ` + goalBlock;
-    }
   }
   return "";
 }
 
 // src/runtime.ts
-function getCurrentState(workspaceRoot) {
+function getCurrentState(workspaceRoot, snapshot) {
   if (workspaceRoot === undefined) {
     workspaceRoot = detectStateDirectory();
   }
   if (!workspaceRoot)
     return null;
-  const files = listStateFiles(workspaceRoot);
-  const goalActive = files.includes("goal.md") && getFileStatus(workspaceRoot, "goal.md") === "active";
-  const planActive = files.includes("plan.md") && getFileStatus(workspaceRoot, "plan.md") === "active";
-  const handoffActive = files.includes("handoff.md") && getFileStatus(workspaceRoot, "handoff.md") === "active";
+  const snap = snapshot ?? getStateSnapshot(workspaceRoot);
+  const { files, goal, handoff, plan } = snap;
+  const goalActive = files.includes("goal.md") && goal?.status === "active";
+  const planActive = files.includes("plan.md") && plan?.status === "active";
+  const handoffActive = files.includes("handoff.md") && handoff?.status === "active";
   return {
     hasGoal: goalActive,
     hasPlan: planActive,
     hasHandoff: handoffActive,
-    goalContent: goalActive ? readStateFile(workspaceRoot, "goal.md") : null,
-    planContent: planActive ? readStateFile(workspaceRoot, "plan.md") : null,
-    handoffContent: handoffActive ? readStateFile(workspaceRoot, "handoff.md") : null
+    goalContent: goalActive ? goal.content : null,
+    planContent: planActive ? plan.content : null,
+    handoffContent: handoffActive ? handoff.content : null
   };
 }
 function getPlanGateFromState(state) {
@@ -301,8 +282,9 @@ var AgnesPlugin = async ({ client }) => {
       try {
         const workspaceRoot = detectStateDirectory();
         if (workspaceRoot) {
-          stateInjections = buildStateInjectionStrings(workspaceRoot);
-          const state = getCurrentState(workspaceRoot);
+          const snapshot = getStateSnapshot(workspaceRoot);
+          stateInjections = buildStateInjectionStrings(workspaceRoot, snapshot);
+          const state = getCurrentState(workspaceRoot, snapshot);
           if (state)
             planGate = getPlanGateFromState(state) || "";
         }

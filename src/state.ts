@@ -40,29 +40,12 @@ function listStateFiles(workspaceRoot: string): string[] {
   return fs.readdirSync(dir).filter(f => f.endsWith('.md'));
 }
 
-function readFrontmatter(workspaceRoot: string, name: string): Record<string, string> | null {
-  const filePath = path.join(stateDir(workspaceRoot), name);
-  if (!fs.existsSync(filePath)) return null;
+// --- Internal: single-read per-file helper ---
 
-  const fd = fs.openSync(filePath, 'r');
-  const buffer = Buffer.alloc(4096);
-  const bytesRead = fs.readSync(fd, buffer, 0, 4096, 0);
-  fs.closeSync(fd);
-
-  const head = buffer.toString('utf8', 0, bytesRead);
-  const match = head.match(/^---\r?\n([\s\S]*?)\r?\n?---/);
-  if (!match) return {};
-
-  const result: Record<string, string> = {};
-  for (const line of match[1].split('\n')) {
-    const sep = line.indexOf(':');
-    if (sep > 0) {
-      const key = line.slice(0, sep).trim();
-      const val = line.slice(sep + 1).trim();
-      if (key) result[key] = val;
-    }
-  }
-  return result;
+interface FileData {
+  content: string;
+  frontmatter: Record<string, string>;
+  status: string;
 }
 
 const TEMPLATE_SIGNATURES: Record<string, string[]> = {
@@ -71,41 +54,85 @@ const TEMPLATE_SIGNATURES: Record<string, string[]> = {
   'handoff.md': ['# Handoff\n\nSaves session state'],
 };
 
-function isTemplateContent(workspaceRoot: string, name: string): boolean {
+function getTemplateStatus(body: string, name: string): string | null {
+  const signatures = TEMPLATE_SIGNATURES[name];
+  if (!signatures) return null;
+  const normalized = body.replace(/\r\n/g, '\n');
+  return signatures.some(sig => normalized.startsWith(sig)) ? 'template' : null;
+}
+
+function loadFileData(workspaceRoot: string, name: string): FileData | null {
   const filePath = path.join(stateDir(workspaceRoot), name);
-  if (!fs.existsSync(filePath)) return false;
+  if (!fs.existsSync(filePath)) return null;
 
   const content = fs.readFileSync(filePath, 'utf8');
-  const stripped = content.replace(/^---[\s\S]*?---\r?\n?/, '');
-  const normalized = stripped.replace(/\r\n/g, '\n');
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n?---/);
 
-  const signatures = TEMPLATE_SIGNATURES[name];
-  if (!signatures) return false;
+  if (!match) {
+    const status = getTemplateStatus(content, name) || 'active';
+    return { content, frontmatter: {}, status };
+  }
 
-  return signatures.some(sig => normalized.startsWith(sig));
+  const frontmatter: Record<string, string> = {};
+  for (const line of match[1].split('\n')) {
+    const sep = line.indexOf(':');
+    if (sep > 0) {
+      const key = line.slice(0, sep).trim();
+      const val = line.slice(sep + 1).trim();
+      if (key) frontmatter[key] = val;
+    }
+  }
+
+  const body = content.slice(match[0].length).replace(/^\r?\n/, '');
+  const status = frontmatter.status && frontmatter.status !== 'active'
+    ? frontmatter.status
+    : (getTemplateStatus(body, name) || frontmatter.status || 'active');
+
+  return { content, frontmatter, status };
+}
+
+// --- Public API (backward-compatible signatures) ---
+
+function readFrontmatter(workspaceRoot: string, name: string): Record<string, string> | null {
+  const data = loadFileData(workspaceRoot, name);
+  return data ? data.frontmatter : null;
 }
 
 function getFileStatus(workspaceRoot: string, name: string): string {
-  const fm = readFrontmatter(workspaceRoot, name);
-  if (!fm) return 'absent';
-  if (fm.status && fm.status !== 'active') return fm.status;
-  if (isTemplateContent(workspaceRoot, name)) return 'template';
-  return fm.status || 'active';
+  const data = loadFileData(workspaceRoot, name);
+  return data ? data.status : 'absent';
 }
 
 function readStateFile(workspaceRoot: string, name: string): string | null {
-  const filePath = path.join(stateDir(workspaceRoot), name);
-  if (!fs.existsSync(filePath)) return null;
-  return fs.readFileSync(filePath, 'utf8');
+  const data = loadFileData(workspaceRoot, name);
+  return data ? data.content : null;
 }
 
-function buildStateInjectionStrings(workspaceRoot: string): string {
-  const files = listStateFiles(workspaceRoot);
-  const goalStatus = getFileStatus(workspaceRoot, 'goal.md');
-  const handoffStatus = getFileStatus(workspaceRoot, 'handoff.md');
-  const hasGoal = files.includes('goal.md') && goalStatus === 'active';
-  const hasHandoff = files.includes('handoff.md') && handoffStatus === 'active';
-  const hasPlan = files.includes('plan.md') && getFileStatus(workspaceRoot, 'plan.md') === 'active';
+// --- Snapshot for multi-file consumers ---
+
+export interface StateSnapshot {
+  files: string[];
+  goal: FileData | null;
+  plan: FileData | null;
+  handoff: FileData | null;
+}
+
+function getStateSnapshot(workspaceRoot: string): StateSnapshot {
+  return {
+    files: listStateFiles(workspaceRoot),
+    goal: loadFileData(workspaceRoot, 'goal.md'),
+    plan: loadFileData(workspaceRoot, 'plan.md'),
+    handoff: loadFileData(workspaceRoot, 'handoff.md'),
+  };
+}
+
+function buildStateInjectionStrings(workspaceRoot: string, snapshot?: StateSnapshot): string {
+  const snap = snapshot ?? getStateSnapshot(workspaceRoot);
+  const { files, goal, handoff, plan } = snap;
+
+  const hasGoal = files.includes('goal.md') && goal?.status === 'active';
+  const hasHandoff = files.includes('handoff.md') && handoff?.status === 'active';
+  const hasPlan = files.includes('plan.md') && plan?.status === 'active';
 
   if (!hasGoal && !hasHandoff) {
     const agnesDir = stateDir(workspaceRoot);
@@ -124,10 +151,8 @@ See \`.opencode/skills/ag-orchestrator/SKILL.md\` → State Management for the f
 **Start by writing your goal to \`docs/agnes/goal.md\`.**`;
   }
 
-  if (hasHandoff) {
-    const handoffContent = readStateFile(workspaceRoot, 'handoff.md');
-    if (handoffContent) {
-      const handoffBlock = `## Active handoff
+  if (hasHandoff && handoff) {
+    const handoffBlock = `## Active handoff
 
 \`docs/agnes/handoff.md\` exists — you are receiving a handoff.
 
@@ -138,24 +163,20 @@ See \`.opencode/skills/ag-orchestrator/SKILL.md\` → State Management for the f
 5. Begin work — start with \`## Next\`
 
 \`\`\`
-${handoffContent}
+${handoff.content}
 \`\`\``;
-      return '\n\n' + handoffBlock;
-    }
+    return '\n\n' + handoffBlock;
   }
 
-  if (hasGoal) {
-    const goalContent = readStateFile(workspaceRoot, 'goal.md');
-    if (goalContent) {
-      const goalBlock = `## Active goal
+  if (hasGoal && goal) {
+    const goalBlock = `## Active goal
 
 \`docs/agnes/goal.md\` exists — you have an active goal. Re-read it before every delegation wave${hasPlan ? ', and check \`docs/agnes/plan.md\` for progress' : ''}.
 
 \`\`\`
-${goalContent}
+${goal.content}
 \`\`\``;
-      return '\n\n' + goalBlock;
-    }
+    return '\n\n' + goalBlock;
   }
 
   return '';
@@ -167,4 +188,14 @@ function getStateFileInjections(): string {
   return buildStateInjectionStrings(workspaceRoot);
 }
 
-export { getStateFileInjections, buildStateInjectionStrings, detectStateDirectory, findWorkspaceRoot, readStateFile, listStateFiles, readFrontmatter, getFileStatus };
+export {
+  getStateFileInjections,
+  buildStateInjectionStrings,
+  getStateSnapshot,
+  detectStateDirectory,
+  findWorkspaceRoot,
+  readStateFile,
+  listStateFiles,
+  readFrontmatter,
+  getFileStatus,
+};

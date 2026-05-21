@@ -1,6 +1,6 @@
 {
   "name": "agnes",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "AGNES — OpenCode Native Plugin: orchestrator plugin that routes tasks across 23 fused skills",
   "type": "module",
   "main": ".opencode/plugins/agnes.js",
@@ -10,7 +10,8 @@
   "scripts": {
     "bundle": "bun build src/plugin.ts --outfile .opencode/plugins/agnes.js --target bun",
     "bundle:watch": "bun build src/plugin.ts --outfile .opencode/plugins/agnes.js --target bun --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
   },
   "devDependencies": {
     "@opencode-ai/plugin": "^1.15.5",

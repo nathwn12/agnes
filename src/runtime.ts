@@ -1,4 +1,5 @@
-import { detectStateDirectory, readStateFile, listStateFiles, getFileStatus } from './state.js';
+import { detectStateDirectory, getStateSnapshot } from './state.js';
+import type { StateSnapshot } from './state.js';
 
 export interface AgnesRuntimeState {
   hasGoal: boolean;
@@ -9,24 +10,26 @@ export interface AgnesRuntimeState {
   handoffContent: string | null;
 }
 
-export function getCurrentState(workspaceRoot?: string | null): AgnesRuntimeState | null {
+export function getCurrentState(workspaceRoot?: string | null, snapshot?: StateSnapshot): AgnesRuntimeState | null {
   if (workspaceRoot === undefined) {
     workspaceRoot = detectStateDirectory();
   }
   if (!workspaceRoot) return null;
 
-  const files = listStateFiles(workspaceRoot);
-  const goalActive = files.includes('goal.md') && getFileStatus(workspaceRoot, 'goal.md') === 'active';
-  const planActive = files.includes('plan.md') && getFileStatus(workspaceRoot, 'plan.md') === 'active';
-  const handoffActive = files.includes('handoff.md') && getFileStatus(workspaceRoot, 'handoff.md') === 'active';
+  const snap = snapshot ?? getStateSnapshot(workspaceRoot);
+  const { files, goal, handoff, plan } = snap;
+
+  const goalActive = files.includes('goal.md') && goal?.status === 'active';
+  const planActive = files.includes('plan.md') && plan?.status === 'active';
+  const handoffActive = files.includes('handoff.md') && handoff?.status === 'active';
 
   return {
     hasGoal: goalActive,
     hasPlan: planActive,
     hasHandoff: handoffActive,
-    goalContent: goalActive ? readStateFile(workspaceRoot, 'goal.md') : null,
-    planContent: planActive ? readStateFile(workspaceRoot, 'plan.md') : null,
-    handoffContent: handoffActive ? readStateFile(workspaceRoot, 'handoff.md') : null,
+    goalContent: goalActive ? goal.content : null,
+    planContent: planActive ? plan.content : null,
+    handoffContent: handoffActive ? handoff.content : null,
   };
 }
 

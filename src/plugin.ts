@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getBootstrapContent } from './bootstrap.js';
-import { detectStateDirectory, buildStateInjectionStrings } from './state.js';
+import { detectStateDirectory, buildStateInjectionStrings, getStateSnapshot } from './state.js';
 import { getCurrentState, getPlanGateFromState } from './runtime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -42,8 +42,9 @@ export const AgnesPlugin: Plugin = async ({ client }) => {
       try {
         const workspaceRoot = detectStateDirectory();
         if (workspaceRoot) {
-          stateInjections = buildStateInjectionStrings(workspaceRoot);
-          const state = getCurrentState(workspaceRoot);
+          const snapshot = getStateSnapshot(workspaceRoot);
+          stateInjections = buildStateInjectionStrings(workspaceRoot, snapshot);
+          const state = getCurrentState(workspaceRoot, snapshot);
           if (state) planGate = getPlanGateFromState(state) || '';
         }
       } catch (err) {

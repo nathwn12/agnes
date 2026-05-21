@@ -2,12 +2,23 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.4.4 (2026-05-21)
+
+### Fixed
+
+- **Frontmatter truncation regression (0.4.3)**: Replaced broken 4 KB header read in `readFrontmatter()` with a single-read-per-file helper that always parses the full frontmatter — no more silent status drops when closing `---` lands past byte 4096. (verified: `bun test`, `bun run typecheck`)
+- **File descriptor leak**: Removed manual `openSync`/`readSync`/`closeSync` from `readFrontmatter()` — eliminated the descriptor leak on read errors that was introduced in 0.4.3. (verified: `bun test`)
+- **Duplicate file reads on hot path**: `buildStateInjectionStrings()` and `getCurrentState()` now share one `getStateSnapshot()` call per message transform, so each state file is read exactly once instead of 4–6 times. (verified: `src/state.ts` diff, `src/plugin.ts` diff)
+
 ## 0.4.3 (2026-05-21)
 
 ### Fixed
 
 - **Part structural compliance**: Bootstrap injection now constructs a fully valid `TextPart` with `id`, `sessionID`, and `messageID` — prevents downstream rejection or silent drops when OpenCode validates message part shapes. (verified: `bun run typecheck`, emitted JS inspection)
-- **Frontmatter read performance**: Reverted full-file read in `readFrontmatter()` — restored 4KB header-only read to eliminate latency regression on the chat-transform hot path. (verified: `bun run typecheck`, emitted JS inspection)
+
+### Fixed (retroactively corrected in 0.4.4)
+
+- **Frontmatter read performance (regression)**: Reverted full-file read in `readFrontmatter()` — restored 4KB header-only read to eliminate latency on the chat-transform hot path, but inadvertently truncated frontmatter when closing `---` landed past byte 4096. Fixed in 0.4.4. (verified: `bun test`)
 
 ## 0.4.2 (2026-05-21)
 
