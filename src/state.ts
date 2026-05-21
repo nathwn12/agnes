@@ -44,8 +44,13 @@ function readFrontmatter(workspaceRoot: string, name: string): Record<string, st
   const filePath = path.join(stateDir(workspaceRoot), name);
   if (!fs.existsSync(filePath)) return null;
 
-  const content = fs.readFileSync(filePath, 'utf8');
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n?---/);
+  const fd = fs.openSync(filePath, 'r');
+  const buffer = Buffer.alloc(4096);
+  const bytesRead = fs.readSync(fd, buffer, 0, 4096, 0);
+  fs.closeSync(fd);
+
+  const head = buffer.toString('utf8', 0, bytesRead);
+  const match = head.match(/^---\r?\n([\s\S]*?)\r?\n?---/);
   if (!match) return {};
 
   const result: Record<string, string> = {};

@@ -2,6 +2,13 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.4.3 (2026-05-21)
+
+### Fixed
+
+- **Part structural compliance**: Bootstrap injection now constructs a fully valid `TextPart` with `id`, `sessionID`, and `messageID` — prevents downstream rejection or silent drops when OpenCode validates message part shapes. (verified: `bun run typecheck`, emitted JS inspection)
+- **Frontmatter read performance**: Reverted full-file read in `readFrontmatter()` — restored 4KB header-only read to eliminate latency regression on the chat-transform hot path. (verified: `bun run typecheck`, emitted JS inspection)
+
 ## 0.4.2 (2026-05-21)
 
 ### Fixed

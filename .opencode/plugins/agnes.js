@@ -1,5 +1,6 @@
 // @bun
 // src/plugin.ts
+import { randomUUID } from "crypto";
 import * as path3 from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 
@@ -118,8 +119,12 @@ function readFrontmatter(workspaceRoot, name) {
   const filePath = path2.join(stateDir(workspaceRoot), name);
   if (!fs2.existsSync(filePath))
     return null;
-  const content = fs2.readFileSync(filePath, "utf8");
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n?---/);
+  const fd = fs2.openSync(filePath, "r");
+  const buffer = Buffer.alloc(4096);
+  const bytesRead = fs2.readSync(fd, buffer, 0, 4096, 0);
+  fs2.closeSync(fd);
+  const head = buffer.toString("utf8", 0, bytesRead);
+  const match = head.match(/^---\r?\n([\s\S]*?)\r?\n?---/);
   if (!match)
     return {};
   const result = {};
@@ -305,7 +310,11 @@ var AgnesPlugin = async ({ client }) => {
         console.debug("agnes: state read failed \u2014", err);
       }
       const fullBootstrap = bootstrap + stateInjections + (planGate || "");
+      const ref = firstUser.parts[0];
       firstUser.parts.unshift({
+        id: randomUUID(),
+        sessionID: ref.sessionID,
+        messageID: ref.messageID,
         type: "text",
         text: fullBootstrap
       });

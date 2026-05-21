@@ -1,4 +1,5 @@
 import type { Plugin } from '@opencode-ai/plugin';
+import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getBootstrapContent } from './bootstrap.js';
@@ -27,12 +28,7 @@ export const AgnesPlugin: Plugin = async ({ client }) => {
       }
     },
 
-    'experimental.chat.messages.transform': async (_input: {}, output: {
-      messages: Array<{
-        info: { role: string };
-        parts: Array<{ type: string; text?: string }>;
-      }>;
-    }) => {
+    'experimental.chat.messages.transform': async (_input, output) => {
       const bootstrap = getBootstrapContent();
       if (!bootstrap || !output.messages?.length) return;
 
@@ -55,7 +51,11 @@ export const AgnesPlugin: Plugin = async ({ client }) => {
       }
       const fullBootstrap = bootstrap + stateInjections + (planGate || '');
 
+      const ref = firstUser.parts[0];
       firstUser.parts.unshift({
+        id: randomUUID(),
+        sessionID: ref.sessionID,
+        messageID: ref.messageID,
         type: 'text',
         text: fullBootstrap,
       });
