@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildPlanSummary } from './state.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, '../..');
@@ -33,10 +34,9 @@ type BootstrapCacheEntry = {
 
 let _bootstrapCache: BootstrapCacheEntry | undefined = undefined;
 
-function getBootstrapContent(): string | null {
+function getStaticBootstrapContent(): string | null {
   const skillPath = path.join(skillsDir, 'ag-orchestrator', 'SKILL.md');
   if (!fs.existsSync(skillPath)) {
-    _bootstrapCache = undefined;
     return null;
   }
 
@@ -64,7 +64,7 @@ When skills reference tools you don't have, substitute OpenCode equivalents:
 
 Use OpenCode's native \`skill\` tool to list and load skills.`;
 
-  const bootstrapContent = `<EXTREMELY_IMPORTANT>
+  const staticContent = `<EXTREMELY_IMPORTANT>
 You are AGNES.
 
 **Runtime Identity** (AGNES internal install paths — distinct from the current project workspace)
@@ -81,8 +81,19 @@ ${trimmedContent}
 ${toolMapping}
 </EXTREMELY_IMPORTANT>`;
 
-  _bootstrapCache = { content: bootstrapContent, key: cacheKey };
-  return bootstrapContent;
+  _bootstrapCache = { content: staticContent, key: cacheKey };
+  return staticContent;
 }
 
-export { getBootstrapContent };
+export function getBootstrapContent(): string | null {
+  const staticContent = getStaticBootstrapContent();
+  if (!staticContent) return null;
+
+  const planSummary = buildPlanSummary(process.cwd());
+
+  return `${staticContent}
+
+<AGNES_PLAN_STATE>
+${planSummary}
+</AGNES_PLAN_STATE>`;
+}

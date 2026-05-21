@@ -5,98 +5,32 @@ import * as path3 from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 
 // src/bootstrap.ts
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
-import { fileURLToPath } from "url";
-var __dirname2 = path.dirname(fileURLToPath(import.meta.url));
-var packageRoot = path.resolve(__dirname2, "../..");
-var packageJsonPath = path.join(packageRoot, "package.json");
-var skillsDir = path.resolve(__dirname2, "../skills");
-var opencodePackageCache = path.join(os.homedir(), ".cache", "opencode", "packages");
-function extractFrontmatter(content) {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
-  if (!match)
-    return { content };
-  return { content: match[2] };
-}
-function getPackageVersion() {
-  if (!fs.existsSync(packageJsonPath))
-    return "unknown";
-  try {
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-    return packageJson.version || "unknown";
-  } catch {
-    return "unknown";
-  }
-}
-var _bootstrapCache = undefined;
-function getBootstrapContent() {
-  const skillPath = path.join(skillsDir, "ag-orchestrator", "SKILL.md");
-  if (!fs.existsSync(skillPath)) {
-    _bootstrapCache = undefined;
-    return null;
-  }
-  const version = getPackageVersion();
-  const skillStats = fs.statSync(skillPath);
-  const cacheKey = `${version}:${skillStats.mtimeMs}`;
-  if (_bootstrapCache !== undefined && _bootstrapCache.key === cacheKey) {
-    return _bootstrapCache.content;
-  }
-  const fullContent = fs.readFileSync(skillPath, "utf8");
-  const { content: frontmatterContent } = extractFrontmatter(fullContent);
-  const bootstrapEnd = frontmatterContent.indexOf("<!-- bootstrap-end -->");
-  const trimmedContent = bootstrapEnd !== -1 ? frontmatterContent.slice(0, bootstrapEnd).trim() : frontmatterContent;
-  const cacheNukeCommand = `Remove-Item -Recurse -Force "$env:USERPROFILE\\.cache\\opencode\\packages\\agnes@git+https_*"`;
-  const toolMapping = `**Tool Mapping for OpenCode:**
-When skills reference tools you don't have, substitute OpenCode equivalents:
-- \`TodoWrite\` \u2192 \`todowrite\`
-- \`Task\` with subagents \u2192 OpenCode's subagent system (@mention)
-- \`Skill\` \u2192 OpenCode's native \`skill\` tool
-- \`Read\`, \`Write\`, \`Edit\`, \`Bash\` \u2192 Your native tools
-
-Use OpenCode's native \`skill\` tool to list and load skills.`;
-  const bootstrapContent = `<EXTREMELY_IMPORTANT>
-You are AGNES.
-
-**Runtime Identity** (AGNES internal install paths \u2014 distinct from the current project workspace)
-- Current AGNES version: \`${version}\`
-- Installed AGNES package root: \`${packageRoot}\`
-- Bundled AGNES skills directory: \`${skillsDir}\`
-- OpenCode package cache root: \`${opencodePackageCache}\`
-- If the user explicitly asks to clear or nuke AGNES's OpenCode cache, remove the installed AGNES cache directory or use: \`${cacheNukeCommand}\`, then restart OpenCode.
-
-**IMPORTANT: The ag-orchestrator skill content is below. It is ALREADY LOADED. Do NOT use the skill tool to load "ag-orchestrator" again.**
-
-${trimmedContent}
-
-${toolMapping}
-</EXTREMELY_IMPORTANT>`;
-  _bootstrapCache = { content: bootstrapContent, key: cacheKey };
-  return bootstrapContent;
-}
-
-// src/state.ts
 import * as fs2 from "fs";
 import * as os2 from "os";
 import * as path2 from "path";
-var OPENCODE_CACHE_ROOT = path2.join(os2.homedir(), ".cache", "opencode", "packages");
+import { fileURLToPath } from "url";
+
+// src/state.ts
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+var OPENCODE_CACHE_ROOT = path.join(os.homedir(), ".cache", "opencode", "packages");
 function isBlockedPath(dir) {
-  const resolved = path2.resolve(dir);
-  const root = path2.resolve(OPENCODE_CACHE_ROOT);
-  if (os2.platform() === "win32") {
+  const resolved = path.resolve(dir);
+  const root = path.resolve(OPENCODE_CACHE_ROOT);
+  if (os.platform() === "win32") {
     return resolved.toLowerCase().startsWith(root.toLowerCase());
   }
   return resolved.startsWith(root);
 }
 function findProjectRoot(startDir) {
-  let dir = startDir ? path2.resolve(startDir) : process.cwd();
+  let dir = startDir ? path.resolve(startDir) : process.cwd();
   for (let i = 0;i < 20; i++) {
     if (isBlockedPath(dir))
       return null;
-    if (fs2.existsSync(path2.join(dir, ".cache", "agnes", "index.json")))
+    if (fs.existsSync(path.join(dir, ".cache", "agnes", "index.json")))
       return dir;
-    const parent = path2.dirname(dir);
+    const parent = path.dirname(dir);
     if (parent === dir)
       return null;
     dir = parent;
@@ -107,9 +41,9 @@ function readPlanIndex(projectRoot) {
   const root = projectRoot ?? findProjectRoot();
   if (!root)
     return null;
-  const indexPath = path2.join(root, ".cache", "agnes", "index.json");
+  const indexPath = path.join(root, ".cache", "agnes", "index.json");
   try {
-    const raw = fs2.readFileSync(indexPath, "utf8");
+    const raw = fs.readFileSync(indexPath, "utf8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -136,9 +70,9 @@ function getLatestActivePlan(projectRoot) {
   }
   if (!target)
     return null;
-  const planPath = path2.join(root, ".cache", "agnes", target.file);
+  const planPath = path.join(root, ".cache", "agnes", target.file);
   try {
-    const content = fs2.readFileSync(planPath, "utf8");
+    const content = fs.readFileSync(planPath, "utf8");
     return { entry: target, content };
   } catch {
     return null;
@@ -162,42 +96,117 @@ Goal: ${goal}
 Latest update: ${entry.updatedAt}`;
 }
 
+// src/bootstrap.ts
+var __dirname2 = path2.dirname(fileURLToPath(import.meta.url));
+var packageRoot = path2.resolve(__dirname2, "../..");
+var packageJsonPath = path2.join(packageRoot, "package.json");
+var skillsDir = path2.resolve(__dirname2, "../skills");
+var opencodePackageCache = path2.join(os2.homedir(), ".cache", "opencode", "packages");
+function extractFrontmatter(content) {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+  if (!match)
+    return { content };
+  return { content: match[2] };
+}
+function getPackageVersion() {
+  if (!fs2.existsSync(packageJsonPath))
+    return "unknown";
+  try {
+    const packageJson = JSON.parse(fs2.readFileSync(packageJsonPath, "utf8"));
+    return packageJson.version || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+var _bootstrapCache = undefined;
+function getStaticBootstrapContent() {
+  const skillPath = path2.join(skillsDir, "ag-orchestrator", "SKILL.md");
+  if (!fs2.existsSync(skillPath)) {
+    return null;
+  }
+  const version = getPackageVersion();
+  const skillStats = fs2.statSync(skillPath);
+  const cacheKey = `${version}:${skillStats.mtimeMs}`;
+  if (_bootstrapCache !== undefined && _bootstrapCache.key === cacheKey) {
+    return _bootstrapCache.content;
+  }
+  const fullContent = fs2.readFileSync(skillPath, "utf8");
+  const { content: frontmatterContent } = extractFrontmatter(fullContent);
+  const bootstrapEnd = frontmatterContent.indexOf("<!-- bootstrap-end -->");
+  const trimmedContent = bootstrapEnd !== -1 ? frontmatterContent.slice(0, bootstrapEnd).trim() : frontmatterContent;
+  const cacheNukeCommand = `Remove-Item -Recurse -Force "$env:USERPROFILE\\.cache\\opencode\\packages\\agnes@git+https_*"`;
+  const toolMapping = `**Tool Mapping for OpenCode:**
+When skills reference tools you don't have, substitute OpenCode equivalents:
+- \`TodoWrite\` \u2192 \`todowrite\`
+- \`Task\` with subagents \u2192 OpenCode's subagent system (@mention)
+- \`Skill\` \u2192 OpenCode's native \`skill\` tool
+- \`Read\`, \`Write\`, \`Edit\`, \`Bash\` \u2192 Your native tools
+
+Use OpenCode's native \`skill\` tool to list and load skills.`;
+  const staticContent = `<EXTREMELY_IMPORTANT>
+You are AGNES.
+
+**Runtime Identity** (AGNES internal install paths \u2014 distinct from the current project workspace)
+- Current AGNES version: \`${version}\`
+- Installed AGNES package root: \`${packageRoot}\`
+- Bundled AGNES skills directory: \`${skillsDir}\`
+- OpenCode package cache root: \`${opencodePackageCache}\`
+- If the user explicitly asks to clear or nuke AGNES's OpenCode cache, remove the installed AGNES cache directory or use: \`${cacheNukeCommand}\`, then restart OpenCode.
+
+**IMPORTANT: The ag-orchestrator skill content is below. It is ALREADY LOADED. Do NOT use the skill tool to load "ag-orchestrator" again.**
+
+${trimmedContent}
+
+${toolMapping}
+</EXTREMELY_IMPORTANT>`;
+  _bootstrapCache = { content: staticContent, key: cacheKey };
+  return staticContent;
+}
+function getBootstrapContent() {
+  const staticContent = getStaticBootstrapContent();
+  if (!staticContent)
+    return null;
+  const planSummary = buildPlanSummary(process.cwd());
+  return `${staticContent}
+
+<AGNES_PLAN_STATE>
+${planSummary}
+</AGNES_PLAN_STATE>`;
+}
+
 // src/runtime.ts
-function getCurrentState(workspaceRoot) {
+function getPlanState(workspaceRoot) {
   if (workspaceRoot === undefined) {
     workspaceRoot = findProjectRoot();
   }
-  if (!workspaceRoot)
-    return null;
-  const index = readPlanIndex(workspaceRoot);
-  if (!index) {
-    return {
-      hasActivePlan: false,
-      activePlanId: null,
-      planContent: null,
-      planEntry: null
-    };
+  if (!workspaceRoot) {
+    return { hasActivePlan: false, activePlan: null, planIndex: null, latestId: null };
+  }
+  const planIndex = readPlanIndex(workspaceRoot);
+  if (!planIndex) {
+    return { hasActivePlan: false, activePlan: null, planIndex: null, latestId: null };
   }
   const active = getLatestActivePlan(workspaceRoot);
-  if (!active) {
-    return {
-      hasActivePlan: false,
-      activePlanId: null,
-      planContent: null,
-      planEntry: null
-    };
-  }
+  const latestId = planIndex.plans.length > 0 ? [...planIndex.plans].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0].id : null;
   return {
-    hasActivePlan: true,
-    activePlanId: active.entry.id,
-    planContent: active.content,
-    planEntry: active.entry
+    hasActivePlan: active !== null,
+    activePlan: active,
+    planIndex,
+    latestId
   };
 }
-function getPlanGateFromState(state) {
-  if (!state.hasActivePlan) {
+function getPlanGate(workspaceRoot) {
+  const state = getPlanState(workspaceRoot);
+  if (!state.planIndex) {
     return `
-**PLAN REQUIRED:** No active plan found. Create a plan with \`.cache/agnes/\` before any implementation work.`;
+**PLAN REQUIRED:** No plan index found. Initialize AGNES state first.`;
+  }
+  if (!state.hasActivePlan) {
+    return "\n**PLAN REQUIRED:** No active plan found. Create a plan with `.cache/agnes/` before any implementation work.";
+  }
+  if (state.activePlan && state.activePlan.entry.status === "blocked") {
+    return `
+**BLOCKED PLAN:** ${state.activePlan.entry.id} is blocked. Resolve or create a new iteration.`;
   }
   return null;
 }
@@ -226,22 +235,16 @@ var AgnesPlugin = async ({ client }) => {
         return;
       if (firstUser.parts.some((p) => p.type === "text" && typeof p.text === "string" && p.text.includes("EXTREMELY_IMPORTANT")))
         return;
-      let planSummary = "";
       let planGate = "";
       try {
         const workspaceRoot = findProjectRoot();
         if (workspaceRoot) {
-          planSummary = buildPlanSummary(workspaceRoot);
-          const state = getCurrentState(workspaceRoot);
-          if (state)
-            planGate = getPlanGateFromState(state) || "";
+          planGate = getPlanGate(workspaceRoot) || "";
         }
       } catch (err) {
         console.debug("agnes: state read failed \u2014", err);
       }
-      const fullBootstrap = bootstrap + (planSummary ? `
-
-` + planSummary : "") + (planGate || "");
+      const fullBootstrap = bootstrap + (planGate || "");
       const ref = firstUser.parts[0];
       firstUser.parts.unshift({
         id: randomUUID(),

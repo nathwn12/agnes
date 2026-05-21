@@ -2,6 +2,32 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.6.0 (2026-05-22)
+
+### Added
+
+- **State system v2**: Migrated from `docs/agnes/` to `.cache/agnes/` — immutable plan-NNN.md files with append-only iteration model, searchable index.json metadata hub. (verified: 37 tests pass)
+- **Delegation Contract**: Five hard rules enforced — main context restricted to state/communication; dynamic subagent count; fresh subagents per wave; closed-loop execution; self-audit gate before every response. (verified: automation gate tests)
+- **Blocked plan gate**: `getPlanGate()` returns `BLOCKED PLAN` when active plan has blocked > 0 — prevents infinite retry loops. (verified: `src/state.test.ts:653`)
+- **Self-audit boundary enforcement**: Boundary violations create blocked plan iteration and stop — no self-correction in same message. (verified: state machine tests)
+
+### Changed
+
+- **Plugin rewrite**: Replaced legacy `docs/agnes/` state reads with `.cache/agnes/index.json` + `plan-NNN.md` — now injects active plan summary, plan gate, and AGENTS.md content. (verified: `src/plugin.ts`)
+- **Bootstrap injection**: Dynamic AGNES_PLAN_STATE injection with active plan summary (ID, status, tasks, goal) instead of old state file blocks. (verified: `src/bootstrap.ts`)
+- **State API surface**: Replaced 10 legacy functions (`detectStateDirectory`, `listStateFiles`, `readFrontmatter`, etc.) with 4 PlanIndex CRUD functions + `getPlanGate`/`getPlanState`. (verified: `src/state.ts`)
+- **ag-init output**: Now generates `.cache/agnes/index.json` and `plan-001.md` instead of `docs/agnes/` files. (verified: `ag-init/SKILL.md`)
+- **SKILL.md Tool Requirements**: Clear separation of AGNES main-context tools vs subagent-only tools (`edit`, `glob`, `grep`). (verified: orchestrator/SKILL.md)
+
+### Removed
+
+- **Legacy state APIs**: All old `docs/agnes/` directory detection, file reading, and state snapshot functions — replaced by PlanIndex CRUD. (verified: `bun run typecheck`)
+- **`review-package/`**: Temporary audit artifacts removed from tracking. (verified: `git rm`)
+
+### Fixed
+
+- **Plugin duplicate plan-state append**: BuildPlanSummary was read and appended twice — now only planGate is appended after goal injection. (verified: `src/plugin.ts`)
+
 ## 0.5.0 (2026-05-22)
 
 ### Added

@@ -15,7 +15,9 @@ import {
   createPlanIteration,
   updatePlanStatus,
 } from './state.js';
-import type { PlanIndex } from './state.js';
+import type { PlanIndex, ActivePlan } from './state.js';
+import { getPlanState, getPlanGate, getCurrentState, getPlanGateFromState } from './runtime.js';
+import type { AgnesRuntimeState } from './runtime.js';
 
 function createTempProject(): string {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-'));
@@ -80,7 +82,7 @@ describe('cacheDir', () => {
     expect(cacheDir(tmp)).toBe(path.join(tmp, '.cache', 'agnes'));
   });
 
-  test('returns null for unresolvable root', () => {
+  test('returns path for existing temporary root even without index', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-'));
     expect(cacheDir(tmp)).toBe(path.join(tmp, '.cache', 'agnes'));
   });
@@ -253,6 +255,22 @@ describe('getNextPlanId', () => {
     fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'index.json'), '{}', 'utf8');
     expect(getNextPlanId(tmp)).toBe('plan-002');
   });
+
+  test('plan file writes leave no .tmp file after success', () => {
+    const tmp = createTempProject();
+    createPlan({
+      summary: 'Test',
+      goal: 'Goal',
+      check: 'check',
+      tasks: ['Task 1'],
+      projectRoot: tmp,
+    });
+    const planPath = path.join(tmp, '.cache', 'agnes', 'plan-001.md');
+    expect(fs.existsSync(planPath)).toBe(true);
+    const tmpFiles = fs.readdirSync(path.join(tmp, '.cache', 'agnes'))
+      .filter(f => f.endsWith('.tmp'));
+    expect(tmpFiles).toEqual([]);
+  });
 });
 
 describe('createPlan', () => {
@@ -309,6 +327,21 @@ describe('createPlan', () => {
     expect(content).toContain('- [x] Completed');
     expect(content).toContain('- [/] Blocked');
     expect(content).toContain('- [ ] Pending');
+  });
+
+  test('createPlan with done status does not set activePlanId', () => {
+    const tmp = createTempProject();
+    const active = createPlan({
+      summary: 'Done plan',
+      goal: 'Done',
+      check: 'check',
+      tasks: ['Task 1'],
+      status: 'done',
+      projectRoot: tmp,
+    });
+    expect(active.entry.status).toBe('done');
+    const index = readIndex(tmp)!;
+    expect(index.activePlanId).toBeNull();
   });
 });
 
@@ -367,7 +400,36 @@ describe('createPlanIteration', () => {
     });
 
     const index = readIndex(tmp)!;
-    expect(index.activePlanId).toBe('plan-001');
+    expect(index.activePlanId).toBeNull();
+  });
+
+  test('createPlanIteration marks parent abandoned when creating child', () => {
+    const tmp = createTempProject();
+    const parent = createPlan({
+      summary: 'Parent',
+      goal: 'Parent goal',
+      check: 'check',
+      tasks: ['Task 1'],
+      projectRoot: tmp,
+    });
+
+    createPlanIteration({
+      parent: parent.entry.id,
+      summary: 'Child',
+      goal: 'Child goal',
+      check: 'check',
+      tasksMarkdown: '- [x] Task 1\n- [ ] Task 2',
+      status: 'in_progress',
+      completed: 1,
+      blocked: 0,
+      projectRoot: tmp,
+    });
+
+    const index = readIndex(tmp)!;
+    const parentEntry = index.plans.find(p => p.id === parent.entry.id);
+    expect(parentEntry).not.toBeNull();
+    expect(parentEntry!.status).toBe('abandoned');
+    expect(index.activePlanId).toBe('plan-002');
   });
 });
 
@@ -406,5 +468,213 @@ describe('updatePlanStatus', () => {
       projectRoot: tmp,
     });
     expect(result).toBeNull();
+  });
+
+  test('updatePlanStatus(done) clears activePlanId when plan is active', () => {
+    const tmp = createTempProject();
+    createPlan({
+      summary: 'Test',
+      goal: 'Goal',
+      check: 'check',
+      tasks: ['Task 1'],
+      status: 'in_progress',
+      projectRoot: tmp,
+    });
+
+    const index = readIndex(tmp)!;
+    expect(index.activePlanId).toBe('plan-001');
+
+    updatePlanStatus({
+      id: 'plan-001',
+      status: 'done',
+      completed: 1,
+      projectRoot: tmp,
+    });
+
+    const updated = readIndex(tmp)!;
+    expect(updated.activePlanId).toBeNull();
+  });
+
+  test('updatePlanStatus(in_progress) sets activePlanId', () => {
+    const tmp = createTempProject();
+    createPlan({
+      summary: 'Test',
+      goal: 'Goal',
+      check: 'check',
+      tasks: ['Task 1'],
+      projectRoot: tmp,
+    });
+
+    let index = readIndex(tmp)!;
+    expect(index.activePlanId).toBe('plan-001');
+
+    updatePlanStatus({
+      id: 'plan-001',
+      status: 'done',
+      completed: 1,
+      projectRoot: tmp,
+    });
+
+    index = readIndex(tmp)!;
+    expect(index.activePlanId).toBeNull();
+
+    updatePlanStatus({
+      id: 'plan-001',
+      status: 'in_progress',
+      completed: 1,
+      projectRoot: tmp,
+    });
+
+    index = readIndex(tmp)!;
+    expect(index.activePlanId).toBe('plan-001');
+  });
+});
+
+describe('getPlanState', () => {
+  test('returns no-index state when no project root', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-'));
+    const state = getPlanState(tmp);
+    expect(state.hasActivePlan).toBe(false);
+    expect(state.activePlan).toBeNull();
+    expect(state.planIndex).toBeNull();
+    expect(state.latestId).toBeNull();
+  });
+
+  test('returns no-active-plan state when index exists but empty', () => {
+    const tmp = createTempProject();
+    const now = new Date().toISOString();
+    writeIndex(tmp, {
+      agnesVersion: '0.4.4',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: now,
+      activePlanId: null,
+      plans: [],
+    });
+    const state = getPlanState(tmp);
+    expect(state.hasActivePlan).toBe(false);
+    expect(state.activePlan).toBeNull();
+    expect(state.planIndex).not.toBeNull();
+    expect(state.latestId).toBeNull();
+  });
+
+  test('returns active plan state', () => {
+    const tmp = createTempProject();
+    const now = new Date().toISOString();
+    writeIndex(tmp, {
+      agnesVersion: '0.4.4',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: now,
+      activePlanId: 'plan-001',
+      plans: [{
+        id: 'plan-001',
+        status: 'in_progress',
+        createdAt: now,
+        updatedAt: now,
+        summary: 'Active plan',
+        total: 2,
+        completed: 1,
+        blocked: 0,
+        file: 'plan-001.md',
+      }],
+    });
+    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'Goal: Test\n\nTasks:\n- [x] one\n- [ ] two', 'utf8');
+    const state = getPlanState(tmp);
+    expect(state.hasActivePlan).toBe(true);
+    expect(state.activePlan).not.toBeNull();
+    expect(state.activePlan!.entry.id).toBe('plan-001');
+    expect(state.planIndex).not.toBeNull();
+    expect(state.latestId).toBe('plan-001');
+  });
+});
+
+describe('getPlanGate', () => {
+  test('returns warning when no index found', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-'));
+    const gate = getPlanGate(tmp);
+    expect(gate).toContain('PLAN REQUIRED');
+  });
+
+  test('returns warning when no active plan', () => {
+    const tmp = createTempProject();
+    const now = new Date().toISOString();
+    writeIndex(tmp, {
+      agnesVersion: '0.4.4',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: now,
+      activePlanId: null,
+      plans: [{
+        id: 'plan-001',
+        status: 'done',
+        createdAt: now,
+        updatedAt: now,
+        summary: 'Done plan',
+        total: 1,
+        completed: 1,
+        blocked: 0,
+        file: 'plan-001.md',
+      }],
+    });
+    const gate = getPlanGate(tmp);
+    expect(gate).toContain('No active plan');
+  });
+
+  test('returns null when active plan exists', () => {
+    const tmp = createTempProject();
+    const now = new Date().toISOString();
+    writeIndex(tmp, {
+      agnesVersion: '0.4.4',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: now,
+      activePlanId: 'plan-001',
+      plans: [{
+        id: 'plan-001',
+        status: 'in_progress',
+        createdAt: now,
+        updatedAt: now,
+        summary: 'Active plan',
+        total: 1,
+        completed: 0,
+        blocked: 0,
+        file: 'plan-001.md',
+      }],
+    });
+    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'Goal: Test', 'utf8');
+    expect(getPlanGate(tmp)).toBeNull();
+  });
+
+  test('returns BLOCKED PLAN when active plan is blocked', () => {
+    const tmp = createTempProject();
+    const now = new Date().toISOString();
+    writeIndex(tmp, {
+      agnesVersion: '0.4.4',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: now,
+      activePlanId: 'plan-001',
+      plans: [{
+        id: 'plan-001',
+        status: 'blocked',
+        createdAt: now,
+        updatedAt: now,
+        summary: 'Blocked plan',
+        total: 1,
+        completed: 0,
+        blocked: 1,
+        file: 'plan-001.md',
+      }],
+    });
+    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'Goal: Test', 'utf8');
+    const gate = getPlanGate(tmp);
+    expect(gate).toContain('BLOCKED PLAN');
+    expect(gate).toContain('plan-001');
   });
 });

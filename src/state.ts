@@ -170,7 +170,9 @@ function writePlanFile(root: string, id: string, content: string): string {
   const file = `${id}.md`;
   const filePath = path.join(root, '.cache', 'agnes', file);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, content, 'utf8');
+  const tmp = `${filePath}.tmp`;
+  fs.writeFileSync(tmp, content, 'utf8');
+  fs.renameSync(tmp, filePath);
   return file;
 }
 
@@ -247,7 +249,8 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
 
   index.plans.push(entry);
   index.updatedAt = now;
-  index.activePlanId = id;
+  const isActive = status === 'draft' || status === 'in_progress' || status === 'blocked';
+  index.activePlanId = isActive ? id : null;
   writePlanIndex(index, root);
 
   return { entry, content };
@@ -312,10 +315,18 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
   const index = readPlanIndex(root);
   if (!index) throw new Error('Cannot create plan iteration: no index found');
 
+  const parentEntry = index.plans.find(p => p.id === input.parent);
+  if (parentEntry && !['done', 'abandoned'].includes(parentEntry.status)) {
+    parentEntry.status = 'abandoned';
+    parentEntry.updatedAt = now;
+  }
+
   index.plans.push(entry);
   index.updatedAt = now;
-  const isTerminal = input.status === 'done' || input.status === 'abandoned';
-  if (!isTerminal) {
+
+  if (input.status === 'done' || input.status === 'abandoned') {
+    index.activePlanId = null;
+  } else {
     index.activePlanId = id;
   }
   writePlanIndex(index, root);
@@ -346,6 +357,15 @@ export function updatePlanStatus(input: {
   if (input.blocked !== undefined) entry.blocked = input.blocked;
 
   index.updatedAt = now;
+
+  if (input.status === 'done' || input.status === 'abandoned') {
+    if (index.activePlanId === input.id) index.activePlanId = null;
+  }
+
+  if (input.status === 'draft' || input.status === 'in_progress' || input.status === 'blocked') {
+    index.activePlanId = input.id;
+  }
+
   writePlanIndex(index, root);
 
   return entry;
