@@ -26,23 +26,33 @@ function getPackageVersion(): string {
   }
 }
 
-let _bootstrapCache: string | null | undefined = undefined;
+type BootstrapCacheEntry = {
+  content: string | null;
+  key: string;
+};
+
+let _bootstrapCache: BootstrapCacheEntry | undefined = undefined;
 
 function getBootstrapContent(): string | null {
-  if (_bootstrapCache !== undefined) return _bootstrapCache;
-
   const skillPath = path.join(skillsDir, 'ag-orchestrator', 'SKILL.md');
   if (!fs.existsSync(skillPath)) {
-    _bootstrapCache = null;
+    _bootstrapCache = undefined;
     return null;
   }
 
-  const fullContent = fs.readFileSync(skillPath, 'utf8');
-  const { content } = extractFrontmatter(fullContent);
-
-  const bootstrapEnd = content.indexOf('<!-- bootstrap-end -->');
-  const trimmedContent = bootstrapEnd !== -1 ? content.slice(0, bootstrapEnd).trim() : content;
   const version = getPackageVersion();
+  const skillStats = fs.statSync(skillPath);
+  const cacheKey = `${version}:${skillStats.mtimeMs}`;
+
+  if (_bootstrapCache !== undefined && _bootstrapCache.key === cacheKey) {
+    return _bootstrapCache.content;
+  }
+
+  const fullContent = fs.readFileSync(skillPath, 'utf8');
+  const { content: frontmatterContent } = extractFrontmatter(fullContent);
+
+  const bootstrapEnd = frontmatterContent.indexOf('<!-- bootstrap-end -->');
+  const trimmedContent = bootstrapEnd !== -1 ? frontmatterContent.slice(0, bootstrapEnd).trim() : frontmatterContent;
   const cacheNukeCommand = `Remove-Item -Recurse -Force "$env:USERPROFILE\\.cache\\opencode\\packages\\agnes@git+https_*"`;
 
   const toolMapping = `**Tool Mapping for OpenCode:**
@@ -54,7 +64,7 @@ When skills reference tools you don't have, substitute OpenCode equivalents:
 
 Use OpenCode's native \`skill\` tool to list and load skills.`;
 
-  _bootstrapCache = `<EXTREMELY_IMPORTANT>
+  const bootstrapContent = `<EXTREMELY_IMPORTANT>
 You are AGNES.
 
 **Runtime Identity** (AGNES internal install paths — distinct from the current project workspace)
@@ -71,7 +81,8 @@ ${trimmedContent}
 ${toolMapping}
 </EXTREMELY_IMPORTANT>`;
 
-  return _bootstrapCache;
+  _bootstrapCache = { content: bootstrapContent, key: cacheKey };
+  return bootstrapContent;
 }
 
 export { getBootstrapContent };

@@ -12,14 +12,14 @@ You need to set up AGNES in a new project, or update an existing project's AGENT
 
 ## Core Concept
 
-Initialises a project to work with AGNES. Creates `docs/agnes/` with four convention files and writes or updates `AGENTS.md` in the project root.
+Initialises a project to work with AGNES. Creates `docs/agnes/` with three state files and writes or updates `AGENTS.md` in the project root.
 
 The project AGENTS.md is minimal by design — everything in it pays a token cost every turn. Always-on swarm ethos and state rules only; everything else lives in skills.
 
 ## Precise Vocabulary
 
 - **Project root** — the first ancestor directory containing `package.json`, `.git`, or `.opencode`
-- **State files** — the four files in `docs/agnes/`: `goal.md`, `plan.md`, `session.md`, `handoff.md`
+- **State files** — the three state files in `docs/agnes/`: `goal.md`, `plan.md`, `handoff.md`
 - **AGENTS.md** — project root config file consumed by the agent every turn
 - **Handoff** — saved session state for another agent or future continuation
 
@@ -98,38 +98,6 @@ Goal: <copied from goal.md>
 3. Pending items MAY tag a handler with `@`
 4. No commentary. No free text.
 5. Update before every delegation wave.
-```
-```
-
-#### `docs/agnes/session.md`
-
-```markdown
-# Session Management
-
-Every session follows the same curve: smart zone → dumb zone.
-
-```
-Sharp ┃▒▒▒▒▒▒▒▒▒▒▒░░░░░░░░░░░░░░  Dumb
-      ┃ SMART ZONE   DUMB ZONE
-      ┗━━━━━━━━━━━━━━━━━━━━━━━━━━
-      tokens / turns →
-```
-
-**Three boundaries:**
-
-| Action | When | What happens |
-|--------|------|-------------|
-| **Clear** | Goal met, or deep in dumb zone with no useful state | Fresh session, empty context |
-| **Compact** | Mid-task, context bloated, useful state to carry | Update plan.md → summarise → clear → re-seed |
-| **Handoff** | Role switch, parallel fan-out, user says "stop" | Update plan.md → write handoff.md → stop |
-
-**Decision tree:**
-
-```
-Session heavy?
-├── Goal met? → Clear
-├── Useful state? → No → Clear
-└── Yes → Role switch? → Yes → Handoff | No → Compact
 ```
 ```
 
@@ -227,7 +195,7 @@ This project uses AGNES, a swarm orchestrator that routes tasks across fused ski
 
 ### 4. Verify
 
-1. Confirm `docs/agnes/goal.md`, `plan.md`, `session.md`, `handoff.md` all exist with content
+1. Confirm `docs/agnes/goal.md`, `plan.md`, `handoff.md` all exist with content
 2. Confirm `AGENTS.md` exists and contains the AGNES block
 3. Report the project is initialised
 
@@ -249,13 +217,12 @@ This project uses AGNES, a swarm orchestrator that routes tasks across fused ski
 └── docs/agnes/
     ├── goal.md            Completion condition format
     ├── plan.md            Three-status checklist format
-    ├── session.md         Smart zone, compaction, clearing, handoff
     └── handoff.md         Session state for next agent
 ```
 
 ## Quality Criteria
 
-1. All four state files in `docs/agnes/` exist with content (not empty placeholders)
+1. All three state files in `docs/agnes/` exist with content (not empty placeholders)
 2. `AGENTS.md` exists and contains the AGNES identity block at the top
 3. Existing state files with real content are unchanged
 

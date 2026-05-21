@@ -36,7 +36,7 @@ To pin a specific version:
 
 ```json
 {
-  "plugin": ["agnes@git+https://github.com/nathwn12/agnes.git#v0.1.1"]
+  "plugin": ["agnes@git+https://github.com/nathwn12/agnes.git#v0.4.2"]
 }
 ```
 

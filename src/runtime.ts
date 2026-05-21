@@ -9,8 +9,10 @@ export interface AgnesRuntimeState {
   handoffContent: string | null;
 }
 
-export function getCurrentState(): AgnesRuntimeState | null {
-  const workspaceRoot = detectStateDirectory();
+export function getCurrentState(workspaceRoot?: string | null): AgnesRuntimeState | null {
+  if (workspaceRoot === undefined) {
+    workspaceRoot = detectStateDirectory();
+  }
   if (!workspaceRoot) return null;
 
   const files = listStateFiles(workspaceRoot);
@@ -28,13 +30,15 @@ export function getCurrentState(): AgnesRuntimeState | null {
   };
 }
 
-export function getPlanGate(): string | null {
-  const state = getCurrentState();
-  if (!state) return null;
-
+export function getPlanGateFromState(state: AgnesRuntimeState): string | null {
   if (state.hasGoal && !state.hasPlan) {
     return `\n**PLAN REQUIRED:** \`docs/agnes/plan.md\` does not exist but \`docs/agnes/goal.md\` does. Create \`docs/agnes/plan.md\` with a task checklist before any implementation work.`;
   }
-
   return null;
+}
+
+export function getPlanGate(): string | null {
+  const state = getCurrentState();
+  if (!state) return null;
+  return getPlanGateFromState(state);
 }

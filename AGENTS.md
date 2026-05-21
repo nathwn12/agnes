@@ -9,7 +9,7 @@ AGNES is a swarm orchestrator plugin that routes tasks across 23 fused skills. I
 ## Available Skills
 | Skill | Phase | Use When |
 |-------|-------|----------|
-| ag-init | SETUP | Initialise AGNES state files and AGENTS.md in a project |
+| ag-init | SETUP | Initialize AGNES state files and AGENTS.md in a project |
 | ag-orchestrator | META | Routing, delegation, parallelism coordination |
 | ag-clarifier | THINK | Vague requests, terminology conflicts |
 | ag-explorer | RESEARCH | Understanding codebase, dependency research |

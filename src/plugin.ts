@@ -2,8 +2,8 @@ import type { Plugin } from '@opencode-ai/plugin';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getBootstrapContent } from './bootstrap.js';
-import { getStateFileInjections } from './state.js';
-import { getPlanGate } from './runtime.js';
+import { detectStateDirectory, buildStateInjectionStrings } from './state.js';
+import { getCurrentState, getPlanGateFromState } from './runtime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const skillsDir = path.resolve(__dirname, '../skills');
@@ -42,22 +42,20 @@ export const AgnesPlugin: Plugin = async ({ client }) => {
       if (firstUser.parts.some((p) => p.type === 'text' && typeof p.text === 'string' && p.text.includes('EXTREMELY_IMPORTANT'))) return;
 
       let stateInjections = '';
-      try {
-        stateInjections = getStateFileInjections();
-      } catch {
-        // State detection failed — safe to skip. Bootstrap still injected.
-      }
       let planGate = '';
       try {
-        planGate = getPlanGate() || '';
-      } catch {
-        // Plan gate read failed — safe to skip. Bootstrap still injected.
+        const workspaceRoot = detectStateDirectory();
+        if (workspaceRoot) {
+          stateInjections = buildStateInjectionStrings(workspaceRoot);
+          const state = getCurrentState(workspaceRoot);
+          if (state) planGate = getPlanGateFromState(state) || '';
+        }
+      } catch (err) {
+        console.debug('agnes: state read failed —', err);
       }
       const fullBootstrap = bootstrap + stateInjections + (planGate || '');
 
-      const ref = firstUser.parts[0];
       firstUser.parts.unshift({
-        ...ref,
         type: 'text',
         text: fullBootstrap,
       });

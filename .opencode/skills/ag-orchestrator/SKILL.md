@@ -11,7 +11,7 @@ tools: [task, skill, read, write, edit, todowrite, bash, glob, grep]
 - Coordinating a multi-step software engineering workflow that spans multiple phases
 - Deciding which skill to load for a given task
 - Delegating work to subagents rather than doing it directly
-- Tracking progress across a session with goal.md, plan.md, and session.md
+- Tracking progress across a session with goal.md, plan.md, and handoff.md
 - Making parallelism decisions — when to fan out tasks vs sequence them
 - Entering a session boundary decision (clear, compact, or handoff)
 
@@ -107,13 +107,12 @@ Given a set of tasks:
 
 ### State Management
 
-Four files in `docs/agnes/`:
+Three files in `docs/agnes/`:
 
 | File | Write when | Content |
 |------|------------|---------|
 | `goal.md` | Task starts | Completion condition. Measurable end state + check + constraints. |
 | `plan.md` | After goal, update every wave | Three-status checklist. No commentary. |
-| `session.md` | Before each wave | Smart zone tracking, clear/compact/handoff decision tree. |
 | `handoff.md` | User says "handoff"/"stop", or 3 fails | Progress, evidence, next. Then stop. |
 
 **Session boundaries:**
@@ -145,7 +144,7 @@ Done when: <condition satisfied or N waves elapsed>
 
 - `task` — spawn subagents for all discrete work; never write code directly
 - `skill` — discover, load, and invoke domain skills
-- `read` / `write` — manage state files (goal.md, plan.md, session.md, handoff.md)
+- `read` / `write` — manage state files (goal.md, plan.md, handoff.md)
 - `edit` — apply surgical changes to files
 - `todowrite` — track multi-step task progress within a session
 - `bash` — run verification commands (never assume, always verify)
@@ -242,7 +241,7 @@ Task starts
 │    ▼ (each wave)                                    │
 │ 3. Re-read goal.md       ← stay focused             │
 │ 4. Read plan.md          ← pick next item           │
-│ 5. Check session.md      ← still in smart zone?     │
+│ 5. Check session age     ← still in smart zone?     │
 │    │                                                │
 │    ├── Smart zone → delegate → update plan.md → 3   │
 │    │                                                │

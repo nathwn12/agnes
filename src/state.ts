@@ -13,20 +13,6 @@ function isBlockedPath(dir: string): boolean {
   return resolved.startsWith(root);
 }
 
-function findProjectRoot(): string | null {
-  let dir = process.cwd();
-  for (let i = 0; i < 20; i++) {
-    if (isBlockedPath(dir)) return null;
-    if (fs.existsSync(path.join(dir, 'package.json')) ||
-        fs.existsSync(path.join(dir, '.git')) ||
-        fs.existsSync(path.join(dir, '.opencode'))) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-  return null;
-}
-
 function findWorkspaceRoot(): string | null {
   let dir = process.cwd();
   for (let i = 0; i < 20; i++) {
@@ -58,13 +44,8 @@ function readFrontmatter(workspaceRoot: string, name: string): Record<string, st
   const filePath = path.join(stateDir(workspaceRoot), name);
   if (!fs.existsSync(filePath)) return null;
 
-  const fd = fs.openSync(filePath, 'r');
-  const buffer = Buffer.alloc(4096);
-  const bytesRead = fs.readSync(fd, buffer, 0, 4096, 0);
-  fs.closeSync(fd);
-
-  const head = buffer.toString('utf8', 0, bytesRead);
-  const match = head.match(/^---\r?\n([\s\S]*?)\r?\n?---/);
+  const content = fs.readFileSync(filePath, 'utf8');
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n?---/);
   if (!match) return {};
 
   const result: Record<string, string> = {};
@@ -113,10 +94,7 @@ function readStateFile(workspaceRoot: string, name: string): string | null {
   return fs.readFileSync(filePath, 'utf8');
 }
 
-function getStateFileInjections(): string {
-  const workspaceRoot = detectStateDirectory();
-  if (!workspaceRoot) return '';
-
+function buildStateInjectionStrings(workspaceRoot: string): string {
   const files = listStateFiles(workspaceRoot);
   const goalStatus = getFileStatus(workspaceRoot, 'goal.md');
   const handoffStatus = getFileStatus(workspaceRoot, 'handoff.md');
@@ -178,4 +156,10 @@ ${goalContent}
   return '';
 }
 
-export { getStateFileInjections, detectStateDirectory, findWorkspaceRoot, readStateFile, listStateFiles, readFrontmatter, getFileStatus };
+function getStateFileInjections(): string {
+  const workspaceRoot = detectStateDirectory();
+  if (!workspaceRoot) return '';
+  return buildStateInjectionStrings(workspaceRoot);
+}
+
+export { getStateFileInjections, buildStateInjectionStrings, detectStateDirectory, findWorkspaceRoot, readStateFile, listStateFiles, readFrontmatter, getFileStatus };

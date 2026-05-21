@@ -36,10 +36,10 @@ Restart OpenCode. AGNES injects its bootstrap and registers all 23 skills automa
 
 ## Pipeline
 
-Work flows left to right through 9 phases. When blocked, loops back.
+Work flows left to right through 10 phases. When blocked, loops back.
 
 ```
-Setup → Clarify → Research → Architect → Design/Plan → Build → Verify/Review → Ship → Reflect
+Setup → Clarify → Research → Architect → Design/Plan → Build → Verify/Review → Debug → Ship → Reflect
 ```
 
 | Phase | Skills | Purpose |
@@ -63,6 +63,7 @@ All 23 skills, their trigger conditions, and what they produce:
 
 | Skill | Phase | When to Use | Output |
 |-------|-------|-------------|--------|
+| **ag-orchestrator** | META | Routing, delegation, parallelism | Delegation waves, goal/plan state |
 | **ag-init** | Setup | First run in a project, refresh state files | `docs/agnes/` + `AGENTS.md` |
 | **ag-clarifier** | Think | Vague requests, terminology conflicts | Written, user-approved spec |
 | **ag-explorer** | Research | Need to understand codebase, find patterns | Structured findings report |
@@ -126,7 +127,7 @@ docs/agnes/
 ├── goal.md        Completion condition — re-read before every wave
 ├── plan.md        Three-status checklist linked to the goal
 ├── handoff.md     Session state for another agent or later continuation
-└── learnings/    (planned)
+└── learnings/    (not yet implemented)
 ```
 
 ---
