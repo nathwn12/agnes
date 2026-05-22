@@ -3,6 +3,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 const OPENCODE_CACHE_ROOT = path.join(os.homedir(), '.cache', 'opencode', 'packages');
+const AGNES_DIR = '.agnes';
+const PLANS_DIR = 'plans';
 const AGNES_VERSION = '0.7.2';
 
 function isBlockedPath(dir: string): boolean {
@@ -74,7 +76,7 @@ export function resetProjectRootCache(): void {
 
 export function findProjectRoot(startDir?: string): string | null {
   if (_cachedProjectRoot && !startDir) {
-    const indexPath = path.join(_cachedProjectRoot, '.cache', 'agnes', 'index.json');
+    const indexPath = path.join(_cachedProjectRoot, AGNES_DIR, 'index.json');
     if (fs.existsSync(indexPath)) {
       return _cachedProjectRoot;
     }
@@ -85,7 +87,7 @@ export function findProjectRoot(startDir?: string): string | null {
   let found: string | null = null;
   for (let i = 0; i < 20; i++) {
     if (isBlockedPath(dir)) break;
-    if (fs.existsSync(path.join(dir, '.cache', 'agnes', 'index.json'))) {
+    if (fs.existsSync(path.join(dir, AGNES_DIR, 'index.json'))) {
       found = dir;
       break;
     }
@@ -103,7 +105,7 @@ export function findProjectRoot(startDir?: string): string | null {
 export function cacheDir(projectRoot?: string): string | null {
   const root = projectRoot ?? findProjectRoot();
   if (!root) return null;
-  return path.join(root, '.cache', 'agnes');
+  return path.join(root, AGNES_DIR);
 }
 
 function validatePlanIndex(raw: unknown): raw is PlanIndex {
@@ -120,7 +122,7 @@ function validatePlanIndex(raw: unknown): raw is PlanIndex {
 export function readPlanIndex(projectRoot?: string): PlanIndex | null {
   const root = projectRoot ?? findProjectRoot();
   if (!root) return null;
-  const indexPath = path.join(root, '.cache', 'agnes', 'index.json');
+  const indexPath = path.join(root, AGNES_DIR, 'index.json');
   try {
     const raw = fs.readFileSync(indexPath, 'utf8');
     const parsed = JSON.parse(raw);
@@ -135,7 +137,7 @@ export function readPlanIndex(projectRoot?: string): PlanIndex | null {
 export function writePlanIndex(index: PlanIndex, projectRoot?: string): void {
   const root = projectRoot ?? findProjectRoot();
   if (!root) throw new Error('Cannot write plan index: no project root found');
-  const dir = path.join(root, '.cache', 'agnes');
+  const dir = path.join(root, AGNES_DIR);
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, 'index.json');
   const tmp = filePath + '.tmp';
@@ -160,7 +162,7 @@ export function pruneExpiredPlans(index: PlanIndex, projectRoot?: string): PlanI
     if (terminalSet.has(entry.status as 'done' | 'abandoned')) {
       const updatedMs = new Date(entry.updatedAt).getTime();
       if (!isNaN(updatedMs) && updatedMs <= cutoffMs) {
-        const planPath = path.join(root, '.cache', 'agnes', entry.file);
+        const planPath = path.join(root, AGNES_DIR, PLANS_DIR, entry.file);
         try {
           fs.rmSync(planPath, { force: true });
         } catch {
@@ -219,7 +221,7 @@ export function getLatestActivePlan(projectRoot?: string): ActivePlan | null {
 
   if (!target) return null;
 
-  const planPath = path.join(root, '.cache', 'agnes', target.file);
+  const planPath = path.join(root, AGNES_DIR, PLANS_DIR, target.file);
   try {
     const content = fs.readFileSync(planPath, 'utf8');
     return { entry: target, content };
@@ -266,8 +268,8 @@ export function getNextPlanId(projectRoot?: string): string {
   const root = projectRoot ?? findProjectRoot();
   if (!root) return 'plan-001';
 
-  const cache = path.join(root, '.cache', 'agnes');
-  if (!fs.existsSync(cache)) return 'plan-001';
+  const cache = path.join(root, AGNES_DIR, PLANS_DIR);
+  fs.mkdirSync(cache, { recursive: true });
 
   let max = 0;
   try {
@@ -288,7 +290,7 @@ export function getNextPlanId(projectRoot?: string): string {
 
 function writePlanFile(root: string, id: string, content: string): string {
   const file = `${id}.md`;
-  const filePath = path.join(root, '.cache', 'agnes', file);
+  const filePath = path.join(root, AGNES_DIR, PLANS_DIR, file);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const tmp = `${filePath}.tmp`;
   fs.writeFileSync(tmp, content, 'utf8');
@@ -798,7 +800,7 @@ export function transitionPlanStatus(planId: string, newStatus: string, projectR
 
   const transitionsRequiringQuality = new Set(['reviewed', 'ready']);
   if (transitionsRequiringQuality.has(newStatus)) {
-    const planPath = path.join(root, '.cache', 'agnes', entry.file);
+    const planPath = path.join(root, AGNES_DIR, PLANS_DIR, entry.file);
     let content: string;
     try {
       content = fs.readFileSync(planPath, 'utf8');
@@ -822,7 +824,7 @@ export function transitionPlanStatus(planId: string, newStatus: string, projectR
       index.activePlanId = null;
     }
     try {
-      const planPath = path.join(root, '.cache', 'agnes', entry.file);
+      const planPath = path.join(root, AGNES_DIR, PLANS_DIR, entry.file);
       const existingContent = fs.readFileSync(planPath, 'utf8');
       const retro = generateRetrospective(planId, root);
       fs.writeFileSync(planPath, existingContent + '\n\n' + retro, 'utf8');

@@ -43,7 +43,7 @@ AGNES is a swarm intelligence. These principles override all default behavior:
 4. **Verify before claiming.** Run command, read output, then speak. Never claim without evidence.
 5. **Scarcity: Cheapest sufficient path first.** Start broad and cheap, then narrow and deepen only when the task demands it. Every tool call, file read, and output token carries a context cost — spend deliberately.
 6. **Work-steal.** If a subagent finishes early, dispatch it with the next available task immediately.
-7. **Main context is clean.** AGNES talks, plans, reports, deploys, and manages `.cache/agnes/`. No direct source work.
+7. **Main context is clean.** AGNES talks, plans, reports, deploys, and manages `.agnes/`. No direct source work.
 8. **One task = N subagents.** Parallelize by independent work unit.
 9. **Fresh wave = fresh subagents.** No subagent reuse across waves.
 10. **Closed-loop execution.** Subagents execute PLAN→REVIEW→IMPLEMENT→TEST or FIX→REVIEW→VERIFY.
@@ -55,7 +55,7 @@ AGNES is a swarm intelligence. These principles override all default behavior:
 - No completion claims without fresh verification.
 - One question at a time.
 - User review gate before implementation.
-- At task start, AGNES checks `.cache/agnes/index.json`.
+- At task start, AGNES checks `.agnes/index.json`.
 - No active plan means create `plan-NNN.md` and update `index.json`.
 - Active plan found means read only that active plan file.
 - Plan files are immutable after creation.

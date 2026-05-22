@@ -67,7 +67,7 @@ export interface AgnesRuntimeState {
 
 export function getPlanGateFromState(state: AgnesRuntimeState): string | null {
   if (!state.hasActivePlan) {
-    return `\n**PLAN REQUIRED:** No active plan found. Create a plan with \`.cache/agnes/\` before any implementation work.`;
+    return `\n**PLAN REQUIRED:** No active plan found. Create a plan with \`.agnes/\` before any implementation work.`;
   }
   return null;
 }
@@ -118,7 +118,7 @@ export function getPlanGate(workspaceRoot?: string | null): string | null {
     return '\n**PLAN REQUIRED:** No plan index found. Initialize AGNES state first.';
   }
   if (!state.hasActivePlan) {
-    return '\n**PLAN REQUIRED:** No active plan found. Create a plan with `.cache/agnes/` before any implementation work.';
+    return '\n**PLAN REQUIRED:** No active plan found. Create a plan with `.agnes/` before any implementation work.';
   }
   if (state.activePlan && state.activePlan.entry.status === 'blocked') {
     return `\n**BLOCKED PLAN:** ${state.activePlan.entry.id} is blocked. Resolve or create a new iteration.`;

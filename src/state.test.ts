@@ -34,17 +34,18 @@ import type { AgnesRuntimeState } from './runtime.js';
 
 function createTempProject(): string {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-'));
-  fs.mkdirSync(path.join(tmp, '.cache', 'agnes'), { recursive: true });
+  fs.mkdirSync(path.join(tmp, '.agnes'), { recursive: true });
+  fs.mkdirSync(path.join(tmp, '.agnes', 'plans'), { recursive: true });
   return tmp;
 }
 
 function writeIndex(projectRoot: string, index: PlanIndex): void {
-  const indexPath = path.join(projectRoot, '.cache', 'agnes', 'index.json');
+  const indexPath = path.join(projectRoot, '.agnes', 'index.json');
   fs.writeFileSync(indexPath, JSON.stringify(index), 'utf8');
 }
 
 function readIndex(projectRoot: string): PlanIndex | null {
-  const indexPath = path.join(projectRoot, '.cache', 'agnes', 'index.json');
+  const indexPath = path.join(projectRoot, '.agnes', 'index.json');
   try {
     return JSON.parse(fs.readFileSync(indexPath, 'utf8')) as PlanIndex;
   } catch {
@@ -58,13 +59,13 @@ describe('findProjectRoot', () => {
     expect(true).toBe(true);
   });
 
-  test('returns null when no .cache/agnes/index.json exists', () => {
+  test('returns null when no .agnes/index.json exists', () => {
     resetProjectRootCache();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-'));
     expect(findProjectRoot(tmp)).toBeNull();
   });
 
-  test('finds project root when .cache/agnes/index.json exists', () => {
+  test('finds project root when .agnes/index.json exists', () => {
     resetProjectRootCache();
     const tmp = createTempProject();
     writeIndex(tmp, {
@@ -107,7 +108,7 @@ describe('findProjectRoot', () => {
       process.chdir(nested);
       expect(findProjectRoot()).toBeNull();
 
-      fs.mkdirSync(path.join(tmp, '.cache', 'agnes'), { recursive: true });
+      fs.mkdirSync(path.join(tmp, '.agnes'), { recursive: true });
       writeIndex(tmp, {
         agnesVersion: '0.7.1',
         schemaVersion: 2,
@@ -142,7 +143,7 @@ describe('findProjectRoot', () => {
     try {
       process.chdir(tmp);
       expect(findProjectRoot()).toBe(tmp);
-      fs.rmSync(path.join(tmp, '.cache'), { recursive: true, force: true });
+      fs.rmSync(path.join(tmp, '.agnes'), { recursive: true, force: true });
       expect(findProjectRoot()).toBeNull();
     } finally {
       process.chdir(originalCwd);
@@ -154,12 +155,12 @@ describe('findProjectRoot', () => {
 describe('cacheDir', () => {
   test('returns path for explicit root', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-'));
-    expect(cacheDir(tmp)).toBe(path.join(tmp, '.cache', 'agnes'));
+expect(cacheDir(tmp)).toBe(path.join(tmp, '.agnes'));
   });
-
+  
   test('returns path for existing temporary root even without index', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-'));
-    expect(cacheDir(tmp)).toBe(path.join(tmp, '.cache', 'agnes'));
+    expect(cacheDir(tmp)).toBe(path.join(tmp, '.agnes'));
   });
 });
 
@@ -171,14 +172,14 @@ describe('readPlanIndex / writePlanIndex', () => {
 
   test('readPlanIndex returns null for corrupt index', () => {
     const tmp = createTempProject();
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'index.json'), 'not json', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'index.json'), 'not json', 'utf8');
     expect(readPlanIndex(tmp)).toBeNull();
   });
 
   test('readPlanIndex returns null for invalid schema shape', () => {
     const tmp = createTempProject();
     fs.writeFileSync(
-      path.join(tmp, '.cache', 'agnes', 'index.json'),
+      path.join(tmp, '.agnes', 'index.json'),
       JSON.stringify({ schemaVersion: 2, projectDir: tmp, activePlanId: null, plans: 'bad' }),
       'utf8',
     );
@@ -258,7 +259,7 @@ describe('getLatestActivePlan', () => {
       activePlanId: 'plan-001',
       plans: [entry],
     });
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), '# Plan content', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), '# Plan content', 'utf8');
     const active = getLatestActivePlan(tmp);
     expect(active).not.toBeNull();
     expect(active!.entry.id).toBe('plan-001');
@@ -300,8 +301,8 @@ describe('getLatestActivePlan', () => {
         },
       ],
     });
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'Goal: Bad date', 'utf8');
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-002.md'), 'Goal: Good date', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'Goal: Bad date', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-002.md'), 'Goal: Good date', 'utf8');
     // Should not throw and should return the valid-date plan
     const active = getLatestActivePlan(tmp);
     expect(active).not.toBeNull();
@@ -351,7 +352,7 @@ describe('buildPlanSummary', () => {
         file: 'plan-001.md',
       }],
     });
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'Goal: Test the system\n\nTasks:\n- [x] one\n- [ ] two\n- [ ] three', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'Goal: Test the system\n\nTasks:\n- [x] one\n- [ ] two\n- [ ] three', 'utf8');
     const summary = buildPlanSummary(tmp);
     expect(summary).toContain('Active Plan: plan-001');
     expect(summary).toContain('in_progress');
@@ -372,15 +373,15 @@ describe('getNextPlanId', () => {
 
   test('increments from existing plan files', () => {
     const tmp = createTempProject();
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), '', 'utf8');
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-003.md'), '', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), '', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-003.md'), '', 'utf8');
     expect(getNextPlanId(tmp)).toBe('plan-004');
   });
 
   test('ignores non-plan files', () => {
     const tmp = createTempProject();
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), '', 'utf8');
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'index.json'), '{}', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), '', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'index.json'), '{}', 'utf8');
     expect(getNextPlanId(tmp)).toBe('plan-002');
   });
 
@@ -393,9 +394,9 @@ describe('getNextPlanId', () => {
       tasks: ['Task 1'],
       projectRoot: tmp,
     });
-    const planPath = path.join(tmp, '.cache', 'agnes', 'plan-001.md');
+    const planPath = path.join(tmp, '.agnes', 'plans', 'plan-001.md');
     expect(fs.existsSync(planPath)).toBe(true);
-    const tmpFiles = fs.readdirSync(path.join(tmp, '.cache', 'agnes'))
+    const tmpFiles = fs.readdirSync(path.join(tmp, '.agnes', 'plans'))
       .filter(f => f.endsWith('.tmp'));
     expect(tmpFiles).toEqual([]);
   });
@@ -420,7 +421,7 @@ describe('createPlan', () => {
     expect(index.plans.length).toBe(1);
     expect(index.activePlanId).toBe('plan-001');
 
-    const planPath = path.join(tmp, '.cache', 'agnes', 'plan-001.md');
+    const planPath = path.join(tmp, '.agnes', 'plans', 'plan-001.md');
     expect(fs.existsSync(planPath)).toBe(true);
     const content = fs.readFileSync(planPath, 'utf8');
     expect(content).toContain('Goal: Complete the test');
@@ -451,7 +452,7 @@ describe('createPlan', () => {
       tasks: ['- [x] Completed', '- [/] Blocked', '- [ ] Pending'],
       projectRoot: tmp,
     });
-    const content = fs.readFileSync(path.join(tmp, '.cache', 'agnes', `${active.entry.id}.md`), 'utf8');
+    const content = fs.readFileSync(path.join(tmp, '.agnes', 'plans', `${active.entry.id}.md`), 'utf8');
     expect(content).toContain('- [x] Completed');
     expect(content).toContain('- [/] Blocked');
     expect(content).toContain('- [ ] Pending');
@@ -484,7 +485,7 @@ describe('state synchronization invariants', () => {
       status: 'in_progress',
       projectRoot: tmp,
     });
-    const content = fs.readFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'utf8');
+    const content = fs.readFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'utf8');
     expect(content).not.toMatch(/^status:/m);
     expect(content).not.toMatch(/^total:/m);
     expect(content).not.toMatch(/^completed:/m);
@@ -514,7 +515,7 @@ describe('state synchronization invariants', () => {
       blocked: 0,
       projectRoot: tmp,
     });
-    const content = fs.readFileSync(path.join(tmp, '.cache', 'agnes', 'plan-002.md'), 'utf8');
+    const content = fs.readFileSync(path.join(tmp, '.agnes', 'plans', 'plan-002.md'), 'utf8');
     expect(content).not.toMatch(/^status:/m);
     expect(content).not.toMatch(/^total:/m);
     expect(content).not.toMatch(/^completed:/m);
@@ -530,7 +531,7 @@ describe('state synchronization invariants', () => {
       tasks: ['Task 1', 'Task 2'],
       projectRoot: tmp,
     });
-    const content = fs.readFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'utf8');
+    const content = fs.readFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'utf8');
     expect(content).toContain('Goal: Build the feature');
     expect(content).toContain('Check: bun test');
     expect(content).toContain('- [ ] Task 1');
@@ -793,7 +794,7 @@ describe('getPlanState', () => {
         file: 'plan-001.md',
       }],
     });
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'Goal: Test\n\nTasks:\n- [x] one\n- [ ] two', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'Goal: Test\n\nTasks:\n- [x] one\n- [ ] two', 'utf8');
     const state = getPlanState(tmp);
     expect(state.hasActivePlan).toBe(true);
     expect(state.activePlan).not.toBeNull();
@@ -858,7 +859,7 @@ describe('getPlanGate', () => {
         file: 'plan-001.md',
       }],
     });
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'Goal: Test', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'Goal: Test', 'utf8');
     expect(getPlanGate(tmp)).toBeNull();
   });
 
@@ -884,7 +885,7 @@ describe('getPlanGate', () => {
         file: 'plan-001.md',
       }],
     });
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'Goal: Test', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'Goal: Test', 'utf8');
     const gate = getPlanGate(tmp);
     expect(gate).toContain('BLOCKED PLAN');
     expect(gate).toContain('plan-001');
@@ -1211,11 +1212,11 @@ describe('pruneExpiredPlans', () => {
       plans: [makeEntry('plan-001', 'done', oldDate, 'plan-001.md')],
     };
     writeIndex(tmp, index);
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'old plan', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'old plan', 'utf8');
 
     const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
     expect(result.plans.length).toBe(0);
-    expect(fs.existsSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'))).toBe(false);
   });
 
   test('removes abandoned plans older than 7 days', () => {
@@ -1230,11 +1231,11 @@ describe('pruneExpiredPlans', () => {
       plans: [makeEntry('plan-001', 'abandoned', oldDate, 'plan-001.md')],
     };
     writeIndex(tmp, index);
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'old plan', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'old plan', 'utf8');
 
     const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
     expect(result.plans.length).toBe(0);
-    expect(fs.existsSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'))).toBe(false);
   });
 
   test('keeps non-terminal plans regardless of age', () => {
@@ -1249,11 +1250,11 @@ describe('pruneExpiredPlans', () => {
       plans: [makeEntry('plan-001', 'in_progress', oldDate, 'plan-001.md')],
     };
     writeIndex(tmp, index);
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'still active', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'still active', 'utf8');
 
     const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
     expect(result.plans.length).toBe(1);
-    expect(fs.existsSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'))).toBe(true);
   });
 
   test('keeps done plans newer than 7 days', () => {
@@ -1268,11 +1269,11 @@ describe('pruneExpiredPlans', () => {
       plans: [makeEntry('plan-001', 'done', freshDate, 'plan-001.md')],
     };
     writeIndex(tmp, index);
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'recent plan', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'recent plan', 'utf8');
 
     const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
     expect(result.plans.length).toBe(1);
-    expect(fs.existsSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'))).toBe(true);
   });
 
   test('clears activePlanId when pruned plan was active', () => {
@@ -1287,7 +1288,7 @@ describe('pruneExpiredPlans', () => {
       plans: [makeEntry('plan-001', 'done', oldDate, 'plan-001.md')],
     };
     writeIndex(tmp, index);
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'was active', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'was active', 'utf8');
 
     const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
     expect(result.activePlanId).toBeNull();
@@ -1308,11 +1309,11 @@ describe('pruneExpiredPlans', () => {
       retention: { maxAgeDays: 1, terminalStatuses: ['done'] },
     };
     writeIndex(tmp, index);
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), '2 days old, 1 day retention', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), '2 days old, 1 day retention', 'utf8');
 
     const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
     expect(result.plans.length).toBe(0);
-    expect(fs.existsSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'))).toBe(false);
   });
 
   test('does nothing on empty plan list', () => {
@@ -1353,11 +1354,11 @@ describe('pruneExpiredPlans', () => {
       }],
     };
     writeIndex(tmp, index);
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'bad date', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'bad date', 'utf8');
 
     const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
     expect(result.plans.length).toBe(1);
-    expect(fs.existsSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'))).toBe(true);
   });
 });
 
@@ -1617,7 +1618,7 @@ fix things
       expect(entry.status).toBe('draft');
       expect(entry.summary).toBe('Test the system');
       expect(entry.total).toBe(0);
-      expect(fs.existsSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'))).toBe(true);
+      expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'))).toBe(true);
     });
 
     test('creates entry with ready status for user_ready source', () => {
@@ -1649,7 +1650,7 @@ fix things
     test('transitions draft→reviewed→ready→in_progress→done', () => {
       const tmp = createTempProject();
       const id = createAutoPlan({ goal: 'Build the feature with full test coverage', source: 'user' }, tmp);
-      const planPath = path.join(tmp, '.cache', 'agnes', `${id}.md`);
+      const planPath = path.join(tmp, '.agnes', 'plans', `${id}.md`);
       fs.writeFileSync(planPath, minValidPlan, 'utf8');
 
       let index = transitionPlanStatus(id, 'reviewed', tmp);
@@ -1681,7 +1682,7 @@ fix things
     test('blocks draft→reviewed when quality insufficient', () => {
       const tmp = createTempProject();
       const id = createAutoPlan({ goal: 'fix things', source: 'user' }, tmp);
-      const planPath = path.join(tmp, '.cache', 'agnes', `${id}.md`);
+      const planPath = path.join(tmp, '.agnes', 'plans', `${id}.md`);
       const badPlan = `# ${id} — Test
 
 ## Intent
@@ -1743,7 +1744,7 @@ fix things
         }],
       };
       writeIndex(tmp, index);
-      fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), '# plan content', 'utf8');
+      fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), '# plan content', 'utf8');
 
       const retro = generateRetrospective('plan-001', tmp);
       expect(retro).toContain('plan-001');
@@ -1760,7 +1761,7 @@ fix things
       const id = createAutoPlan({ goal: 'Implement user authentication with OAuth', source: 'user' }, tmp);
       expect(id).toBe('plan-001');
 
-      const planPath = path.join(tmp, '.cache', 'agnes', 'plan-001.md');
+      const planPath = path.join(tmp, '.agnes', 'plans', 'plan-001.md');
       fs.writeFileSync(planPath, minValidPlan, 'utf8');
 
       const initialIndex = readPlanIndex(tmp)!;

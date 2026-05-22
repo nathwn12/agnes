@@ -10,17 +10,18 @@ import type { PlanIndex } from './state';
 
 function createTempProject(): string {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-int-'));
-  fs.mkdirSync(path.join(tmp, '.cache', 'agnes'), { recursive: true });
+  fs.mkdirSync(path.join(tmp, '.agnes'), { recursive: true });
+  fs.mkdirSync(path.join(tmp, '.agnes', 'plans'), { recursive: true });
   return tmp;
 }
 
 function writeIndex(projectRoot: string, index: PlanIndex): void {
-  const indexPath = path.join(projectRoot, '.cache', 'agnes', 'index.json');
+  const indexPath = path.join(projectRoot, '.agnes', 'index.json');
   fs.writeFileSync(indexPath, JSON.stringify(index), 'utf8');
 }
 
 function readIndex(projectRoot: string): PlanIndex | null {
-  const indexPath = path.join(projectRoot, '.cache', 'agnes', 'index.json');
+  const indexPath = path.join(projectRoot, '.agnes', 'index.json');
   try {
     return JSON.parse(fs.readFileSync(indexPath, 'utf8')) as PlanIndex;
   } catch {
@@ -91,7 +92,7 @@ describe('planning discipline integration', () => {
     expect(entry).toBeDefined();
     expect(entry!.status).toBe('draft');
 
-    const planContent = fs.readFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'utf8');
+    const planContent = fs.readFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'utf8');
     expect(planContent).toContain('## Intent');
     expect(planContent).toContain('## Goal');
     expect(planContent).toContain('## Tasks');
@@ -105,7 +106,7 @@ describe('planning discipline integration', () => {
     writeIndex(tmp, makeCleanIndex(tmp));
 
     createAutoPlan({ goal: 'Implement login validation', source: 'gate' }, tmp);
-    const planContent = fs.readFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'utf8');
+    const planContent = fs.readFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'utf8');
 
     const quality = assessPlanQuality(planContent);
     expect(quality.score).toBeLessThan(60);
@@ -126,7 +127,7 @@ describe('planning discipline integration', () => {
     let result = transitionPlanStatus(id, 'reviewed', tmp);
     expect(result).toBeNull();
 
-    const planPath = path.join(tmp, '.cache', 'agnes', 'plan-001.md');
+    const planPath = path.join(tmp, '.agnes', 'plans', 'plan-001.md');
     fs.writeFileSync(planPath, highQualityPlan, 'utf8');
 
     result = transitionPlanStatus(id, 'reviewed', tmp);
@@ -156,7 +157,7 @@ describe('planning discipline integration', () => {
     writeIndex(tmp, makeCleanIndex(tmp));
 
     const id = createAutoPlan({ goal: 'Test transitions', source: 'user' }, tmp);
-    const planPath = path.join(tmp, '.cache', 'agnes', 'plan-001.md');
+    const planPath = path.join(tmp, '.agnes', 'plans', 'plan-001.md');
     fs.writeFileSync(planPath, highQualityPlan, 'utf8');
 
     expect(transitionPlanStatus(id, 'ready', tmp)).toBeNull();
@@ -210,7 +211,7 @@ describe('planning discipline integration', () => {
     writeIndex(tmp, index);
 
     const planContent = 'Plan to fix the login bug';
-    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), planContent, 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), planContent, 'utf8');
 
     const result = processMessage('fix the login', index, planContent) as Extract<ProcessMessageResult, { type: 'proceed' }>;
     expect(result.type).toBe('proceed');

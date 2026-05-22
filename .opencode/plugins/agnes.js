@@ -15,6 +15,8 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 var OPENCODE_CACHE_ROOT = path.join(os.homedir(), ".cache", "opencode", "packages");
+var AGNES_DIR = ".agnes";
+var PLANS_DIR = "plans";
 function isBlockedPath(dir) {
   const resolved = path.resolve(dir);
   const root = path.resolve(OPENCODE_CACHE_ROOT);
@@ -26,7 +28,7 @@ function isBlockedPath(dir) {
 var _cachedProjectRoot = null;
 function findProjectRoot(startDir) {
   if (_cachedProjectRoot && !startDir) {
-    const indexPath = path.join(_cachedProjectRoot, ".cache", "agnes", "index.json");
+    const indexPath = path.join(_cachedProjectRoot, AGNES_DIR, "index.json");
     if (fs.existsSync(indexPath)) {
       return _cachedProjectRoot;
     }
@@ -37,7 +39,7 @@ function findProjectRoot(startDir) {
   for (let i = 0;i < 20; i++) {
     if (isBlockedPath(dir))
       break;
-    if (fs.existsSync(path.join(dir, ".cache", "agnes", "index.json"))) {
+    if (fs.existsSync(path.join(dir, AGNES_DIR, "index.json"))) {
       found = dir;
       break;
     }
@@ -61,12 +63,13 @@ function readPlanIndex(projectRoot) {
   const root = projectRoot ?? findProjectRoot();
   if (!root)
     return null;
-  const indexPath = path.join(root, ".cache", "agnes", "index.json");
+  const indexPath = path.join(root, AGNES_DIR, "index.json");
   try {
     const raw = fs.readFileSync(indexPath, "utf8");
     const parsed = JSON.parse(raw);
     if (!validatePlanIndex(parsed))
       return null;
+    pruneExpiredPlans(parsed, root);
     return parsed;
   } catch {
     return null;
@@ -76,12 +79,46 @@ function writePlanIndex(index, projectRoot) {
   const root = projectRoot ?? findProjectRoot();
   if (!root)
     throw new Error("Cannot write plan index: no project root found");
-  const dir = path.join(root, ".cache", "agnes");
+  const dir = path.join(root, AGNES_DIR);
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, "index.json");
   const tmp = filePath + ".tmp";
   fs.writeFileSync(tmp, JSON.stringify(index, null, 2), "utf8");
   fs.renameSync(tmp, filePath);
+}
+var DEFAULT_RETENTION = { maxAgeDays: 7, terminalStatuses: ["done", "abandoned"] };
+function pruneExpiredPlans(index, projectRoot) {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root || index.plans.length === 0)
+    return index;
+  const retention = index.retention ?? DEFAULT_RETENTION;
+  const cutoffMs = Date.now() - retention.maxAgeDays * 24 * 60 * 60 * 1000;
+  const terminalSet = new Set(retention.terminalStatuses);
+  const kept = [];
+  let changed = false;
+  for (const entry of index.plans) {
+    if (terminalSet.has(entry.status)) {
+      const updatedMs = new Date(entry.updatedAt).getTime();
+      if (!isNaN(updatedMs) && updatedMs <= cutoffMs) {
+        const planPath = path.join(root, AGNES_DIR, PLANS_DIR, entry.file);
+        try {
+          fs.rmSync(planPath, { force: true });
+        } catch {}
+        changed = true;
+        continue;
+      }
+    }
+    kept.push(entry);
+  }
+  if (!changed)
+    return index;
+  index.plans = kept;
+  index.updatedAt = new Date().toISOString();
+  if (index.activePlanId && !kept.some((p) => p.id === index.activePlanId)) {
+    index.activePlanId = null;
+  }
+  writePlanIndex(index, root);
+  return index;
 }
 function getLatestActivePlan(projectRoot) {
   const root = projectRoot ?? findProjectRoot();
@@ -90,7 +127,7 @@ function getLatestActivePlan(projectRoot) {
   const index = readPlanIndex(root);
   if (!index)
     return null;
-  const activeStatuses = ["draft", "in_progress", "blocked"];
+  const activeStatuses = ["draft", "reviewed", "ready", "in_progress", "blocked"];
   let target;
   if (index.activePlanId) {
     const entry = index.plans.find((p) => p.id === index.activePlanId);
@@ -117,7 +154,7 @@ function getLatestActivePlan(projectRoot) {
   }
   if (!target)
     return null;
-  const planPath = path.join(root, ".cache", "agnes", target.file);
+  const planPath = path.join(root, AGNES_DIR, PLANS_DIR, target.file);
   try {
     const content = fs.readFileSync(planPath, "utf8");
     return { entry: target, content };
@@ -167,9 +204,8 @@ function getNextPlanId(projectRoot) {
   const root = projectRoot ?? findProjectRoot();
   if (!root)
     return "plan-001";
-  const cache = path.join(root, ".cache", "agnes");
-  if (!fs.existsSync(cache))
-    return "plan-001";
+  const cache = path.join(root, AGNES_DIR, PLANS_DIR);
+  fs.mkdirSync(cache, { recursive: true });
   let max = 0;
   try {
     const files = fs.readdirSync(cache);
@@ -186,7 +222,7 @@ function getNextPlanId(projectRoot) {
 }
 function writePlanFile(root, id, content) {
   const file = `${id}.md`;
-  const filePath = path.join(root, ".cache", "agnes", file);
+  const filePath = path.join(root, AGNES_DIR, PLANS_DIR, file);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const tmp = `${filePath}.tmp`;
   fs.writeFileSync(tmp, content, "utf8");
@@ -282,7 +318,7 @@ function updatePlanStatus(input) {
     if (index.activePlanId === input.id)
       index.activePlanId = null;
   }
-  if (input.status === "draft" || input.status === "in_progress" || input.status === "blocked") {
+  if (input.status === "draft" || input.status === "reviewed" || input.status === "ready" || input.status === "in_progress" || input.status === "blocked") {
     index.activePlanId = input.id;
   }
   writePlanIndex(index, root);
@@ -449,7 +485,20 @@ function getPlanState(workspaceRoot) {
     return { hasActivePlan: false, activePlan: null, planIndex: null, latestId: null };
   }
   const active = getLatestActivePlan(workspaceRoot);
-  const latestId = planIndex.plans.length > 0 ? [...planIndex.plans].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0].id : null;
+  const latestId = planIndex.plans.length > 0 ? [...planIndex.plans].sort((a, b) => {
+    const aTime = new Date(a.updatedAt).getTime();
+    const bTime = new Date(b.updatedAt).getTime();
+    if (isNaN(aTime) && isNaN(bTime))
+      return b.id.localeCompare(a.id);
+    if (isNaN(aTime))
+      return 1;
+    if (isNaN(bTime))
+      return -1;
+    const diff = bTime - aTime;
+    if (diff !== 0)
+      return diff;
+    return b.id.localeCompare(a.id);
+  })[0].id : null;
   return {
     hasActivePlan: active !== null,
     activePlan: active,
@@ -464,7 +513,7 @@ function getPlanGate(workspaceRoot) {
 **PLAN REQUIRED:** No plan index found. Initialize AGNES state first.`;
   }
   if (!state.hasActivePlan) {
-    return "\n**PLAN REQUIRED:** No active plan found. Create a plan with `.cache/agnes/` before any implementation work.";
+    return "\n**PLAN REQUIRED:** No active plan found. Create a plan with `.agnes/` before any implementation work.";
   }
   if (state.activePlan && state.activePlan.entry.status === "blocked") {
     return `
@@ -577,6 +626,50 @@ function buildExecutionContext(entry) {
   return lines.join(`
 `);
 }
+var IMPLEMENT_WORDS = new Set([
+  "implement",
+  "build",
+  "add",
+  "fix",
+  "change",
+  "create",
+  "refactor",
+  "write",
+  "edit",
+  "update",
+  "remove",
+  "delete",
+  "bug",
+  "broken",
+  "fails",
+  "error",
+  "test",
+  "feature",
+  "support",
+  "need",
+  "want",
+  "should"
+]);
+var STOPWORDS = new Set([
+  "a",
+  "an",
+  "the",
+  "in",
+  "on",
+  "at",
+  "to",
+  "for",
+  "of",
+  "with",
+  "by",
+  "and",
+  "or",
+  "is",
+  "it",
+  "be",
+  "this",
+  "that"
+]);
 
 // src/plugin.ts
 var __dirname3 = path3.dirname(fileURLToPath2(import.meta.url));

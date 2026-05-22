@@ -61,8 +61,8 @@ These are structural constraints. Violations are bugs.
 
 In main conversation context, the only permitted actions are:
 - talk to user
-- read/write `.cache/agnes/index.json`
-- create new immutable `.cache/agnes/plan-NNN.md`
+- read/write `.agnes/index.json`
+- create new immutable `.agnes/plans/plan-NNN.md`
 - deploy subagents
 - read subagent results
 - run read-only verification commands
@@ -85,7 +85,7 @@ Never assign two subagents to edit the same file in the same wave.
 
 All subagents terminate after each wave.
 Next wave receives new subagents.
-Only `.cache/agnes/` state carries forward.
+Only `.agnes/` state carries forward.
 
 **Rule 4: Closed-loop execution**
 
@@ -123,7 +123,7 @@ If violation exists:
 
 ## Context Requirements
 
-- Access to the `.cache/agnes/` directory for state files
+- Access to the `.agnes/` directory for state files
 - Ability to spawn subagents with full task context
 - Access to OpenCode's `skill` tool for discovering and loading skills
 - Write access to the filesystem for state file updates
@@ -177,12 +177,21 @@ Given a set of tasks:
 
 ### State Management
 
-Two artifacts in `.cache/agnes/`:
+State files in `.agnes/`:
+
+```
+.agnes/
+├── index.json        
+├── config.json       
+└── plans/
+    ├── plan-001.md      
+    └── plan-002.md      
+```
 
 | File | Purpose |
 |------|---------|
 | `index.json` | Searchable master index by project/status. Read once, filter instantly. |
-| `plan-NNN.md` | One plan iteration. Immutable after creation — new state = new file. |
+| `plans/plan-NNN.md` | One plan iteration. Immutable after creation — new state = new file. |
 
 | Action | When |
 |--------|------|
@@ -197,7 +206,7 @@ Task starts
     │
     ▼
 ┌───────────────────────────────────┐
-│ 1. Check .cache/agnes/index.json  │
+│ 1. Check .agnes/index.json        │
 │ 2. Any active plan?               │
 │    ├── YES → read plan-NNN.md     │
 │    │         continue work        │
@@ -326,7 +335,7 @@ Task starts
     │
     ▼
 ┌─────────────────────────────────────┐
-│ 1. Check .cache/agnes/index.json    │
+│ 1. Check .agnes/index.json          │
 │ 2. Any active plan?                 │
 │    ├── YES → read plan-NNN.md       │
 │    │         continue work          │

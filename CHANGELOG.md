@@ -2,6 +2,12 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.7.4 (2026-05-23)
+
+### Changed
+
+- **State directory migration**: AGNES plan state moved from `.cache/agnes/` to `.agnes/` with a `plans/` subdirectory. This fixes the semantic mismatch where project-owned state lived in a cache directory that signals "safe to delete." The new structure is `.agnes/index.json` + `.agnes/plans/plan-NNN.md`. Core path constants are centralized as `AGNES_DIR` and `PLANS_DIR` in `state.ts`. (verified: 159 tests pass)
+
 ## 0.7.3 (2026-05-23)
 
 ### Added
