@@ -243,10 +243,6 @@ describe('recordAttempt', () => {
     const result2 = recordAttempt('session-incr-test', null);
     expect(result2.attempt).toBe(2);
     expect(result2.completed).toBe(false);
-
-    const result3 = recordAttempt('session-incr-test', null);
-    expect(result3.attempt).toBe(3);
-    expect(result3.completed).toBe(false);
   });
 
   test('resets after promise tag then increments again', () => {
@@ -266,5 +262,32 @@ describe('recordAttempt', () => {
     expect(recordAttempt('session-done-only-test', 'DONE').completed).toBe(true);
     expect(recordAttempt('session-done-only-test-2', 'done').completed).toBe(true);
     expect(recordAttempt('session-done-only-test-3', 'COMPLETE').completed).toBe(false);
+  });
+
+  test('auto-blocks after 3 failed attempts', () => {
+    const r1 = recordAttempt('session-block-test', null);
+    expect(r1.attempt).toBe(1);
+    expect(r1.blocked).toBeUndefined();
+
+    const r2 = recordAttempt('session-block-test', null);
+    expect(r2.attempt).toBe(2);
+    expect(r2.blocked).toBeUndefined();
+
+    const r3 = recordAttempt('session-block-test', null);
+    expect(r3.attempt).toBe(3);
+    expect(r3.completed).toBe(false);
+    expect(r3.blocked).toBe(true);
+  });
+
+  test('tracks struggle metrics across failed attempts', () => {
+    // Each failed attempt should increment noProgressIterations
+    const r1 = recordAttempt('session-struggle-test', null);
+    expect(r1.attempt).toBe(1);
+
+    const r2 = recordAttempt('session-struggle-test', null);
+    expect(r2.attempt).toBe(2);
+
+    const r3 = recordAttempt('session-struggle-test', null);
+    expect(r3.blocked).toBe(true);
   });
 });

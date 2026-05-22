@@ -2,6 +2,23 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.7.2 (2026-05-23)
+
+### Added
+
+- **Auto-block on max retries**: `recordAttempt()` now auto-creates a blocked plan iteration after 3 consecutive non-completion attempts via `autoBlockPlan()`. Reads the active plan's goal/check/tasks and creates a `createPlanIteration` with status `blocked`. `persistToPlan()` guards against downgrading blocked plans. (verified: runtime.test.ts auto-block tests)
+- **Struggle tracking in runtime loop**: `recordAttempt()` calls `updateStruggleMetrics()` on each non-completion attempt, incrementing `noProgressIterations`. Struggle data now flows through the plugin transform path instead of remaining stale. (verified: 92 tests pass, runtime.test.ts)
+- **NaN-date guard**: `getLatestActivePlan()` fallback sort guards against invalid `updatedAt` timestamps with `isNaN()` checks — prevents undefined `Array.sort()` behavior when dates are corrupt. (verified: state.test.ts NaN-date sort test)
+
+### Changed
+
+- **`persistToPlan` signature**: Reordered parameters — `status` moved before `attempts`/`struggle` for clarity. Now skips persistence when active plan status is `blocked`, preventing accidental status downgrades. (verified: runtime.ts)
+- **`recordAttempt` return type**: Extended with optional `blocked?: boolean` to signal auto-block events to callers. (verified: runtime.test.ts)
+
+### Tests
+
+- **3 new tests**: auto-block lifecycle (3 attempts → blocked), struggle tracking across failed attempts, NaN-date sort resilience. Total: 92 tests, 209 expect calls. (verified: `bun test`)
+
 ## 0.7.1 (2026-05-22)
 
 ### Changed

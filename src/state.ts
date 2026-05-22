@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 const OPENCODE_CACHE_ROOT = path.join(os.homedir(), '.cache', 'opencode', 'packages');
-const AGNES_VERSION = '0.7.1';
+const AGNES_VERSION = '0.7.2';
 
 function isBlockedPath(dir: string): boolean {
   const resolved = path.resolve(dir);
@@ -155,8 +155,13 @@ export function getLatestActivePlan(projectRoot?: string): ActivePlan | null {
     const sorted = [...index.plans]
       .filter(p => activeStatuses.includes(p.status))
       .sort((a, b) => {
-        const timeDiff = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-        if (timeDiff !== 0) return timeDiff;
+        const aTime = new Date(a.updatedAt).getTime();
+        const bTime = new Date(b.updatedAt).getTime();
+        if (isNaN(aTime) && isNaN(bTime)) return b.id.localeCompare(a.id);
+        if (isNaN(aTime)) return 1;
+        if (isNaN(bTime)) return -1;
+        const diff = bTime - aTime;
+        if (diff !== 0) return diff;
         return b.id.localeCompare(a.id);
       });
     target = sorted[0];

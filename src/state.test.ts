@@ -257,6 +257,49 @@ describe('getLatestActivePlan', () => {
     expect(active!.entry.id).toBe('plan-001');
     expect(active!.content).toBe('# Plan content');
   });
+
+  test('handles NaN updatedAt gracefully in fallback sort', () => {
+    const tmp = createTempProject();
+    const now = new Date().toISOString();
+    writeIndex(tmp, {
+      agnesVersion: '0.7.1',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: now,
+      activePlanId: null,
+      plans: [
+        {
+          id: 'plan-001',
+          status: 'in_progress' as const,
+          createdAt: now,
+          updatedAt: 'not-a-date',
+          summary: 'Bad date plan',
+          total: 1,
+          completed: 0,
+          blocked: 0,
+          file: 'plan-001.md',
+        },
+        {
+          id: 'plan-002',
+          status: 'in_progress' as const,
+          createdAt: now,
+          updatedAt: now,
+          summary: 'Good date plan',
+          total: 1,
+          completed: 0,
+          blocked: 0,
+          file: 'plan-002.md',
+        },
+      ],
+    });
+    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'Goal: Bad date', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-002.md'), 'Goal: Good date', 'utf8');
+    // Should not throw and should return the valid-date plan
+    const active = getLatestActivePlan(tmp);
+    expect(active).not.toBeNull();
+    expect(active!.entry.id).toBe('plan-002');
+  });
 });
 
 describe('buildPlanSummary', () => {

@@ -100,9 +100,17 @@ function getLatestActivePlan(projectRoot) {
   }
   if (!target) {
     const sorted = [...index.plans].filter((p) => activeStatuses.includes(p.status)).sort((a, b) => {
-      const timeDiff = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-      if (timeDiff !== 0)
-        return timeDiff;
+      const aTime = new Date(a.updatedAt).getTime();
+      const bTime = new Date(b.updatedAt).getTime();
+      if (isNaN(aTime) && isNaN(bTime))
+        return b.id.localeCompare(a.id);
+      if (isNaN(aTime))
+        return 1;
+      if (isNaN(bTime))
+        return -1;
+      const diff = bTime - aTime;
+      if (diff !== 0)
+        return diff;
       return b.id.localeCompare(a.id);
     });
     target = sorted[0];
@@ -155,6 +163,99 @@ Struggle: ${parts.join(", ")}`;
   }
   return line;
 }
+function getNextPlanId(projectRoot) {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root)
+    return "plan-001";
+  const cache = path.join(root, ".cache", "agnes");
+  if (!fs.existsSync(cache))
+    return "plan-001";
+  let max = 0;
+  try {
+    const files = fs.readdirSync(cache);
+    for (const f of files) {
+      const match = f.match(/^plan-(\d+)\.md$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > max)
+          max = num;
+      }
+    }
+  } catch {}
+  return `plan-${String(max + 1).padStart(3, "0")}`;
+}
+function writePlanFile(root, id, content) {
+  const file = `${id}.md`;
+  const filePath = path.join(root, ".cache", "agnes", file);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const tmp = `${filePath}.tmp`;
+  fs.writeFileSync(tmp, content, "utf8");
+  fs.renameSync(tmp, filePath);
+  return file;
+}
+function createPlanIteration(input) {
+  const root = input.projectRoot ?? findProjectRoot();
+  if (!root)
+    throw new Error("Cannot create plan iteration: no project root found");
+  const now = new Date().toISOString();
+  const id = getNextPlanId(root);
+  const total = (input.tasksMarkdown.match(/^- \[.?\]/gm) || []).length;
+  let content = `---
+id: ${id}
+createdAt: ${now}
+updatedAt: ${now}
+parent: ${input.parent}
+---
+
+Goal: ${input.goal}
+
+Check: ${input.check}
+
+Tasks:
+${input.tasksMarkdown}
+
+${input.notes && input.notes.length > 0 ? `Notes:
+${input.notes.map((n) => `- ${n}`).join(`
+`)}
+
+` : ""}Next:
+- <first executable action>
+`;
+  const file = writePlanFile(root, id, content);
+  const index = readPlanIndex(root);
+  if (!index)
+    throw new Error("Cannot create plan iteration: no index found");
+  const parentEntry = index.plans.find((p) => p.id === input.parent);
+  const carryAttempts = input.attempts ?? parentEntry?.attempts ?? 0;
+  const carryStruggle = input.struggle ?? parentEntry?.struggle;
+  const entry = {
+    id,
+    status: input.status,
+    createdAt: now,
+    updatedAt: now,
+    parent: input.parent,
+    summary: input.summary,
+    total,
+    completed: input.completed,
+    blocked: input.blocked,
+    file,
+    attempts: carryAttempts,
+    ...carryStruggle ? { struggle: carryStruggle } : {}
+  };
+  if (parentEntry && !["done", "abandoned"].includes(parentEntry.status)) {
+    parentEntry.status = "abandoned";
+    parentEntry.updatedAt = now;
+  }
+  index.plans.push(entry);
+  index.updatedAt = now;
+  if (input.status === "done" || input.status === "abandoned") {
+    index.activePlanId = null;
+  } else {
+    index.activePlanId = id;
+  }
+  writePlanIndex(index, root);
+  return { entry, content };
+}
 function updatePlanStatus(input) {
   const root = input.projectRoot ?? findProjectRoot();
   if (!root)
@@ -198,6 +299,23 @@ function freshStruggleMetrics() {
     repeatedErrors: {},
     shortIterations: 0,
     lastPromiseTag: null
+  };
+}
+function updateStruggleMetrics(current, events) {
+  return {
+    noProgressIterations: events.hadProgress ? 0 : current.noProgressIterations + 1,
+    repeatedErrors: (() => {
+      if (events.errors.length === 0)
+        return current.repeatedErrors;
+      const merged = { ...current.repeatedErrors };
+      for (const e of events.errors) {
+        const key = e.substring(0, 100);
+        merged[key] = (merged[key] || 0) + 1;
+      }
+      return merged;
+    })(),
+    shortIterations: events.durationMs < 30000 ? current.shortIterations + 1 : 0,
+    lastPromiseTag: events.promiseTag ?? current.lastPromiseTag
   };
 }
 
@@ -288,6 +406,7 @@ ${planSummary}
 }
 
 // src/runtime.ts
+var MAX_RETRIES_BEFORE_BLOCK = 3;
 var sessions = new Map;
 var MAX_SESSIONS = 200;
 var SESSION_TTL_MS = 3600000;
@@ -361,20 +480,67 @@ function recordAttempt(sessionId, promiseTag, projectRoot, completionPromise = "
     state.attempts = 0;
     state.struggle = freshStruggleMetrics();
     pruneSessions();
-    persistToPlan(0, freshStruggleMetrics(), projectRoot, "done");
+    persistToPlan("done", 0, freshStruggleMetrics(), projectRoot);
     return { attempt: 0, completed: true };
   }
   state.attempts++;
-  persistToPlan(state.attempts, state.struggle, projectRoot, "in_progress");
+  state.struggle = updateStruggleMetrics(state.struggle, {
+    hadProgress: false,
+    durationMs: 0,
+    errors: [],
+    promiseTag: null
+  });
+  if (state.attempts >= MAX_RETRIES_BEFORE_BLOCK) {
+    autoBlockPlan(projectRoot, state.attempts, state.struggle);
+    state.attempts = 0;
+    state.struggle = freshStruggleMetrics();
+    pruneSessions();
+    return { attempt: MAX_RETRIES_BEFORE_BLOCK, completed: false, blocked: true };
+  }
+  persistToPlan("in_progress", state.attempts, state.struggle, projectRoot);
   return { attempt: state.attempts, completed: false };
 }
-function persistToPlan(attempts, struggle, projectRoot, status = "in_progress") {
+function autoBlockPlan(projectRoot, attempts, struggle) {
+  try {
+    const root = projectRoot ?? findProjectRoot();
+    if (!root)
+      return;
+    const active = getLatestActivePlan(root);
+    if (!active)
+      return;
+    const goalMatch = active.content.match(/^Goal:\s*(.+)$/m);
+    const checkMatch = active.content.match(/^Check:\s*(.+)$/m);
+    const goal = goalMatch ? goalMatch[1] : "Unknown goal";
+    const check = checkMatch ? checkMatch[1] : "unknown check";
+    const tasksMatch = active.content.match(/Tasks:\n([\s\S]*?)(?:\n\n|$)/);
+    const tasksMarkdown = tasksMatch ? tasksMatch[1].trim() : "- [ ] Unknown";
+    createPlanIteration({
+      parent: active.entry.id,
+      summary: `Auto-blocked after ${attempts} failed attempts`,
+      goal,
+      check,
+      tasksMarkdown,
+      status: "blocked",
+      completed: active.entry.completed,
+      blocked: active.entry.blocked + 1,
+      attempts,
+      struggle,
+      projectRoot: root
+    });
+  } catch {}
+}
+function persistToPlan(status, attempts, struggle, projectRoot) {
   try {
     const root = projectRoot ?? findProjectRoot();
     if (!root)
       return;
     const index = readPlanIndex(root);
     if (!index || !index.activePlanId)
+      return;
+    const activeEntry = index.plans.find((p) => p.id === index.activePlanId);
+    if (!activeEntry)
+      return;
+    if (activeEntry.status === "blocked")
       return;
     updatePlanStatus({
       id: index.activePlanId,

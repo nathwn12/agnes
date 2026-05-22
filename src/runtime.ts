@@ -3,6 +3,7 @@ import {
   getLatestActivePlan,
   readPlanIndex,
   updatePlanStatus,
+  createPlanIteration,
   detectPromiseTag,
   extractPromiseTag,
   freshStruggleMetrics,
@@ -10,6 +11,8 @@ import {
   detectStruggle,
 } from './state.js';
 import type { PlanIndexEntry, PlanIndex, ActivePlan, StruggleMetrics } from './state.js';
+
+const MAX_RETRIES_BEFORE_BLOCK = 3;
 
 interface SessionState {
   attempts: number;
@@ -89,7 +92,16 @@ export function getPlanState(workspaceRoot?: string | null): {
 
   const active = getLatestActivePlan(workspaceRoot);
   const latestId = planIndex.plans.length > 0
-    ? [...planIndex.plans].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0].id
+    ? [...planIndex.plans].sort((a, b) => {
+        const aTime = new Date(a.updatedAt).getTime();
+        const bTime = new Date(b.updatedAt).getTime();
+        if (isNaN(aTime) && isNaN(bTime)) return b.id.localeCompare(a.id);
+        if (isNaN(aTime)) return 1;
+        if (isNaN(bTime)) return -1;
+        const diff = bTime - aTime;
+        if (diff !== 0) return diff;
+        return b.id.localeCompare(a.id);
+      })[0].id
     : null;
 
   return {
@@ -183,7 +195,7 @@ export function recordAttempt(
   promiseTag: string | null,
   projectRoot?: string,
   completionPromise = 'DONE',
-): { attempt: number; completed: boolean } {
+): { attempt: number; completed: boolean; blocked?: boolean } {
   const state = getSession(sessionId);
   const completed = promiseTag !== null && promiseTag.toUpperCase() === completionPromise.toUpperCase();
 
@@ -192,26 +204,77 @@ export function recordAttempt(
     state.attempts = 0;
     state.struggle = freshStruggleMetrics();
     pruneSessions();
-    persistToPlan(0, freshStruggleMetrics(), projectRoot, 'done');
+    persistToPlan('done', 0, freshStruggleMetrics(), projectRoot);
     return { attempt: 0, completed: true };
   }
 
   state.attempts++;
-  persistToPlan(state.attempts, state.struggle, projectRoot, 'in_progress');
+  state.struggle = updateStruggleMetrics(state.struggle, {
+    hadProgress: false,
+    durationMs: 0,
+    errors: [],
+    promiseTag: null,
+  });
+
+  if (state.attempts >= MAX_RETRIES_BEFORE_BLOCK) {
+    autoBlockPlan(projectRoot, state.attempts, state.struggle);
+    state.attempts = 0;
+    state.struggle = freshStruggleMetrics();
+    pruneSessions();
+    return { attempt: MAX_RETRIES_BEFORE_BLOCK, completed: false, blocked: true };
+  }
+
+  persistToPlan('in_progress', state.attempts, state.struggle, projectRoot);
   return { attempt: state.attempts, completed: false };
 }
 
+function autoBlockPlan(projectRoot: string | undefined, attempts: number, struggle: StruggleMetrics): void {
+  try {
+    const root = projectRoot ?? findProjectRoot();
+    if (!root) return;
+    const active = getLatestActivePlan(root);
+    if (!active) return;
+
+    const goalMatch = active.content.match(/^Goal:\s*(.+)$/m);
+    const checkMatch = active.content.match(/^Check:\s*(.+)$/m);
+    const goal = goalMatch ? goalMatch[1] : 'Unknown goal';
+    const check = checkMatch ? checkMatch[1] : 'unknown check';
+
+    const tasksMatch = active.content.match(/Tasks:\n([\s\S]*?)(?:\n\n|$)/);
+    const tasksMarkdown = tasksMatch ? tasksMatch[1].trim() : '- [ ] Unknown';
+
+    createPlanIteration({
+      parent: active.entry.id,
+      summary: `Auto-blocked after ${attempts} failed attempts`,
+      goal,
+      check,
+      tasksMarkdown,
+      status: 'blocked',
+      completed: active.entry.completed,
+      blocked: active.entry.blocked + 1,
+      attempts,
+      struggle,
+      projectRoot: root,
+    });
+  } catch {
+    // Auto-block must never break message transformation.
+  }
+}
+
 function persistToPlan(
+  status: PlanIndexEntry['status'],
   attempts: number,
   struggle: StruggleMetrics,
   projectRoot?: string,
-  status: PlanIndexEntry['status'] = 'in_progress',
 ): void {
   try {
     const root = projectRoot ?? findProjectRoot();
     if (!root) return;
     const index = readPlanIndex(root);
     if (!index || !index.activePlanId) return;
+    const activeEntry = index.plans.find(p => p.id === index.activePlanId);
+    if (!activeEntry) return;
+    if (activeEntry.status === 'blocked') return;
     updatePlanStatus({
       id: index.activePlanId,
       status,
