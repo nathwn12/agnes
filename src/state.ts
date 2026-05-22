@@ -5,6 +5,15 @@ import * as path from 'node:path';
 import { parseAgnesMessage } from './protocol.js';
 import type { CompletionStatus } from './protocol.js';
 
+function assertShape<T>(data: unknown, shape: Record<string, string>): data is T {
+  if (!data || typeof data !== 'object') return false;
+  const obj = data as Record<string, unknown>;
+  for (const [field, expectedType] of Object.entries(shape)) {
+    if (typeof obj[field] !== expectedType) return false;
+  }
+  return true;
+}
+
 const OPENCODE_CACHE_ROOT = path.join(os.homedir(), '.cache', 'opencode', 'packages');
 const AGNES_DIR = '.agnes';
 const PLANS_DIR = 'plans';
@@ -66,6 +75,11 @@ export interface PlanIndex {
   retention?: RetentionPolicy;
 }
 
+function getPlanFilePath(root: string, entry: PlanIndexEntry): string {
+  const filename = entry.file || `${entry.id}.md`;
+  return path.join(root, AGNES_DIR, PLANS_DIR, filename);
+}
+
 export interface ActivePlan {
   entry: PlanIndexEntry;
   content: string;
@@ -111,15 +125,56 @@ export function cacheDir(projectRoot?: string): string | null {
   return path.join(root, AGNES_DIR);
 }
 
+const ENTRY_REQUIRED_SHAPE: Record<string, string> = {
+  id: 'string',
+  status: 'string',
+  createdAt: 'string',
+  updatedAt: 'string',
+  summary: 'string',
+  total: 'number',
+  completed: 'number',
+  blocked: 'number',
+} as const;
+
+const INDEX_REQUIRED_SHAPE = {
+  agnesVersion: 'string',
+  schemaVersion: 'number',
+  projectDir: 'string',
+  projectName: 'string',
+  updatedAt: 'string',
+  plans: 'object',
+} as const;
+
 function validatePlanIndex(raw: unknown): raw is PlanIndex {
   if (!raw || typeof raw !== 'object') return false;
   const idx = raw as Record<string, unknown>;
-  return (
-    idx.schemaVersion === 2 &&
-    typeof idx.projectDir === 'string' &&
-    (idx.activePlanId === null || typeof idx.activePlanId === 'string') &&
-    Array.isArray(idx.plans)
-  );
+  if (!assertShape(idx, INDEX_REQUIRED_SHAPE)) return false;
+  if (idx.schemaVersion !== 2) return false;
+  if (idx.activePlanId !== null && typeof idx.activePlanId !== 'string') return false;
+  if (!Array.isArray(idx.plans)) return false;
+
+  for (const entry of idx.plans) {
+    if (!assertShape(entry, ENTRY_REQUIRED_SHAPE)) return false;
+  }
+
+  return true;
+}
+
+function migratePlanEntry(entry: PlanIndexEntry): boolean {
+  let changed = false;
+  if (!entry.file) {
+    entry.file = `${entry.id}.md`;
+    changed = true;
+  }
+  if (typeof entry.attempts !== 'number') {
+    entry.attempts = 0;
+    changed = true;
+  }
+  if (!entry.struggle) {
+    entry.struggle = freshStruggleMetrics();
+    changed = true;
+  }
+  return changed;
 }
 
 export function readPlanIndex(projectRoot?: string): PlanIndex | null {
@@ -130,6 +185,13 @@ export function readPlanIndex(projectRoot?: string): PlanIndex | null {
     const raw = fs.readFileSync(indexPath, 'utf8');
     const parsed = JSON.parse(raw);
     if (!validatePlanIndex(parsed)) return null;
+
+    let migrated = false;
+    for (const entry of parsed.plans) {
+      if (migratePlanEntry(entry)) migrated = true;
+    }
+    if (migrated) writePlanIndex(parsed, root);
+
     pruneExpiredPlans(parsed, root);
     return parsed;
   } catch {
@@ -165,9 +227,8 @@ export function pruneExpiredPlans(index: PlanIndex, projectRoot?: string): PlanI
     if (terminalSet.has(entry.status as 'done' | 'abandoned')) {
       const updatedMs = new Date(entry.updatedAt).getTime();
       if (!isNaN(updatedMs) && updatedMs <= cutoffMs) {
-        const planPath = path.join(root, AGNES_DIR, PLANS_DIR, entry.file);
         try {
-          fs.rmSync(planPath, { force: true });
+          fs.rmSync(getPlanFilePath(root, entry), { force: true });
         } catch {
           // File may already be gone
         }
@@ -224,7 +285,7 @@ export function getLatestActivePlan(projectRoot?: string): ActivePlan | null {
 
   if (!target) return null;
 
-  const planPath = path.join(root, AGNES_DIR, PLANS_DIR, target.file);
+  const planPath = getPlanFilePath(root, target);
   try {
     const content = fs.readFileSync(planPath, 'utf8');
     return { entry: target, content };
@@ -817,7 +878,7 @@ export function transitionPlanStatus(planId: string, newStatus: string, projectR
 
   const transitionsRequiringQuality = new Set(['reviewed', 'ready']);
   if (transitionsRequiringQuality.has(newStatus)) {
-    const planPath = path.join(root, AGNES_DIR, PLANS_DIR, entry.file);
+    const planPath = getPlanFilePath(root, entry);
     let content: string;
     try {
       content = fs.readFileSync(planPath, 'utf8');
@@ -841,7 +902,7 @@ export function transitionPlanStatus(planId: string, newStatus: string, projectR
       index.activePlanId = null;
     }
     try {
-      const planPath = path.join(root, AGNES_DIR, PLANS_DIR, entry.file);
+      const planPath = getPlanFilePath(root, entry);
       const existingContent = fs.readFileSync(planPath, 'utf8');
       const retro = generateRetrospective(planId, root);
       fs.writeFileSync(planPath, existingContent + '\n\n' + retro, 'utf8');

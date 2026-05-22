@@ -68,6 +68,16 @@ function findJsonInText(text) {
   }
   return null;
 }
+function validCompletionStatus(s) {
+  return s === "DONE" || s === "DONE_WITH_CONCERNS" || s === "NEEDS_CONTEXT" || s === "BLOCKED";
+}
+var REQUIRED_FIELDS = {
+  task: { skill: "string" },
+  result: { taskId: "string", status: "string", content: "string" },
+  error: { taskId: "string", errorType: "string", detail: "string" },
+  status: { taskId: "string", phase: "string" },
+  completion: { status: "string", summary: "string" }
+};
 function parseAgnesMessage(text) {
   const cleaned = stripCodeFences(text);
   const jsonCandidate = findJsonInText(cleaned);
@@ -84,6 +94,22 @@ function parseAgnesMessage(text) {
   const obj = parsed;
   if (typeof obj.type !== "string" || !VALID_TYPES.has(obj.type))
     return null;
+  if (typeof obj.id !== "string")
+    return null;
+  if (typeof obj.timestamp !== "string")
+    return null;
+  const type = obj.type;
+  const required = REQUIRED_FIELDS[type];
+  if (required) {
+    for (const [field, expectedType] of Object.entries(required)) {
+      if (typeof obj[field] !== expectedType)
+        return null;
+    }
+    if (type === "completion" || type === "result") {
+      if (!validCompletionStatus(obj.status))
+        return null;
+    }
+  }
   return obj;
 }
 function serializeAgnesMessage(msg) {
@@ -92,6 +118,16 @@ function serializeAgnesMessage(msg) {
 }
 
 // src/state.ts
+function assertShape(data, shape) {
+  if (!data || typeof data !== "object")
+    return false;
+  const obj = data;
+  for (const [field, expectedType] of Object.entries(shape)) {
+    if (typeof obj[field] !== expectedType)
+      return false;
+  }
+  return true;
+}
 var OPENCODE_CACHE_ROOT = path.join(os.homedir(), ".cache", "opencode", "packages");
 var AGNES_DIR = ".agnes";
 var PLANS_DIR = "plans";
@@ -102,6 +138,10 @@ function isBlockedPath(dir) {
     return resolved.toLowerCase().startsWith(root.toLowerCase());
   }
   return resolved.startsWith(root);
+}
+function getPlanFilePath(root, entry) {
+  const filename = entry.file || `${entry.id}.md`;
+  return path.join(root, AGNES_DIR, PLANS_DIR, filename);
 }
 var _cachedProjectRoot = null;
 function findProjectRoot(startDir) {
@@ -131,11 +171,57 @@ function findProjectRoot(startDir) {
   }
   return found;
 }
+var ENTRY_REQUIRED_SHAPE = {
+  id: "string",
+  status: "string",
+  createdAt: "string",
+  updatedAt: "string",
+  summary: "string",
+  total: "number",
+  completed: "number",
+  blocked: "number"
+};
+var INDEX_REQUIRED_SHAPE = {
+  agnesVersion: "string",
+  schemaVersion: "number",
+  projectDir: "string",
+  projectName: "string",
+  updatedAt: "string",
+  plans: "object"
+};
 function validatePlanIndex(raw) {
   if (!raw || typeof raw !== "object")
     return false;
   const idx = raw;
-  return idx.schemaVersion === 2 && typeof idx.projectDir === "string" && (idx.activePlanId === null || typeof idx.activePlanId === "string") && Array.isArray(idx.plans);
+  if (!assertShape(idx, INDEX_REQUIRED_SHAPE))
+    return false;
+  if (idx.schemaVersion !== 2)
+    return false;
+  if (idx.activePlanId !== null && typeof idx.activePlanId !== "string")
+    return false;
+  if (!Array.isArray(idx.plans))
+    return false;
+  for (const entry of idx.plans) {
+    if (!assertShape(entry, ENTRY_REQUIRED_SHAPE))
+      return false;
+  }
+  return true;
+}
+function migratePlanEntry(entry) {
+  let changed = false;
+  if (!entry.file) {
+    entry.file = `${entry.id}.md`;
+    changed = true;
+  }
+  if (typeof entry.attempts !== "number") {
+    entry.attempts = 0;
+    changed = true;
+  }
+  if (!entry.struggle) {
+    entry.struggle = freshStruggleMetrics();
+    changed = true;
+  }
+  return changed;
 }
 function readPlanIndex(projectRoot) {
   const root = projectRoot ?? findProjectRoot();
@@ -147,6 +233,13 @@ function readPlanIndex(projectRoot) {
     const parsed = JSON.parse(raw);
     if (!validatePlanIndex(parsed))
       return null;
+    let migrated = false;
+    for (const entry of parsed.plans) {
+      if (migratePlanEntry(entry))
+        migrated = true;
+    }
+    if (migrated)
+      writePlanIndex(parsed, root);
     pruneExpiredPlans(parsed, root);
     return parsed;
   } catch {
@@ -178,9 +271,8 @@ function pruneExpiredPlans(index, projectRoot) {
     if (terminalSet.has(entry.status)) {
       const updatedMs = new Date(entry.updatedAt).getTime();
       if (!isNaN(updatedMs) && updatedMs <= cutoffMs) {
-        const planPath = path.join(root, AGNES_DIR, PLANS_DIR, entry.file);
         try {
-          fs.rmSync(planPath, { force: true });
+          fs.rmSync(getPlanFilePath(root, entry), { force: true });
         } catch {}
         changed = true;
         continue;
@@ -232,7 +324,7 @@ function getLatestActivePlan(projectRoot) {
   }
   if (!target)
     return null;
-  const planPath = path.join(root, AGNES_DIR, PLANS_DIR, target.file);
+  const planPath = getPlanFilePath(root, target);
   try {
     const content = fs.readFileSync(planPath, "utf8");
     return { entry: target, content };

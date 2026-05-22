@@ -186,6 +186,77 @@ describe('readPlanIndex / writePlanIndex', () => {
     expect(readPlanIndex(tmp)).toBeNull();
   });
 
+  test('readPlanIndex returns null for entry missing required fields', () => {
+    const tmp = createTempProject();
+    fs.writeFileSync(
+      path.join(tmp, '.agnes', 'index.json'),
+      JSON.stringify({
+        agnesVersion: '0.7.0',
+        schemaVersion: 2,
+        projectDir: tmp,
+        projectName: 'test',
+        updatedAt: new Date().toISOString(),
+        activePlanId: null,
+        plans: [
+          { id: 'plan-001', status: 'draft', summary: 'test', total: 0, completed: 0, blocked: 0 },
+        ],
+      }),
+      'utf8',
+    );
+    expect(readPlanIndex(tmp)).toBeNull();
+  });
+
+  test('readPlanIndex auto-migrates entry missing file', () => {
+    const tmp = createTempProject();
+    const now = new Date().toISOString();
+    fs.writeFileSync(
+      path.join(tmp, '.agnes', 'index.json'),
+      JSON.stringify({
+        agnesVersion: '0.7.0',
+        schemaVersion: 2,
+        projectDir: tmp,
+        projectName: 'test',
+        updatedAt: now,
+        activePlanId: 'plan-001',
+        plans: [
+          {
+            id: 'plan-001',
+            status: 'in_progress',
+            createdAt: now,
+            updatedAt: now,
+            summary: 'old plan',
+            total: 3,
+            completed: 1,
+            blocked: 0,
+            file: 'plan-001.md',
+          },
+          {
+            id: 'plan-002',
+            status: 'draft',
+            createdAt: now,
+            updatedAt: now,
+            summary: 'migrated',
+            total: 0,
+            completed: 0,
+            blocked: 0,
+          },
+        ],
+      }),
+      'utf8',
+    );
+    const index = readPlanIndex(tmp);
+    expect(index).not.toBeNull();
+    const migrated = index!.plans.find(p => p.id === 'plan-002')!;
+    expect(migrated.file).toBe('plan-002.md');
+    expect(migrated.attempts).toBe(0);
+    expect(migrated.struggle).toEqual({
+      noProgressIterations: 0,
+      shortIterations: 0,
+      repeatedErrors: {},
+      lastPromiseTag: null,
+    });
+  });
+
   test('writePlanIndex creates index.json atomically', () => {
     const tmp = createTempProject();
     const index: PlanIndex = {
@@ -1056,7 +1127,7 @@ describe('createPlan with attempts/struggle', () => {
     expect(entry.struggle?.repeatedErrors['Error: x']).toBe(1);
   });
 
-  test('omits attempts/struggle when not provided', () => {
+  test('migrates missing attempts/struggle on read', () => {
     const tmp = createTempProject();
     createPlan({
       summary: 'Test',
@@ -1067,8 +1138,13 @@ describe('createPlan with attempts/struggle', () => {
     });
     const index = readPlanIndex(tmp)!;
     const entry = index.plans.find(p => p.id === 'plan-001')!;
-    expect(entry.attempts).toBeUndefined();
-    expect(entry.struggle).toBeUndefined();
+    expect(entry.attempts).toBe(0);
+    expect(entry.struggle).toEqual({
+      noProgressIterations: 0,
+      shortIterations: 0,
+      repeatedErrors: {},
+      lastPromiseTag: null,
+    });
   });
 });
 

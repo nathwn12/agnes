@@ -120,6 +120,18 @@ function findJsonInText(text: string): string | null {
   return null;
 }
 
+function validCompletionStatus(s: unknown): s is CompletionStatus {
+  return s === 'DONE' || s === 'DONE_WITH_CONCERNS' || s === 'NEEDS_CONTEXT' || s === 'BLOCKED';
+}
+
+const REQUIRED_FIELDS: Record<string, Record<string, string>> = {
+  task: { skill: 'string' },
+  result: { taskId: 'string', status: 'string', content: 'string' },
+  error: { taskId: 'string', errorType: 'string', detail: 'string' },
+  status: { taskId: 'string', phase: 'string' },
+  completion: { status: 'string', summary: 'string' },
+};
+
 export function parseAgnesMessage(text: string): AnyAgnesMessage | null {
   const cleaned = stripCodeFences(text);
   const jsonCandidate = findJsonInText(cleaned);
@@ -135,6 +147,20 @@ export function parseAgnesMessage(text: string): AnyAgnesMessage | null {
   if (!parsed || typeof parsed !== 'object') return null;
   const obj = parsed as Record<string, unknown>;
   if (typeof obj.type !== 'string' || !VALID_TYPES.has(obj.type)) return null;
+
+  if (typeof obj.id !== 'string') return null;
+  if (typeof obj.timestamp !== 'string') return null;
+
+  const type = obj.type;
+  const required = REQUIRED_FIELDS[type];
+  if (required) {
+    for (const [field, expectedType] of Object.entries(required)) {
+      if (typeof obj[field] !== expectedType) return null;
+    }
+    if (type === 'completion' || type === 'result') {
+      if (!validCompletionStatus(obj.status)) return null;
+    }
+  }
 
   return obj as unknown as AnyAgnesMessage;
 }

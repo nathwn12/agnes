@@ -2,6 +2,34 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.8.1 (2026-05-23)
+
+### Fixed
+
+- **Crash on stale plan entries**: `getLatestActivePlan()` crashed with `TypeError: paths[3] must be string` when `.agnes/index.json` contained entries from an older AGNES version missing the `file` field. Added `getPlanFilePath()` helper with `entry.file || \`${entry.id}.md\`` fallback — deployed to all 4 file-path construction sites. (verified: hotfix)
+
+- **validation.ts internal contradiction**: `ALLOWED_RESULT_TYPES` included `error`, `status`, `completion` but `validateResultMessage` required `status` on all of them (which ErrorMessage/StatusMessage don't have). Unsound `as unknown as ResultMessage` cast. Replaced with `validateMessage()` targeting `AnyAgnesMessage` with proper field checks. (verified: typecheck)
+
+- **escapeUserData unlimited recursion**: `escapeUserData` recursed without depth guard — circular user data would blow the stack. Added `depth`/`maxDepth` (default 20). (verified: parameterized function)
+
+### Added
+
+- **Entry-level validation in readPlanIndex**: `validatePlanIndex()` now checks every plan entry against `ENTRY_REQUIRED_SHAPE` (id, status, createdAt, updatedAt, summary, total, completed, blocked). Entries missing truly unrecoverable fields are rejected with `null` return. (verified: 2 new regression tests)
+
+- **Auto-migration on read**: `migratePlanEntry()` fills defaults for missing optional fields — `file` → `${id}.md`, `attempts` → `0`, `struggle` → `freshStruggleMetrics()`. Persists cleaned index to disk on first read after upgrade. (verified: migration test)
+
+- **`assertShape<T>` runtime schema guard**: Reusable type guard that validates deserialized objects against a field→type map at the boundary. Used in `validatePlanIndex()` for both index-level and per-entry shape checks. (verified: typecheck)
+
+- **Per-variant validation in parseAgnesMessage**: `parseAgnesMessage()` now validates variant-specific required fields via `REQUIRED_FIELDS` map (e.g. result requires taskId+status+content, completion requires status+summary). Completion status values also validated against the `CompletionStatus` union. (verified: 162 tests pass)
+
+- **2 regression tests**: Old-format index.json entry rejection (missing recoverable fields) + auto-migration verification. (verified: `bun test`)
+
+### Changed
+
+- **FlowController consolidated**: `consumeSignal()` is now the single authoritative destructive reader. `getJump()` and `clearSignal()` delegate to it. `setJump()` now accepts optional `metadata`. Reason/metadata preserved through consumption. (verified: typecheck)
+
+- **Version**: 0.8.1. (verified: package.json)
+
 ## 0.8.0 (2026-05-23)
 
 ### Added

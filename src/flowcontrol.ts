@@ -13,35 +13,40 @@ export class FlowController {
     this.signal = { jumpTo: null };
   }
 
-  setJump(target: JumpTarget, reason?: string): void {
-    this.signal = { jumpTo: target, reason };
+  setJump(target: JumpTarget, reason?: string, metadata?: Record<string, unknown>): void {
+    this.signal = { jumpTo: target, reason, metadata };
   }
 
-  getJump(): JumpTarget | null {
-    const target = this.signal.jumpTo;
-    this.signal = { jumpTo: null };
-    return target;
-  }
-
+  /** Consume and return the full signal (reason + metadata included). Single authoritative destructive reader. */
   consumeSignal(): WaveSignal {
-    const sig = { ...this.signal };
+    const sig = this.signal;
     this.signal = { jumpTo: null };
     return sig;
   }
 
+  /** Convenience: extract only the jump target from the signal. Delegates to consumeSignal. */
+  getJump(): JumpTarget | null {
+    return this.consumeSignal().jumpTo;
+  }
+
+  /** Peek at current signal without consuming. Read-only. */
+  private peek(): JumpTarget | null {
+    return this.signal.jumpTo;
+  }
+
   isBlocked(): boolean {
-    return this.signal.jumpTo === 'blocked';
+    return this.peek() === 'blocked';
   }
 
   shouldSkip(): boolean {
-    return this.signal.jumpTo === 'skip';
+    return this.peek() === 'skip';
   }
 
   shouldRetry(): boolean {
-    return this.signal.jumpTo === 'retry';
+    return this.peek() === 'retry';
   }
 
   clearSignal(): void {
-    this.signal = { jumpTo: null };
+    this.consumeSignal();
   }
 }
