@@ -34,6 +34,16 @@ type BootstrapCacheEntry = {
 
 let _bootstrapCache: BootstrapCacheEntry | undefined = undefined;
 
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
 function getStaticBootstrapContent(): string | null {
   const skillPath = path.join(skillsDir, 'ag-orchestrator', 'SKILL.md');
   if (!fs.existsSync(skillPath)) {
@@ -41,14 +51,12 @@ function getStaticBootstrapContent(): string | null {
   }
 
   const version = getPackageVersion();
-  const skillStats = fs.statSync(skillPath);
-  const cacheKey = `${version}:${skillStats.mtimeMs}`;
+  const fullContent = fs.readFileSync(skillPath, 'utf8');
+  const cacheKey = `${version}:${simpleHash(fullContent)}`;
 
   if (_bootstrapCache !== undefined && _bootstrapCache.key === cacheKey) {
     return _bootstrapCache.content;
   }
-
-  const fullContent = fs.readFileSync(skillPath, 'utf8');
   const { content: frontmatterContent } = extractFrontmatter(fullContent);
 
   const bootstrapEnd = frontmatterContent.indexOf('<!-- bootstrap-end -->');

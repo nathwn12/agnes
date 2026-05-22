@@ -2,14 +2,54 @@ import {
   findProjectRoot,
   getLatestActivePlan,
   readPlanIndex,
+  updatePlanStatus,
   detectPromiseTag,
   extractPromiseTag,
   freshStruggleMetrics,
   updateStruggleMetrics,
   detectStruggle,
-  extractErrorsFromOutput,
 } from './state.js';
 import type { PlanIndexEntry, PlanIndex, ActivePlan, StruggleMetrics } from './state.js';
+
+interface SessionState {
+  attempts: number;
+  struggle: StruggleMetrics;
+  lastPromiseTag: string | null;
+  lastAccessed: number;
+}
+
+const sessions = new Map<string, SessionState>();
+const MAX_SESSIONS = 200;
+const SESSION_TTL_MS = 3600000;
+
+function pruneSessions(): void {
+  const now = Date.now();
+  for (const [key, state] of sessions) {
+    if (now - state.lastAccessed > SESSION_TTL_MS) {
+      sessions.delete(key);
+    }
+  }
+  if (sessions.size > MAX_SESSIONS) {
+    const entries = [...sessions.entries()];
+    const toDelete = entries.slice(0, entries.length - MAX_SESSIONS);
+    for (const [key] of toDelete) {
+      sessions.delete(key);
+    }
+  }
+}
+
+function getSession(sessionId: string): SessionState {
+  let s = sessions.get(sessionId);
+  if (!s) {
+    s = { attempts: 0, struggle: freshStruggleMetrics(), lastPromiseTag: null, lastAccessed: Date.now() };
+    sessions.set(sessionId, s);
+  } else {
+    s.lastAccessed = Date.now();
+    sessions.delete(sessionId);
+    sessions.set(sessionId, s);
+  }
+  return s;
+}
 
 export interface AgnesRuntimeState {
   hasActivePlan: boolean;
@@ -138,6 +178,52 @@ export function mergeIterationIntoState(
   return { struggleWarnings, completed };
 }
 
+export function recordAttempt(
+  sessionId: string,
+  promiseTag: string | null,
+  projectRoot?: string,
+  completionPromise = 'DONE',
+): { attempt: number; completed: boolean } {
+  const state = getSession(sessionId);
+  const completed = promiseTag !== null && promiseTag.toUpperCase() === completionPromise.toUpperCase();
+
+  if (completed) {
+    state.lastPromiseTag = promiseTag;
+    state.attempts = 0;
+    state.struggle = freshStruggleMetrics();
+    pruneSessions();
+    persistToPlan(0, freshStruggleMetrics(), projectRoot, 'done');
+    return { attempt: 0, completed: true };
+  }
+
+  state.attempts++;
+  persistToPlan(state.attempts, state.struggle, projectRoot, 'in_progress');
+  return { attempt: state.attempts, completed: false };
+}
+
+function persistToPlan(
+  attempts: number,
+  struggle: StruggleMetrics,
+  projectRoot?: string,
+  status: PlanIndexEntry['status'] = 'in_progress',
+): void {
+  try {
+    const root = projectRoot ?? findProjectRoot();
+    if (!root) return;
+    const index = readPlanIndex(root);
+    if (!index || !index.activePlanId) return;
+    updatePlanStatus({
+      id: index.activePlanId,
+      status,
+      attempts,
+      struggle,
+      projectRoot: root,
+    });
+  } catch {
+    // State persistence must never break message transformation.
+  }
+}
+
 export function buildExecutionContext(entry: PlanIndexEntry): string {
   const lines: string[] = [];
 
@@ -167,3 +253,4 @@ export function buildExecutionContext(entry: PlanIndexEntry): string {
 
   return lines.join('\n');
 }
+

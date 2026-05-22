@@ -4,6 +4,7 @@ import {
   buildIterationReport,
   mergeIterationIntoState,
   buildExecutionContext,
+  recordAttempt,
 } from './runtime.js';
 import type { AgnesRuntimeState } from './runtime.js';
 import { freshStruggleMetrics } from './state.js';
@@ -220,5 +221,50 @@ describe('buildExecutionContext', () => {
       },
     });
     expect(ctx).toContain('<promise>DONE</promise>');
+  });
+});
+
+describe('recordAttempt', () => {
+  test('with promise tag returns completed:true and resets attempt count', () => {
+    const result1 = recordAttempt('session-reset-test', null);
+    expect(result1.attempt).toBe(1);
+    expect(result1.completed).toBe(false);
+
+    const result2 = recordAttempt('session-reset-test', 'DONE');
+    expect(result2.attempt).toBe(0);
+    expect(result2.completed).toBe(true);
+  });
+
+  test('without promise tag increments attempt count', () => {
+    const result1 = recordAttempt('session-incr-test', null);
+    expect(result1.attempt).toBe(1);
+    expect(result1.completed).toBe(false);
+
+    const result2 = recordAttempt('session-incr-test', null);
+    expect(result2.attempt).toBe(2);
+    expect(result2.completed).toBe(false);
+
+    const result3 = recordAttempt('session-incr-test', null);
+    expect(result3.attempt).toBe(3);
+    expect(result3.completed).toBe(false);
+  });
+
+  test('resets after promise tag then increments again', () => {
+    const r1 = recordAttempt('session-loop-test', null);
+    expect(r1.attempt).toBe(1);
+
+    const r2 = recordAttempt('session-loop-test', 'COMPLETE');
+    expect(r2.completed).toBe(false);
+    expect(r2.attempt).toBe(2);
+
+    const r3 = recordAttempt('session-loop-test', null);
+    expect(r3.attempt).toBe(3);
+    expect(r3.completed).toBe(false);
+  });
+
+  test('only DONE promise tags complete the loop', () => {
+    expect(recordAttempt('session-done-only-test', 'DONE').completed).toBe(true);
+    expect(recordAttempt('session-done-only-test-2', 'done').completed).toBe(true);
+    expect(recordAttempt('session-done-only-test-3', 'COMPLETE').completed).toBe(false);
   });
 });

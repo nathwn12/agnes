@@ -23,19 +23,39 @@ function isBlockedPath(dir) {
   }
   return resolved.startsWith(root);
 }
+var _cachedProjectRoot = null;
 function findProjectRoot(startDir) {
+  if (_cachedProjectRoot && !startDir) {
+    const indexPath = path.join(_cachedProjectRoot, ".cache", "agnes", "index.json");
+    if (fs.existsSync(indexPath)) {
+      return _cachedProjectRoot;
+    }
+    _cachedProjectRoot = null;
+  }
   let dir = startDir ? path.resolve(startDir) : process.cwd();
+  let found = null;
   for (let i = 0;i < 20; i++) {
     if (isBlockedPath(dir))
-      return null;
-    if (fs.existsSync(path.join(dir, ".cache", "agnes", "index.json")))
-      return dir;
+      break;
+    if (fs.existsSync(path.join(dir, ".cache", "agnes", "index.json"))) {
+      found = dir;
+      break;
+    }
     const parent = path.dirname(dir);
     if (parent === dir)
-      return null;
+      break;
     dir = parent;
   }
-  return null;
+  if (!startDir && found) {
+    _cachedProjectRoot = found;
+  }
+  return found;
+}
+function validatePlanIndex(raw) {
+  if (!raw || typeof raw !== "object")
+    return false;
+  const idx = raw;
+  return idx.schemaVersion === 2 && typeof idx.projectDir === "string" && (idx.activePlanId === null || typeof idx.activePlanId === "string") && Array.isArray(idx.plans);
 }
 function readPlanIndex(projectRoot) {
   const root = projectRoot ?? findProjectRoot();
@@ -44,7 +64,10 @@ function readPlanIndex(projectRoot) {
   const indexPath = path.join(root, ".cache", "agnes", "index.json");
   try {
     const raw = fs.readFileSync(indexPath, "utf8");
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!validatePlanIndex(parsed))
+      return null;
+    return parsed;
   } catch {
     return null;
   }
@@ -76,7 +99,12 @@ function getLatestActivePlan(projectRoot) {
     }
   }
   if (!target) {
-    const sorted = [...index.plans].filter((p) => activeStatuses.includes(p.status)).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    const sorted = [...index.plans].filter((p) => activeStatuses.includes(p.status)).sort((a, b) => {
+      const timeDiff = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      if (timeDiff !== 0)
+        return timeDiff;
+      return b.id.localeCompare(a.id);
+    });
     target = sorted[0];
   }
   if (!target)
@@ -172,33 +200,6 @@ function freshStruggleMetrics() {
     lastPromiseTag: null
   };
 }
-function updateStruggleMetrics(current, events) {
-  return {
-    noProgressIterations: events.hadProgress ? 0 : current.noProgressIterations + 1,
-    repeatedErrors: events.errors.length === 0 ? {} : events.errors.reduce((acc, e) => {
-      const key = e.substring(0, 100);
-      acc[key] = (current.repeatedErrors[key] || 0) + 1;
-      return acc;
-    }, {}),
-    shortIterations: events.durationMs < 30000 ? current.shortIterations + 1 : 0,
-    lastPromiseTag: events.promiseTag ?? current.lastPromiseTag
-  };
-}
-function extractErrorsFromOutput(output) {
-  const errors = [];
-  const lines = output.split(`
-`);
-  for (const line of lines) {
-    const lower = line.toLowerCase();
-    if (lower.includes("error:") || lower.includes("failed:") || lower.includes("exception:") || lower.includes("typeerror") || lower.includes("syntaxerror") || lower.includes("referenceerror") || lower.includes("test") && lower.includes("fail")) {
-      const cleaned = line.trim().substring(0, 200);
-      if (cleaned && !errors.includes(cleaned)) {
-        errors.push(cleaned);
-      }
-    }
-  }
-  return errors.slice(0, 10);
-}
 
 // src/bootstrap.ts
 var __dirname2 = path2.dirname(fileURLToPath(import.meta.url));
@@ -223,18 +224,26 @@ function getPackageVersion() {
   }
 }
 var _bootstrapCache = undefined;
+function simpleHash(str) {
+  let hash = 0;
+  for (let i = 0;i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
 function getStaticBootstrapContent() {
   const skillPath = path2.join(skillsDir, "ag-orchestrator", "SKILL.md");
   if (!fs2.existsSync(skillPath)) {
     return null;
   }
   const version = getPackageVersion();
-  const skillStats = fs2.statSync(skillPath);
-  const cacheKey = `${version}:${skillStats.mtimeMs}`;
+  const fullContent = fs2.readFileSync(skillPath, "utf8");
+  const cacheKey = `${version}:${simpleHash(fullContent)}`;
   if (_bootstrapCache !== undefined && _bootstrapCache.key === cacheKey) {
     return _bootstrapCache.content;
   }
-  const fullContent = fs2.readFileSync(skillPath, "utf8");
   const { content: frontmatterContent } = extractFrontmatter(fullContent);
   const bootstrapEnd = frontmatterContent.indexOf("<!-- bootstrap-end -->");
   const trimmedContent = bootstrapEnd !== -1 ? frontmatterContent.slice(0, bootstrapEnd).trim() : frontmatterContent;
@@ -279,6 +288,36 @@ ${planSummary}
 }
 
 // src/runtime.ts
+var sessions = new Map;
+var MAX_SESSIONS = 200;
+var SESSION_TTL_MS = 3600000;
+function pruneSessions() {
+  const now = Date.now();
+  for (const [key, state] of sessions) {
+    if (now - state.lastAccessed > SESSION_TTL_MS) {
+      sessions.delete(key);
+    }
+  }
+  if (sessions.size > MAX_SESSIONS) {
+    const entries = [...sessions.entries()];
+    const toDelete = entries.slice(0, entries.length - MAX_SESSIONS);
+    for (const [key] of toDelete) {
+      sessions.delete(key);
+    }
+  }
+}
+function getSession(sessionId) {
+  let s = sessions.get(sessionId);
+  if (!s) {
+    s = { attempts: 0, struggle: freshStruggleMetrics(), lastPromiseTag: null, lastAccessed: Date.now() };
+    sessions.set(sessionId, s);
+  } else {
+    s.lastAccessed = Date.now();
+    sessions.delete(sessionId);
+    sessions.set(sessionId, s);
+  }
+  return s;
+}
 function getPlanState(workspaceRoot) {
   if (workspaceRoot === undefined) {
     workspaceRoot = findProjectRoot();
@@ -314,6 +353,38 @@ function getPlanGate(workspaceRoot) {
   }
   return null;
 }
+function recordAttempt(sessionId, promiseTag, projectRoot, completionPromise = "DONE") {
+  const state = getSession(sessionId);
+  const completed = promiseTag !== null && promiseTag.toUpperCase() === completionPromise.toUpperCase();
+  if (completed) {
+    state.lastPromiseTag = promiseTag;
+    state.attempts = 0;
+    state.struggle = freshStruggleMetrics();
+    pruneSessions();
+    persistToPlan(0, freshStruggleMetrics(), projectRoot, "done");
+    return { attempt: 0, completed: true };
+  }
+  state.attempts++;
+  persistToPlan(state.attempts, state.struggle, projectRoot, "in_progress");
+  return { attempt: state.attempts, completed: false };
+}
+function persistToPlan(attempts, struggle, projectRoot, status = "in_progress") {
+  try {
+    const root = projectRoot ?? findProjectRoot();
+    if (!root)
+      return;
+    const index = readPlanIndex(root);
+    if (!index || !index.activePlanId)
+      return;
+    updatePlanStatus({
+      id: index.activePlanId,
+      status,
+      attempts,
+      struggle,
+      projectRoot: root
+    });
+  } catch {}
+}
 function buildExecutionContext(entry) {
   const lines = [];
   if (entry.attempts !== undefined && entry.attempts > 0) {
@@ -344,44 +415,6 @@ function buildExecutionContext(entry) {
 // src/plugin.ts
 var __dirname3 = path3.dirname(fileURLToPath2(import.meta.url));
 var skillsDir2 = path3.resolve(__dirname3, "../skills");
-var sessionState = new Map;
-var MAX_SESSION_ENTRIES = 200;
-function pruneSessionState() {
-  if (sessionState.size > MAX_SESSION_ENTRIES) {
-    const entries = [...sessionState.entries()];
-    const toDelete = entries.slice(0, entries.length - MAX_SESSION_ENTRIES);
-    for (const [key] of toDelete) {
-      sessionState.delete(key);
-    }
-  }
-}
-function persistExecutionToPlan(attempts, struggle) {
-  try {
-    const root = findProjectRoot();
-    if (!root)
-      return;
-    const index = readPlanIndex(root);
-    if (!index || !index.activePlanId)
-      return;
-    updatePlanStatus({
-      id: index.activePlanId,
-      status: "in_progress",
-      attempts,
-      struggle,
-      projectRoot: root
-    });
-  } catch (err) {
-    console.debug("agnes: plan persistence failed \u2014", err);
-  }
-}
-function getSessionOrInit(sessionId) {
-  let s = sessionState.get(sessionId);
-  if (!s) {
-    s = { attempts: 0, struggle: freshStruggleMetrics(), lastPromiseTag: null };
-    sessionState.set(sessionId, s);
-  }
-  return s;
-}
 function extractAssistantText(parts) {
   return parts.filter((p) => p.type === "text" && typeof p.text === "string").map((p) => p.text).join(`
 `);
@@ -392,11 +425,12 @@ var AgnesPlugin = async ({ client }) => {
   });
   return {
     config: async (config) => {
-      config.skills = config.skills || {};
-      config.skills.paths = config.skills.paths || [];
-      if (!config.skills.paths.includes(skillsDir2)) {
-        config.skills.paths.push(skillsDir2);
+      const paths = config.skills?.paths ? [...config.skills.paths] : [];
+      if (!paths.includes(skillsDir2)) {
+        paths.push(skillsDir2);
       }
+      config.skills = config.skills || {};
+      config.skills.paths = paths;
     },
     "experimental.chat.messages.transform": async (_input, output) => {
       const bootstrap = getBootstrapContent();
@@ -409,26 +443,7 @@ var AgnesPlugin = async ({ client }) => {
         if (assistantText) {
           const promiseTag = extractPromiseTag(assistantText);
           const sessionId = lastAssistant.info?.sessionID ?? "global";
-          const state = getSessionOrInit(sessionId);
-          if (promiseTag) {
-            state.lastPromiseTag = promiseTag;
-            state.attempts = 0;
-            state.struggle = freshStruggleMetrics();
-            pruneSessionState();
-            persistExecutionToPlan(0, freshStruggleMetrics());
-          } else {
-            state.attempts++;
-            const errors = extractErrorsFromOutput(assistantText);
-            const lower = assistantText.toLowerCase();
-            const hadProgress = lower.includes("```diff") || lower.includes("file modified") || lower.includes("created:") || lower.includes("```") || !(lower.includes("no progress") || lower.includes("couldn't") || lower.includes("can't") || lower.includes("failed to") || lower.includes("was unable") || lower.includes("unable to") || lower.includes("error") && !lower.includes("not an error"));
-            state.struggle = updateStruggleMetrics(state.struggle, {
-              hadProgress,
-              durationMs: 0,
-              errors,
-              promiseTag: null
-            });
-            persistExecutionToPlan(state.attempts, state.struggle);
-          }
+          recordAttempt(sessionId, promiseTag);
         }
       }
       const firstUser = output.messages.find((m) => m.info?.role === "user");

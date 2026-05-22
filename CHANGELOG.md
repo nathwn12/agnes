@@ -2,6 +2,32 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.7.1 (2026-05-22)
+
+### Changed
+
+- **State authority model**: `index.json` is now the sole runtime source of truth for all plan state (status, counts, attempts, struggle). Plan markdown files (`plan-NNN.md`) are narrative-only — their frontmatter contains only identity metadata (`id`, `createdAt`, `updatedAt`, `parent`). This eliminates the state drift between indexed truth and markdown truth that was present in 0.7.0. (verified: state.test.ts invariants)
+
+- **Plugin shrunk to adapter role**: `src/plugin.ts` reduced from 196→109 lines. Session tracking, attempt counting, and loop state management moved to `src/runtime.ts`. Plugin now handles bootstrap injection, hook wiring, and message-format parsing only — all orchestration logic lives in runtime. (verified: bun run typecheck)
+
+- **Runtime loop uses structured signals first**: `recordAttempt()` in runtime.ts is the sole entry point for attempt tracking. Only `<promise>DONE</promise>` closes the loop; other tags are ignored for completion. Transcript heuristics (progress detection via text patterns, error extraction from prose) are removed — they produced false positives and were not orchestrator concerns. (verified: runtime.test.ts invariants)
+
+- **Struggle detection simplified**: Without transcript-derived `hadProgress` and `extractErrorsFromOutput`, struggle metrics are only updated when AGNES has real structured execution signals to persist. Warnings are advisory and do not gate retry decisions. (verified: state.test.ts)
+
+### Added
+
+- **Invariant test suite**: 7 new tests covering state synchronization (plan file vs index.json), `recordAttempt` lifecycle (completion resets, attempt increments, loop-around behavior), and narrative content preservation. (verified: 84 tests pass)
+
+- **Boundary document**: `docs/design-001-boundary.md` explicitly defines AGNES core responsibilities (routing, gating, state tracking, subagent delegation, promise-driven completion) vs advisory support systems. This document is the architectural reference for future development.
+
+### Removed
+
+- **Transcript progress detection**: `hadProgress` heuristic in plugin.ts that parsed assistant output for ````diff`, `file modified`, `created:`, and negative signals (`can't`, `couldn't`, `error`). Completion is now determined by promise tag only.
+
+- **Error extraction from output**: `extractErrorsFromOutput()` removed from state.ts (88 lines). Error extraction from transcript text was heuristic-based and advisory-only.
+
+- **Frontmatter runtime fields**: `status`, `total`, `completed`, `blocked` removed from plan-NNN.md YAML frontmatter in both `createPlan()` and `createPlanIteration()`. These fields are now written exclusively to `index.json`.
+
 ## 0.7.0 (2026-05-22)
 
 ### Added

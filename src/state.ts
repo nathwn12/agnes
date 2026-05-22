@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 const OPENCODE_CACHE_ROOT = path.join(os.homedir(), '.cache', 'opencode', 'packages');
+const AGNES_VERSION = '0.7.1';
 
 function isBlockedPath(dir: string): boolean {
   const resolved = path.resolve(dir);
@@ -57,16 +58,38 @@ export interface ActivePlan {
   content: string;
 }
 
+let _cachedProjectRoot: string | null = null;
+
+export function resetProjectRootCache(): void {
+  _cachedProjectRoot = null;
+}
+
 export function findProjectRoot(startDir?: string): string | null {
+  if (_cachedProjectRoot && !startDir) {
+    const indexPath = path.join(_cachedProjectRoot, '.cache', 'agnes', 'index.json');
+    if (fs.existsSync(indexPath)) {
+      return _cachedProjectRoot;
+    }
+    _cachedProjectRoot = null;
+  }
+
   let dir = startDir ? path.resolve(startDir) : process.cwd();
+  let found: string | null = null;
   for (let i = 0; i < 20; i++) {
-    if (isBlockedPath(dir)) return null;
-    if (fs.existsSync(path.join(dir, '.cache', 'agnes', 'index.json'))) return dir;
+    if (isBlockedPath(dir)) break;
+    if (fs.existsSync(path.join(dir, '.cache', 'agnes', 'index.json'))) {
+      found = dir;
+      break;
+    }
     const parent = path.dirname(dir);
-    if (parent === dir) return null;
+    if (parent === dir) break;
     dir = parent;
   }
-  return null;
+
+  if (!startDir && found) {
+    _cachedProjectRoot = found;
+  }
+  return found;
 }
 
 export function cacheDir(projectRoot?: string): string | null {
@@ -75,13 +98,26 @@ export function cacheDir(projectRoot?: string): string | null {
   return path.join(root, '.cache', 'agnes');
 }
 
+function validatePlanIndex(raw: unknown): raw is PlanIndex {
+  if (!raw || typeof raw !== 'object') return false;
+  const idx = raw as Record<string, unknown>;
+  return (
+    idx.schemaVersion === 2 &&
+    typeof idx.projectDir === 'string' &&
+    (idx.activePlanId === null || typeof idx.activePlanId === 'string') &&
+    Array.isArray(idx.plans)
+  );
+}
+
 export function readPlanIndex(projectRoot?: string): PlanIndex | null {
   const root = projectRoot ?? findProjectRoot();
   if (!root) return null;
   const indexPath = path.join(root, '.cache', 'agnes', 'index.json');
   try {
     const raw = fs.readFileSync(indexPath, 'utf8');
-    return JSON.parse(raw) as PlanIndex;
+    const parsed = JSON.parse(raw);
+    if (!validatePlanIndex(parsed)) return null;
+    return parsed;
   } catch {
     return null;
   }
@@ -118,7 +154,11 @@ export function getLatestActivePlan(projectRoot?: string): ActivePlan | null {
   if (!target) {
     const sorted = [...index.plans]
       .filter(p => activeStatuses.includes(p.status))
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      .sort((a, b) => {
+        const timeDiff = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+        if (timeDiff !== 0) return timeDiff;
+        return b.id.localeCompare(a.id);
+      });
     target = sorted[0];
   }
 
@@ -230,13 +270,9 @@ export function createPlan(input: {
 
   let content = `---
 id: ${id}
-status: ${status}
 createdAt: ${now}
 updatedAt: ${now}
-${input.parent ? `parent: ${input.parent}\n` : ''}total: ${total}
-completed: ${completed}
-blocked: ${blocked}
----
+${input.parent ? `parent: ${input.parent}\n` : ''}---
 
 Goal: ${input.goal}
 
@@ -267,7 +303,7 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
   };
 
   const index = readPlanIndex(root) ?? {
-    agnesVersion: '0.4.4',
+    agnesVersion: AGNES_VERSION,
     schemaVersion: 2 as const,
     projectDir: root,
     projectName: path.basename(root),
@@ -308,13 +344,9 @@ export function createPlanIteration(input: {
 
   let content = `---
 id: ${id}
-status: ${input.status}
 createdAt: ${now}
 updatedAt: ${now}
 parent: ${input.parent}
-total: ${total}
-completed: ${input.completed}
-blocked: ${input.blocked}
 ---
 
 Goal: ${input.goal}
@@ -446,16 +478,15 @@ export function updateStruggleMetrics(
 ): StruggleMetrics {
   return {
     noProgressIterations: events.hadProgress ? 0 : current.noProgressIterations + 1,
-    repeatedErrors: events.errors.length === 0
-      ? {}
-      : events.errors.reduce(
-          (acc, e) => {
-            const key = e.substring(0, 100);
-            acc[key] = (current.repeatedErrors[key] || 0) + 1;
-            return acc;
-          },
-          {} as Record<string, number>,
-        ),
+    repeatedErrors: (() => {
+      if (events.errors.length === 0) return current.repeatedErrors;
+      const merged = { ...current.repeatedErrors };
+      for (const e of events.errors) {
+        const key = e.substring(0, 100);
+        merged[key] = (merged[key] || 0) + 1;
+      }
+      return merged;
+    })(),
     shortIterations: events.durationMs < 30000 ? current.shortIterations + 1 : 0,
     lastPromiseTag: events.promiseTag ?? current.lastPromiseTag,
   };
@@ -477,27 +508,4 @@ export function detectStruggle(metrics: StruggleMetrics): string[] {
     warnings.push(`Same error ${count}x: "${error.substring(0, 60)}..."`);
   }
   return warnings;
-}
-
-export function extractErrorsFromOutput(output: string): string[] {
-  const errors: string[] = [];
-  const lines = output.split('\n');
-  for (const line of lines) {
-    const lower = line.toLowerCase();
-    if (
-      lower.includes('error:') ||
-      lower.includes('failed:') ||
-      lower.includes('exception:') ||
-      lower.includes('typeerror') ||
-      lower.includes('syntaxerror') ||
-      lower.includes('referenceerror') ||
-      (lower.includes('test') && lower.includes('fail'))
-    ) {
-      const cleaned = line.trim().substring(0, 200);
-      if (cleaned && !errors.includes(cleaned)) {
-        errors.push(cleaned);
-      }
-    }
-  }
-  return errors.slice(0, 10);
 }

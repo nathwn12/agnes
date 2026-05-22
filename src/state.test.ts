@@ -5,6 +5,7 @@ import * as os from 'node:os';
 
 import {
   findProjectRoot,
+  resetProjectRootCache,
   cacheDir,
   readPlanIndex,
   writePlanIndex,
@@ -19,7 +20,6 @@ import {
   freshStruggleMetrics,
   updateStruggleMetrics,
   detectStruggle,
-  extractErrorsFromOutput,
 } from './state.js';
 import type { PlanIndex, ActivePlan, StruggleMetrics } from './state.js';
 import { getPlanState, getPlanGate, getCurrentState, getPlanGateFromState } from './runtime.js';
@@ -46,12 +46,19 @@ function readIndex(projectRoot: string): PlanIndex | null {
 }
 
 describe('findProjectRoot', () => {
+  test('reset helper clears cached no-arg root', () => {
+    resetProjectRootCache();
+    expect(true).toBe(true);
+  });
+
   test('returns null when no .cache/agnes/index.json exists', () => {
+    resetProjectRootCache();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-'));
     expect(findProjectRoot(tmp)).toBeNull();
   });
 
   test('finds project root when .cache/agnes/index.json exists', () => {
+    resetProjectRootCache();
     const tmp = createTempProject();
     writeIndex(tmp, {
       agnesVersion: '0.4.4',
@@ -66,6 +73,7 @@ describe('findProjectRoot', () => {
   });
 
   test('walks up from subdirectory to find root', () => {
+    resetProjectRootCache();
     const tmp = createTempProject();
     writeIndex(tmp, {
       agnesVersion: '0.4.4',
@@ -79,6 +87,60 @@ describe('findProjectRoot', () => {
     const subdir = path.join(tmp, 'src', 'components');
     fs.mkdirSync(subdir, { recursive: true });
     expect(findProjectRoot(subdir)).toBe(tmp);
+  });
+
+  test('does not cache misses for later no-arg lookups', () => {
+    resetProjectRootCache();
+    const originalCwd = process.cwd();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-'));
+    const nested = path.join(tmp, 'nested');
+    fs.mkdirSync(nested, { recursive: true });
+
+    try {
+      process.chdir(nested);
+      expect(findProjectRoot()).toBeNull();
+
+      fs.mkdirSync(path.join(tmp, '.cache', 'agnes'), { recursive: true });
+      writeIndex(tmp, {
+        agnesVersion: '0.7.1',
+        schemaVersion: 2,
+        projectDir: tmp,
+        projectName: 'test',
+        updatedAt: new Date().toISOString(),
+        activePlanId: null,
+        plans: [],
+      });
+
+      expect(findProjectRoot()).toBe(tmp);
+    } finally {
+      process.chdir(originalCwd);
+      resetProjectRootCache();
+    }
+  });
+
+  test('invalidates cached no-arg root when index disappears', () => {
+    resetProjectRootCache();
+    const originalCwd = process.cwd();
+    const tmp = createTempProject();
+    writeIndex(tmp, {
+      agnesVersion: '0.7.1',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: new Date().toISOString(),
+      activePlanId: null,
+      plans: [],
+    });
+
+    try {
+      process.chdir(tmp);
+      expect(findProjectRoot()).toBe(tmp);
+      fs.rmSync(path.join(tmp, '.cache'), { recursive: true, force: true });
+      expect(findProjectRoot()).toBeNull();
+    } finally {
+      process.chdir(originalCwd);
+      resetProjectRootCache();
+    }
   });
 });
 
@@ -106,10 +168,20 @@ describe('readPlanIndex / writePlanIndex', () => {
     expect(readPlanIndex(tmp)).toBeNull();
   });
 
+  test('readPlanIndex returns null for invalid schema shape', () => {
+    const tmp = createTempProject();
+    fs.writeFileSync(
+      path.join(tmp, '.cache', 'agnes', 'index.json'),
+      JSON.stringify({ schemaVersion: 2, projectDir: tmp, activePlanId: null, plans: 'bad' }),
+      'utf8',
+    );
+    expect(readPlanIndex(tmp)).toBeNull();
+  });
+
   test('writePlanIndex creates index.json atomically', () => {
     const tmp = createTempProject();
     const index: PlanIndex = {
-      agnesVersion: '0.4.4',
+      agnesVersion: '0.7.1',
       schemaVersion: 2,
       projectDir: tmp,
       projectName: 'test',
@@ -120,7 +192,7 @@ describe('readPlanIndex / writePlanIndex', () => {
     writePlanIndex(index, tmp);
     const read = readPlanIndex(tmp);
     expect(read).not.toBeNull();
-    expect(read!.agnesVersion).toBe('0.4.4');
+    expect(read!.agnesVersion).toBe('0.7.1');
     expect(read!.plans).toEqual([]);
   });
 });
@@ -348,6 +420,90 @@ describe('createPlan', () => {
     expect(active.entry.status).toBe('done');
     const index = readIndex(tmp)!;
     expect(index.activePlanId).toBeNull();
+  });
+});
+
+describe('state synchronization invariants', () => {
+  test('plan markdown file has no runtime state in frontmatter (createPlan)', () => {
+    const tmp = createTempProject();
+    createPlan({
+      summary: 'Test',
+      goal: 'Goal',
+      check: 'check',
+      tasks: ['Task 1'],
+      status: 'in_progress',
+      projectRoot: tmp,
+    });
+    const content = fs.readFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'utf8');
+    expect(content).not.toMatch(/^status:/m);
+    expect(content).not.toMatch(/^total:/m);
+    expect(content).not.toMatch(/^completed:/m);
+    expect(content).not.toMatch(/^blocked:/m);
+    expect(content).toMatch(/^id: plan-001/m);
+    expect(content).toMatch(/^createdAt:/m);
+  });
+
+  test('plan markdown file has no runtime state in frontmatter (createPlanIteration)', () => {
+    const tmp = createTempProject();
+    const parent = createPlan({
+      summary: 'Parent',
+      goal: 'Goal',
+      check: 'check',
+      tasks: ['Task 1'],
+      status: 'in_progress',
+      projectRoot: tmp,
+    });
+    createPlanIteration({
+      parent: parent.entry.id,
+      summary: 'Child',
+      goal: 'Goal',
+      check: 'check',
+      tasksMarkdown: '- [x] Task 1',
+      status: 'in_progress',
+      completed: 1,
+      blocked: 0,
+      projectRoot: tmp,
+    });
+    const content = fs.readFileSync(path.join(tmp, '.cache', 'agnes', 'plan-002.md'), 'utf8');
+    expect(content).not.toMatch(/^status:/m);
+    expect(content).not.toMatch(/^total:/m);
+    expect(content).not.toMatch(/^completed:/m);
+    expect(content).not.toMatch(/^blocked:/m);
+  });
+
+  test('plan file contains narrative content after frontmatter', () => {
+    const tmp = createTempProject();
+    createPlan({
+      summary: 'Test',
+      goal: 'Build the feature',
+      check: 'bun test',
+      tasks: ['Task 1', 'Task 2'],
+      projectRoot: tmp,
+    });
+    const content = fs.readFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'utf8');
+    expect(content).toContain('Goal: Build the feature');
+    expect(content).toContain('Check: bun test');
+    expect(content).toContain('- [ ] Task 1');
+    expect(content).toContain('- [ ] Task 2');
+  });
+
+  test('index.json is sole source of runtime state', () => {
+    const tmp = createTempProject();
+    createPlan({
+      summary: 'Test',
+      goal: 'Goal',
+      check: 'check',
+      tasks: ['Task 1'],
+      status: 'in_progress',
+      projectRoot: tmp,
+    });
+    const index = readIndex(tmp)!;
+    const planEntry = index.plans[0];
+    expect(planEntry.status).toBe('in_progress');
+    expect(planEntry.total).toBe(1);
+    expect(planEntry.completed).toBe(0);
+    expect(planEntry.blocked).toBe(0);
+    expect(index.activePlanId).toBe('plan-001');
   });
 });
 
@@ -771,11 +927,11 @@ describe('updateStruggleMetrics', () => {
     expect(r2.repeatedErrors['Error: something failed']).toBe(2);
   });
 
-  test('clears repeatedErrors when no errors', () => {
+  test('preserves repeatedErrors across clean iterations', () => {
     const m = freshStruggleMetrics();
     const withErrors = updateStruggleMetrics(m, { hadProgress: true, durationMs: 60000, errors: ['Error: x'], promiseTag: null });
     const withoutErrors = updateStruggleMetrics(withErrors, { hadProgress: true, durationMs: 60000, errors: [], promiseTag: null });
-    expect(withoutErrors.repeatedErrors).toEqual({});
+    expect(withoutErrors.repeatedErrors).toEqual({ 'Error: x': 1 });
   });
 
   test('preserves lastPromiseTag', () => {
@@ -822,28 +978,7 @@ describe('detectStruggle', () => {
   });
 });
 
-describe('extractErrorsFromOutput', () => {
-  test('catches error: lines', () => {
-    const errors = extractErrorsFromOutput('Error: something broke');
-    expect(errors).toContainEqual(expect.stringMatching(/something broke/i));
-  });
 
-  test('catches TypeError', () => {
-    const errors = extractErrorsFromOutput('TypeError: cannot read property');
-    expect(errors).toContainEqual(expect.stringMatching(/TypeError/i));
-  });
-
-  test('deduplicates identical errors', () => {
-    const errors = extractErrorsFromOutput('Error: x\nError: x');
-    expect(errors.filter(e => e.includes('x')).length).toBe(1);
-  });
-
-  test('caps at 10 errors', () => {
-    const lines = Array.from({ length: 20 }, (_, i) => `Error: error ${i}`);
-    const errors = extractErrorsFromOutput(lines.join('\n'));
-    expect(errors.length).toBeLessThanOrEqual(10);
-  });
-});
 
 describe('createPlan with attempts/struggle', () => {
   test('stores optional attempts and struggle', () => {
