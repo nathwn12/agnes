@@ -14,8 +14,14 @@ import {
   createPlan,
   createPlanIteration,
   updatePlanStatus,
+  detectPromiseTag,
+  extractPromiseTag,
+  freshStruggleMetrics,
+  updateStruggleMetrics,
+  detectStruggle,
+  extractErrorsFromOutput,
 } from './state.js';
-import type { PlanIndex, ActivePlan } from './state.js';
+import type { PlanIndex, ActivePlan, StruggleMetrics } from './state.js';
 import { getPlanState, getPlanGate, getCurrentState, getPlanGateFromState } from './runtime.js';
 import type { AgnesRuntimeState } from './runtime.js';
 
@@ -677,4 +683,315 @@ describe('getPlanGate', () => {
     expect(gate).toContain('BLOCKED PLAN');
     expect(gate).toContain('plan-001');
   });
+
+describe('detectPromiseTag', () => {
+  test('detects promise tag in output', () => {
+    expect(detectPromiseTag('some output\n<promise>DONE</promise>\nmore')).toBe(true);
+  });
+
+  test('returns false when no promise tag', () => {
+    expect(detectPromiseTag('no promise here')).toBe(false);
+  });
+
+  test('matches exact expected tag', () => {
+    expect(detectPromiseTag('<promise>DONE</promise>', 'DONE')).toBe(true);
+  });
+
+  test('rejects wrong expected tag', () => {
+    expect(detectPromiseTag('<promise>DONE</promise>', 'FAIL')).toBe(false);
+  });
+
+  test('tolerates whitespace around tag value', () => {
+    expect(detectPromiseTag('<promise>  DONE  </promise>', 'DONE')).toBe(true);
+  });
+
+  test('accepts any tag when no expected value given', () => {
+    expect(detectPromiseTag('<promise>ANYTHING</promise>')).toBe(true);
+  });
+});
+
+describe('extractPromiseTag', () => {
+  test('extracts promise tag value', () => {
+    expect(extractPromiseTag('<promise>DONE</promise>')).toBe('DONE');
+  });
+
+  test('returns null when no tag', () => {
+    expect(extractPromiseTag('no tag')).toBeNull();
+  });
+
+  test('extracts first tag when multiple', () => {
+    expect(extractPromiseTag('<promise>FIRST</promise> more <promise>SECOND</promise>')).toBe('FIRST');
+  });
+});
+
+describe('freshStruggleMetrics', () => {
+  test('returns zeroed state', () => {
+    const m = freshStruggleMetrics();
+    expect(m.noProgressIterations).toBe(0);
+    expect(m.shortIterations).toBe(0);
+    expect(m.repeatedErrors).toEqual({});
+    expect(m.lastPromiseTag).toBeNull();
+  });
+});
+
+describe('updateStruggleMetrics', () => {
+  test('increments noProgressIterations when no progress', () => {
+    const m = freshStruggleMetrics();
+    const updated = updateStruggleMetrics(m, { hadProgress: false, durationMs: 60000, errors: [], promiseTag: null });
+    expect(updated.noProgressIterations).toBe(1);
+  });
+
+  test('resets noProgressIterations on progress', () => {
+    const m = freshStruggleMetrics();
+    const afterNoProgress = updateStruggleMetrics(m, { hadProgress: false, durationMs: 60000, errors: [], promiseTag: null });
+    const afterProgress = updateStruggleMetrics(afterNoProgress, { hadProgress: true, durationMs: 60000, errors: [], promiseTag: null });
+    expect(afterProgress.noProgressIterations).toBe(0);
+  });
+
+  test('accumulates short iterations under 30s', () => {
+    const m = freshStruggleMetrics();
+    const r1 = updateStruggleMetrics(m, { hadProgress: true, durationMs: 10000, errors: [], promiseTag: null });
+    expect(r1.shortIterations).toBe(1);
+    const r2 = updateStruggleMetrics(r1, { hadProgress: true, durationMs: 5000, errors: [], promiseTag: null });
+    expect(r2.shortIterations).toBe(2);
+  });
+
+  test('resets short iterations on long iteration', () => {
+    const m = freshStruggleMetrics();
+    const afterShort = updateStruggleMetrics(m, { hadProgress: true, durationMs: 10000, errors: [], promiseTag: null });
+    const afterLong = updateStruggleMetrics(afterShort, { hadProgress: true, durationMs: 60000, errors: [], promiseTag: null });
+    expect(afterLong.shortIterations).toBe(0);
+  });
+
+  test('counts repeated errors by truncated key', () => {
+    const m = freshStruggleMetrics();
+    const r1 = updateStruggleMetrics(m, { hadProgress: true, durationMs: 60000, errors: ['Error: something failed'], promiseTag: null });
+    expect(r1.repeatedErrors['Error: something failed']).toBe(1);
+    const r2 = updateStruggleMetrics(r1, { hadProgress: true, durationMs: 60000, errors: ['Error: something failed'], promiseTag: null });
+    expect(r2.repeatedErrors['Error: something failed']).toBe(2);
+  });
+
+  test('clears repeatedErrors when no errors', () => {
+    const m = freshStruggleMetrics();
+    const withErrors = updateStruggleMetrics(m, { hadProgress: true, durationMs: 60000, errors: ['Error: x'], promiseTag: null });
+    const withoutErrors = updateStruggleMetrics(withErrors, { hadProgress: true, durationMs: 60000, errors: [], promiseTag: null });
+    expect(withoutErrors.repeatedErrors).toEqual({});
+  });
+
+  test('preserves lastPromiseTag', () => {
+    const m = freshStruggleMetrics();
+    const updated = updateStruggleMetrics(m, { hadProgress: true, durationMs: 60000, errors: [], promiseTag: 'DONE' });
+    expect(updated.lastPromiseTag).toBe('DONE');
+  });
+
+  test('keeps previous promiseTag when new one is null', () => {
+    const m = freshStruggleMetrics();
+    const withTag = updateStruggleMetrics(m, { hadProgress: true, durationMs: 60000, errors: [], promiseTag: 'DONE' });
+    const withoutTag = updateStruggleMetrics(withTag, { hadProgress: true, durationMs: 60000, errors: [], promiseTag: null });
+    expect(withoutTag.lastPromiseTag).toBe('DONE');
+  });
+});
+
+describe('detectStruggle', () => {
+  test('warns on noProgressIterations >= 3', () => {
+    const m: StruggleMetrics = { noProgressIterations: 3, shortIterations: 0, repeatedErrors: {}, lastPromiseTag: null };
+    expect(detectStruggle(m)).toEqual(
+      expect.arrayContaining([expect.stringMatching(/no progress/i)])
+    );
+  });
+
+  test('warns on shortIterations >= 3', () => {
+    const m: StruggleMetrics = { noProgressIterations: 0, shortIterations: 3, repeatedErrors: {}, lastPromiseTag: null };
+    const warnings = detectStruggle(m);
+    expect(warnings).toEqual(
+      expect.arrayContaining([expect.stringMatching(/short/i)])
+    );
+  });
+
+  test('warns on repeated error >= 2', () => {
+    const m: StruggleMetrics = { noProgressIterations: 0, shortIterations: 0, repeatedErrors: { 'Error: fail': 2 }, lastPromiseTag: null };
+    const warnings = detectStruggle(m);
+    expect(warnings).toEqual(
+      expect.arrayContaining([expect.stringMatching(/fail/i)])
+    );
+  });
+
+  test('returns empty when no struggle', () => {
+    const m = freshStruggleMetrics();
+    expect(detectStruggle(m)).toEqual([]);
+  });
+});
+
+describe('extractErrorsFromOutput', () => {
+  test('catches error: lines', () => {
+    const errors = extractErrorsFromOutput('Error: something broke');
+    expect(errors).toContainEqual(expect.stringMatching(/something broke/i));
+  });
+
+  test('catches TypeError', () => {
+    const errors = extractErrorsFromOutput('TypeError: cannot read property');
+    expect(errors).toContainEqual(expect.stringMatching(/TypeError/i));
+  });
+
+  test('deduplicates identical errors', () => {
+    const errors = extractErrorsFromOutput('Error: x\nError: x');
+    expect(errors.filter(e => e.includes('x')).length).toBe(1);
+  });
+
+  test('caps at 10 errors', () => {
+    const lines = Array.from({ length: 20 }, (_, i) => `Error: error ${i}`);
+    const errors = extractErrorsFromOutput(lines.join('\n'));
+    expect(errors.length).toBeLessThanOrEqual(10);
+  });
+});
+
+describe('createPlan with attempts/struggle', () => {
+  test('stores optional attempts and struggle', () => {
+    const tmp = createTempProject();
+    const active = createPlan({
+      summary: 'Test',
+      goal: 'Goal',
+      check: 'check',
+      tasks: ['Task 1'],
+      attempts: 3,
+      struggle: { noProgressIterations: 2, shortIterations: 1, repeatedErrors: { 'Error: x': 1 }, lastPromiseTag: null },
+      projectRoot: tmp,
+    });
+    const index = readPlanIndex(tmp)!;
+    const entry = index.plans.find(p => p.id === active.entry.id)!;
+    expect(entry.attempts).toBe(3);
+    expect(entry.struggle?.noProgressIterations).toBe(2);
+    expect(entry.struggle?.shortIterations).toBe(1);
+    expect(entry.struggle?.repeatedErrors['Error: x']).toBe(1);
+  });
+
+  test('omits attempts/struggle when not provided', () => {
+    const tmp = createTempProject();
+    createPlan({
+      summary: 'Test',
+      goal: 'Goal',
+      check: 'check',
+      tasks: ['Task 1'],
+      projectRoot: tmp,
+    });
+    const index = readPlanIndex(tmp)!;
+    const entry = index.plans.find(p => p.id === 'plan-001')!;
+    expect(entry.attempts).toBeUndefined();
+    expect(entry.struggle).toBeUndefined();
+  });
+});
+
+describe('createPlanIteration with attempts/struggle', () => {
+  test('carries forward parent attempts and struggle', () => {
+    const tmp = createTempProject();
+    const parent = createPlan({
+      summary: 'Parent',
+      goal: 'Goal',
+      check: 'check',
+      tasks: ['Task 1'],
+      attempts: 2,
+      struggle: { noProgressIterations: 1, shortIterations: 0, repeatedErrors: {}, lastPromiseTag: null },
+      projectRoot: tmp,
+    });
+    const iteration = createPlanIteration({
+      parent: parent.entry.id,
+      summary: 'Child',
+      goal: 'Goal',
+      check: 'check',
+      tasksMarkdown: '- [x] Task 1',
+      status: 'in_progress',
+      completed: 0,
+      blocked: 0,
+      projectRoot: tmp,
+    });
+    const index = readPlanIndex(tmp)!;
+    const childEntry = index.plans.find(p => p.id === iteration.entry.id)!;
+    expect(childEntry.attempts).toBe(2);
+    expect(childEntry.struggle?.noProgressIterations).toBe(1);
+  });
+
+  test('overrides with explicit values', () => {
+    const tmp = createTempProject();
+    const parent = createPlan({
+      summary: 'Parent',
+      goal: 'Goal',
+      check: 'check',
+      tasks: ['Task 1'],
+      attempts: 2,
+      struggle: { noProgressIterations: 1, shortIterations: 0, repeatedErrors: {}, lastPromiseTag: null },
+      projectRoot: tmp,
+    });
+    const iteration = createPlanIteration({
+      parent: parent.entry.id,
+      summary: 'Child',
+      goal: 'Goal',
+      check: 'check',
+      tasksMarkdown: '- [x] Task 1',
+      status: 'in_progress',
+      completed: 0,
+      blocked: 0,
+      attempts: 5,
+      struggle: { noProgressIterations: 3, shortIterations: 2, repeatedErrors: {}, lastPromiseTag: null },
+      projectRoot: tmp,
+    });
+    const index = readPlanIndex(tmp)!;
+    const childEntry = index.plans.find(p => p.id === iteration.entry.id)!;
+    expect(childEntry.attempts).toBe(5);
+    expect(childEntry.struggle?.noProgressIterations).toBe(3);
+  });
+});
+
+describe('updatePlanStatus with attempts/struggle', () => {
+  test('patches attempts and struggle without clearing other fields', () => {
+    const tmp = createTempProject();
+    const active = createPlan({
+      summary: 'Test',
+      goal: 'Goal',
+      check: 'check',
+      tasks: ['Task 1', 'Task 2'],
+      status: 'in_progress',
+      projectRoot: tmp,
+    });
+
+    updatePlanStatus({
+      id: active.entry.id,
+      status: 'in_progress',
+      completed: 1,
+      attempts: 3,
+      struggle: { noProgressIterations: 1, shortIterations: 0, repeatedErrors: {}, lastPromiseTag: null },
+      projectRoot: tmp,
+    });
+
+    const index = readPlanIndex(tmp)!;
+    const entry = index.plans.find(p => p.id === active.entry.id)!;
+    expect(entry.completed).toBe(1);
+    expect(entry.attempts).toBe(3);
+    expect(entry.struggle?.noProgressIterations).toBe(1);
+  });
+
+  test('updatePlanStatus does not affect attempts/struggle when not provided', () => {
+    const tmp = createTempProject();
+    const active = createPlan({
+      summary: 'Test',
+      goal: 'Goal',
+      check: 'check',
+      tasks: ['Task 1'],
+      attempts: 2,
+      struggle: { noProgressIterations: 1, shortIterations: 0, repeatedErrors: {}, lastPromiseTag: null },
+      projectRoot: tmp,
+    });
+
+    updatePlanStatus({
+      id: active.entry.id,
+      status: 'done',
+      completed: 1,
+      projectRoot: tmp,
+    });
+
+    const index = readPlanIndex(tmp)!;
+    const entry = index.plans.find(p => p.id === active.entry.id)!;
+    expect(entry.attempts).toBe(2);
+    expect(entry.struggle?.noProgressIterations).toBe(1);
+  });
+});
 });

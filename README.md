@@ -1,7 +1,7 @@
 <h1 align="center">AGNES — OpenCode Native Plugin</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.6.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.7.0-blue" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
   <img src="https://img.shields.io/badge/skills-23-orange" alt="23 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
@@ -115,6 +115,7 @@ AGNES never writes code directly. Every task is delegated to a subagent or speci
 | **Verify before claiming** | Run the command. Read the output. Then speak. |
 | **Scarcity** | Cheapest sufficient path first — shallow-first, compact outputs, context as budget. |
 | **Work-steal** | Subagent finished early? Dispatch it with the next task immediately. |
+| **Promise-driven execution** | Tracks subagent progress via promise tags, detects struggle patterns, and retries with session-aware backoff. |
 
 ---
 

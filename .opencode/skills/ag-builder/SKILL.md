@@ -45,22 +45,65 @@ Disciplined plan execution that creates isolated worktrees, dispatches subagents
 
 For each task in the implementation plan:
 
-#### 1. Build
+#### 1. Build (Ralph Loop)
 
 Write code for the task. Follow the spec exactly. Include complete code — no placeholders.
+
+Dispatch the implementer using the **Ralph Loop** pattern — an iterative retry loop that sends the same prompt until the implementer signals completion via a `<promise>` tag:
+
+```
+For each task:
+  1. Set default: maxRetries = 3, completionPromise = "DONE"
+  2. For attempt = 1..maxRetries:
+     a. Dispatch subagent with prompt that includes:
+        - Task description from plan
+        - Acceptance criteria
+        - "Output <promise>${completionPromise}</promise> when truly complete"
+     b. Scan subagent output for <promise>TAG</promise>
+     c. If found with expected tag → proceed to Verify
+     d. If not found and attempt < maxRetries → retry with same prompt
+     e. Track struggle indicators per attempt:
+        - No file changes → increment noProgress
+        - Duration < 30s → increment shortIterations
+        - Repeated error patterns → increment error count
+  3. If maxRetries exhausted → return BLOCKED status
+```
 
 The implementer returns one of four statuses after dispatch:
 
 | Status | Meaning | Action |
 |--------|---------|--------|
-| DONE | Task complete, ready for review | Proceed to Verify → Review |
-| DONE_WITH_CONCERNS | Complete but implementer flagged uncertainties | Surface concerns with evidence before proceeding |
+| DONE | Task complete (promise detected), ready for review | Proceed to Verify → Review |
+| DONE_WITH_CONCERNS | Promise detected but implementer flagged uncertainties | Surface concerns with evidence before proceeding |
 | NEEDS_CONTEXT | Implementer couldn't proceed (missing info) | Provide missing context, re-dispatch |
-| BLOCKED | External blocker (dep, permission, env) | Create a new blocked plan iteration. Then stop. |
+| BLOCKED | External blocker or max retries exhausted | Create a new blocked plan iteration. Then stop. |
 
 On DONE_WITH_CONCERNS: review flagged concerns with the user before continuing. Do not silently skip.
 On NEEDS_CONTEXT: identify the exact gap, fill it, re-dispatch the same task.
 On BLOCKED: Create a new blocked plan iteration. Then stop.
+
+##### Struggle Detection
+
+If the subagent shows these patterns across attempts, escalate:
+
+| Pattern | Threshold | Action |
+|---------|-----------|--------|
+| No file changes | ≥3 attempts | Warn: "Stuck — no progress" |
+| Very short iterations | ≥3 attempts (<30s) | Warn: "Subagent may be failing fast" |
+| Same error repeated | ≥2 attempts | Warn: "Recurring error" |
+
+When struggle is detected, inject context hint into the next attempt:
+`"Hint: {struggle warning detail} — try a different approach."`
+
+##### Promise Tag Convention
+
+Every subagent dispatch prompt MUST include:
+```
+When the task is genuinely complete, output <promise>DONE</promise> on its own line.
+Do NOT output this tag until the task is truly done.
+```
+
+The build verifier must scan output for `<promise>DONE</promise>` (or the task-specific promise tag) before accepting completion.
 
 #### 2. Test
 

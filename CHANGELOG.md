@@ -2,6 +2,25 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.7.0 (2026-05-22)
+
+### Added
+
+- **Promise-tag detection**: `detectPromiseTag()` and `extractPromiseTag()` parse `<promise>...</promise>` tags from agent output — enables closed-loop completion verification for delegated execution. (verified: state.test.ts)
+- **Struggle detection system**: `freshStruggleMetrics()`, `updateStruggleMetrics()`, `detectStruggle()` track no-progress iterations, short runs (<30s), and repeated errors — warns after configured thresholds to prevent infinite retry loops. (verified: state.test.ts)
+- **Session-based attempt tracking**: Plugin now scans conversation history across turns, tracking `attempts` and `struggle` metrics per session via `sessionState` Map, and persists them to plan state through `updatePlanStatus`. (verified: src/plugin.ts)
+- **Execution context injection**: Bootstrap now includes active plan's execution context (attempt count, struggle signals, recurring errors) — gives AGNES awareness of prior-turn progress. (verified: src/runtime.ts)
+- **Iteration report runtime**: `buildIterationReport()` and `mergeIterationIntoState()` provide a structured interface for delegation subagents to report results back into plan state. (verified: src/runtime.ts)
+
+### Changed
+
+- **PlanIndexEntry schema**: Extended with optional `attempts: number` and `struggle: StruggleMetrics` — `createPlan()`, `createPlanIteration()`, and `updatePlanStatus()` all support these fields with carry-forward semantics. (verified: state.test.ts)
+- **BuildPlanSummary enrichment**: Now includes attempt count and struggle indicators (no-progress, short-runs, repeated-errors, last-promise) when present. (verified: src/state.ts)
+
+### Tests
+
+- **319 new test lines**: Promise tag detection (6 tests), struggle metrics lifecycle (9 tests), error extraction from output (4 tests), plan state persistence with attempts/struggle (5 tests). (verified: `bun test`)
+
 ## 0.6.0 (2026-05-22)
 
 ### Added

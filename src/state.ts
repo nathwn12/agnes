@@ -20,6 +20,13 @@ export type PlanStatus =
   | "done"
   | "abandoned";
 
+export interface StruggleMetrics {
+  noProgressIterations: number;
+  repeatedErrors: Record<string, number>;
+  shortIterations: number;
+  lastPromiseTag: string | null;
+}
+
 export interface PlanIndexEntry {
   id: string;
   status: PlanStatus;
@@ -31,6 +38,8 @@ export interface PlanIndexEntry {
   completed: number;
   blocked: number;
   file: string;
+  attempts?: number;
+  struggle?: StruggleMetrics;
 }
 
 export interface PlanIndex {
@@ -139,7 +148,23 @@ export function buildPlanSummary(projectRoot?: string): string {
   const goalMatch = active.content.match(/^Goal:\s*(.+)$/m);
   const goal = goalMatch ? goalMatch[1] : '';
 
-  return `Active Plan: ${entry.id} (${entry.status}) \u2014 ${entry.completed}/${entry.total} tasks done\nGoal: ${goal}\nLatest update: ${entry.updatedAt}`;
+  let line = `Active Plan: ${entry.id} (${entry.status}) \u2014 ${entry.completed}/${entry.total} tasks done\nGoal: ${goal}\nLatest update: ${entry.updatedAt}`;
+
+  if (entry.attempts !== undefined && entry.attempts > 0) {
+    line += `\nAttempts: ${entry.attempts}`;
+  }
+  if (entry.struggle) {
+    const s = entry.struggle;
+    const parts: string[] = [];
+    if (s.noProgressIterations > 0) parts.push(`no-progress:${s.noProgressIterations}`);
+    if (s.shortIterations > 0) parts.push(`short-runs:${s.shortIterations}`);
+    const errCount = Object.keys(s.repeatedErrors).length;
+    if (errCount > 0) parts.push(`repeated-errors:${errCount}`);
+    if (s.lastPromiseTag) parts.push(`last-promise:${s.lastPromiseTag}`);
+    if (parts.length > 0) line += `\nStruggle: ${parts.join(', ')}`;
+  }
+
+  return line;
 }
 
 export function getNextPlanId(projectRoot?: string): string {
@@ -185,6 +210,8 @@ export function createPlan(input: {
   status?: PlanStatus;
   notes?: string[];
   projectRoot?: string;
+  attempts?: number;
+  struggle?: StruggleMetrics;
 }): ActivePlan {
   const root = input.projectRoot ?? findProjectRoot();
   if (!root) throw new Error('Cannot create plan: no project root found');
@@ -235,6 +262,8 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
     completed,
     blocked,
     file,
+    ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
+    ...(input.struggle !== undefined ? { struggle: input.struggle } : {}),
   };
 
   const index = readPlanIndex(root) ?? {
@@ -267,6 +296,8 @@ export function createPlanIteration(input: {
   blocked: number;
   notes?: string[];
   projectRoot?: string;
+  attempts?: number;
+  struggle?: StruggleMetrics;
 }): ActivePlan {
   const root = input.projectRoot ?? findProjectRoot();
   if (!root) throw new Error('Cannot create plan iteration: no project root found');
@@ -299,6 +330,13 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
 
   const file = writePlanFile(root, id, content);
 
+  const index = readPlanIndex(root);
+  if (!index) throw new Error('Cannot create plan iteration: no index found');
+
+  const parentEntry = index.plans.find(p => p.id === input.parent);
+  const carryAttempts = input.attempts ?? parentEntry?.attempts ?? 0;
+  const carryStruggle = input.struggle ?? parentEntry?.struggle;
+
   const entry: PlanIndexEntry = {
     id,
     status: input.status,
@@ -310,12 +348,9 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
     completed: input.completed,
     blocked: input.blocked,
     file,
+    attempts: carryAttempts,
+    ...(carryStruggle ? { struggle: carryStruggle } : {}),
   };
-
-  const index = readPlanIndex(root);
-  if (!index) throw new Error('Cannot create plan iteration: no index found');
-
-  const parentEntry = index.plans.find(p => p.id === input.parent);
   if (parentEntry && !['done', 'abandoned'].includes(parentEntry.status)) {
     parentEntry.status = 'abandoned';
     parentEntry.updatedAt = now;
@@ -340,6 +375,8 @@ export function updatePlanStatus(input: {
   completed?: number;
   blocked?: number;
   projectRoot?: string;
+  attempts?: number;
+  struggle?: StruggleMetrics;
 }): PlanIndexEntry | null {
   const root = input.projectRoot ?? findProjectRoot();
   if (!root) return null;
@@ -355,6 +392,8 @@ export function updatePlanStatus(input: {
   entry.updatedAt = now;
   if (input.completed !== undefined) entry.completed = input.completed;
   if (input.blocked !== undefined) entry.blocked = input.blocked;
+  if (input.attempts !== undefined) entry.attempts = input.attempts;
+  if (input.struggle !== undefined) entry.struggle = input.struggle;
 
   index.updatedAt = now;
 
@@ -369,4 +408,96 @@ export function updatePlanStatus(input: {
   writePlanIndex(index, root);
 
   return entry;
+}
+
+const PROMISE_TAG_PATTERN = /<promise>\s*(\S+)\s*<\/promise>/i;
+
+export function detectPromiseTag(output: string, expected?: string): boolean {
+  if (expected) {
+    const escaped = expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`<promise>\\s*${escaped}\\s*</promise>`, 'i');
+    return pattern.test(output);
+  }
+  return PROMISE_TAG_PATTERN.test(output);
+}
+
+export function extractPromiseTag(output: string): string | null {
+  const match = output.match(PROMISE_TAG_PATTERN);
+  return match ? match[1] : null;
+}
+
+export function freshStruggleMetrics(): StruggleMetrics {
+  return {
+    noProgressIterations: 0,
+    repeatedErrors: {},
+    shortIterations: 0,
+    lastPromiseTag: null,
+  };
+}
+
+export function updateStruggleMetrics(
+  current: StruggleMetrics,
+  events: {
+    hadProgress: boolean;
+    durationMs: number;
+    errors: string[];
+    promiseTag: string | null;
+  },
+): StruggleMetrics {
+  return {
+    noProgressIterations: events.hadProgress ? 0 : current.noProgressIterations + 1,
+    repeatedErrors: events.errors.length === 0
+      ? {}
+      : events.errors.reduce(
+          (acc, e) => {
+            const key = e.substring(0, 100);
+            acc[key] = (current.repeatedErrors[key] || 0) + 1;
+            return acc;
+          },
+          {} as Record<string, number>,
+        ),
+    shortIterations: events.durationMs < 30000 ? current.shortIterations + 1 : 0,
+    lastPromiseTag: events.promiseTag ?? current.lastPromiseTag,
+  };
+}
+
+export function detectStruggle(metrics: StruggleMetrics): string[] {
+  const warnings: string[] = [];
+  if (metrics.noProgressIterations >= 3) {
+    warnings.push(`No progress in ${metrics.noProgressIterations} iterations`);
+  }
+  if (metrics.shortIterations >= 3) {
+    warnings.push(`${metrics.shortIterations} very short iterations (<30s)`);
+  }
+  const repeated = Object.entries(metrics.repeatedErrors)
+    .filter(([_, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+  for (const [error, count] of repeated) {
+    warnings.push(`Same error ${count}x: "${error.substring(0, 60)}..."`);
+  }
+  return warnings;
+}
+
+export function extractErrorsFromOutput(output: string): string[] {
+  const errors: string[] = [];
+  const lines = output.split('\n');
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (
+      lower.includes('error:') ||
+      lower.includes('failed:') ||
+      lower.includes('exception:') ||
+      lower.includes('typeerror') ||
+      lower.includes('syntaxerror') ||
+      lower.includes('referenceerror') ||
+      (lower.includes('test') && lower.includes('fail'))
+    ) {
+      const cleaned = line.trim().substring(0, 200);
+      if (cleaned && !errors.includes(cleaned)) {
+        errors.push(cleaned);
+      }
+    }
+  }
+  return errors.slice(0, 10);
 }

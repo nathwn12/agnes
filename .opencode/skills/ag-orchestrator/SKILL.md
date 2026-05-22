@@ -254,6 +254,9 @@ AGNES main context is restricted to STATE + COMMUNICATION only. These tools serv
 - **Main context = talk only.** No source file reads. No edits. No exploration tools. All work → subagents.
 - **Self-audit before every response.** Check for violations. Found one? Write handoff plan iteration. Stop.
 - **Closed-loop execution.** Once plan is set, enter the loop. AGNES monitors from outside.
+- **Promise-based completion.** Subagents must output `<promise>TAG</promise>` to signal task completion. The verifier scans for this marker — exit codes alone are not sufficient.
+- **Iterative retry (Ralph loop).** When a subagent doesn't produce a completion promise, retry with the same prompt. Default max retries: 3. Track struggle indicators across retries.
+- **Struggle detection.** Monitor subagent iterations for: no file changes (≥3), very short runs (<30s, ≥3), repeated errors (≥2). Escalate with injected hints before blocking.
 - **Dynamic parallelism.** One task = N subagents (as many as yields fastest result).
 - **No shared file edits.** Never two subagents on the same file.
 - **Fresh subagents per wave.** Each wave gets clean agents. No reuse.

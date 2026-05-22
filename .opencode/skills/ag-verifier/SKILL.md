@@ -18,11 +18,12 @@ Evidence before assertions, always. Trusting "should work" or previous runs is d
 
 ## Precise Vocabulary
 
-- **Verification Gate**: The ordered sequence of checks (Type Check, Lint, Test, Build, Evidence Capture) that must all pass before completion can be claimed
+- **Verification Gate**: The ordered sequence of checks (Type Check, Lint, Test, Build, Promise Scan, Evidence Capture) that must all pass before completion can be claimed
 - **Type Check**: Static type analysis via `tsc --noEmit` or `bun run typecheck`; must pass with zero errors
 - **Lint**: Code quality analysis via project-specific linter; must pass with zero errors, warnings captured separately
 - **Test**: Automated test suite via project-specific test runner; any failure blocks the gate
 - **Build**: Production compilation producing deployable output; must produce output without errors
+- **Promise Scan**: Searches subagent output for `<promise>TAG</promise>` completion markers; the promise tag must match the expected completion promise
 - **Evidence**: Full captured output from each verification step, logged as structured pass/fail with timing and metrics
 - **Rationalization**: Any excuse used to defer or skip fresh verification — all rejected by the Iron Law
 
@@ -62,7 +63,18 @@ Command: `bun run build` or project-specific build
 - Must produce output without errors
 - Verify the output file exists and has expected size
 
-### 5. Evidence Capture
+### 5. Promise Scan
+
+Scan the subagent's full output for a `<promise>` completion tag:
+- Match pattern: `<promise>EXPECTED_TAG</promise>`
+- The expected tag is provided by ag-builder (default: `DONE`)
+- Uses regex: `/<promise>\s*EXPECTED_TAG\s*<\/promise>/i`
+- If promise tag exists with expected value → PASS
+- If promise tag exists with unexpected value → FAIL (log the unexpected tag)
+- If no promise tag found → FAIL (task not marked complete)
+- Capture the promise tag value as evidence
+
+### 6. Evidence Capture
 
 Log actual output, not "should work":
 ```
@@ -70,6 +82,7 @@ Type check: PASS (0 errors, 2.1s)
 Lint: PASS (0 errors, 0 warnings, 1.5s)
 Test: PASS (24 tests, 3 suites, 0.8s)
 Build: PASS (output: dist/index.js, 156KB)
+Promise:  PASS (<promise>DONE</promise>)
 ```
 
 ## Tool Requirements
@@ -86,6 +99,7 @@ Type check: PASS (0 errors, 2.1s)
 Lint: PASS (0 errors, 0 warnings, 1.5s)
 Test: PASS (24 tests, 3 suites, 0.8s)
 Build: PASS (output: dist/index.js, 156KB)
+Promise:  PASS (<promise>DONE</promise>)
 ```
 
 If any gate fails, output the failure details and stop — do not continue to subsequent gates.
