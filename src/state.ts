@@ -2,6 +2,9 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
+import { parseAgnesMessage } from './protocol.js';
+import type { CompletionStatus } from './protocol.js';
+
 const OPENCODE_CACHE_ROOT = path.join(os.homedir(), '.cache', 'opencode', 'packages');
 const AGNES_DIR = '.agnes';
 const PLANS_DIR = 'plans';
@@ -502,17 +505,31 @@ export function updatePlanStatus(input: {
 const PROMISE_TAG_PATTERN = /<promise>\s*(\S+)\s*<\/promise>/i;
 
 export function detectPromiseTag(output: string, expected?: string): boolean {
-  if (expected) {
-    const escaped = expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`<promise>\\s*${escaped}\\s*</promise>`, 'i');
-    return pattern.test(output);
-  }
+  // Check JSON protocol first
+  const msg = parseAgnesMessage(output);
+  if (msg?.type === 'completion') return msg.status === (expected ?? 'DONE');
+  // Fall back to legacy regex
   return PROMISE_TAG_PATTERN.test(output);
 }
 
-export function extractPromiseTag(output: string): string | null {
-  const match = output.match(PROMISE_TAG_PATTERN);
-  return match ? match[1] : null;
+/**
+ * Extract completion status from output text.
+ * Tries JSON protocol first, falls back to legacy <promise> regex.
+ * @deprecated Use parseAgnesMessage for new code
+ */
+export function extractPromiseTag(text: string): CompletionStatus | null {
+  const msg = parseAgnesMessage(text);
+  if (msg?.type === 'completion') return msg.status;
+  if (msg?.type === 'result') return msg.status;
+  // Fall back to legacy <promise> tag regex
+  const match = text.match(PROMISE_TAG_PATTERN);
+  if (match) {
+    const tag = match[1].trim();
+    const statuses: CompletionStatus[] = ['DONE', 'DONE_WITH_CONCERNS', 'NEEDS_CONTEXT', 'BLOCKED'];
+    if (statuses.includes(tag as CompletionStatus)) return tag as CompletionStatus;
+    return 'DONE'; // legacy: treat any non-empty match as DONE
+  }
+  return null;
 }
 
 export function freshStruggleMetrics(): StruggleMetrics {

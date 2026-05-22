@@ -1,7 +1,7 @@
 <h1 align="center">AGNES — OpenCode Native Plugin</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.7.4-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.8.0-blue" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
   <img src="https://img.shields.io/badge/skills-23-orange" alt="23 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
@@ -16,7 +16,7 @@
 
 ## Table of Contents
 
-[Install](#install) · [Pipeline](#pipeline) · [Skills](#skills) · [Quick Start](#quick-start) · [Ethos](#ethos) · [State](#state) · [Development](#development) · [Troubleshooting](#troubleshooting)
+[Install](#install) · [Pipeline](#pipeline) · [Skills](#skills) · [Quick Start](#quick-start) · [Ethos](#ethos) · [Architecture](#architecture) · [State](#state) · [Development](#development) · [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -116,6 +116,21 @@ AGNES never writes code directly. Every task is delegated to a subagent or speci
 | **Scarcity** | Cheapest sufficient path first — shallow-first, compact outputs, context as budget. |
 | **Work-steal** | Subagent finished early? Dispatch it with the next task immediately. |
 | **Promise-driven execution** | Tracks subagent progress via promise tags, detects struggle patterns, and retries with session-aware backoff. |
+
+---
+
+## Architecture
+
+AGNES uses a typed message protocol for all internal communication:
+
+| Layer | Module | Purpose |
+|-------|--------|---------|
+| **Protocol** | `src/protocol.ts` | Typed messages (task, result, error, status, completion) |
+| **Schema** | `src/schema.ts` | Self-describing skill contracts with JSON Schema validation |
+| **Middleware** | `src/middleware.ts` | Composable hook chain (before/after wave, before/after subagent) |
+| **Flow Control** | `src/flowcontrol.ts` | Ephemeral jump signals (retry, skip, blocked, next_wave, end) |
+| **Verification** | `src/verification.ts` | Structured gates with PASS/FAIL/SKIP status |
+| **Validation** | `src/validation.ts` | Allowlist-based message validation and injection protection |
 
 ---
 

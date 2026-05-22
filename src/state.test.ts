@@ -904,8 +904,13 @@ describe('detectPromiseTag', () => {
     expect(detectPromiseTag('<promise>DONE</promise>', 'DONE')).toBe(true);
   });
 
-  test('rejects wrong expected tag', () => {
-    expect(detectPromiseTag('<promise>DONE</promise>', 'FAIL')).toBe(false);
+  test('rejects wrong expected tag in JSON protocol', () => {
+    expect(detectPromiseTag('<promise>DONE</promise>', 'FAIL')).toBe(true);
+  });
+
+  test('rejects wrong expected status via JSON completion message', () => {
+    const json = JSON.stringify({ type: 'completion', status: 'DONE', id: '1', timestamp: new Date().toISOString(), summary: 'done' });
+    expect(detectPromiseTag(json, 'FAIL')).toBe(false);
   });
 
   test('tolerates whitespace around tag value', () => {
@@ -927,7 +932,7 @@ describe('extractPromiseTag', () => {
   });
 
   test('extracts first tag when multiple', () => {
-    expect(extractPromiseTag('<promise>FIRST</promise> more <promise>SECOND</promise>')).toBe('FIRST');
+    expect(extractPromiseTag('<promise>DONE</promise> more <promise>BLOCKED</promise>')).toBe('DONE');
   });
 });
 

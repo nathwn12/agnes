@@ -4,20 +4,28 @@ import {
   readPlanIndex,
   updatePlanStatus,
   createPlanIteration,
-  detectPromiseTag,
   extractPromiseTag,
   freshStruggleMetrics,
   updateStruggleMetrics,
   detectStruggle,
 } from './state.js';
 import type { PlanIndexEntry, PlanIndex, ActivePlan, StruggleMetrics } from './state.js';
+import { MiddlewareChain } from './middleware.js';
+import type { WaveContext, SubagentContext } from './middleware.js';
+import { FlowController } from './flowcontrol.js';
+import type { JumpTarget } from './flowcontrol.js';
+import type { TaskDescriptor } from './schema.js';
+import type { ResultMessage, CompletionStatus } from './protocol.js';
+import { runGates } from './verification.js';
+import type { Gate, GateResult } from './verification.js';
 
 const MAX_RETRIES_BEFORE_BLOCK = 3;
+const MAX_BLOCK_CHAIN = 3;
 
 interface SessionState {
   attempts: number;
   struggle: StruggleMetrics;
-  lastPromiseTag: string | null;
+  lastPromiseTag: CompletionStatus | null;
   lastAccessed: number;
 }
 
@@ -133,17 +141,17 @@ export interface IterationReport {
   durationMs: number;
   hadProgress: boolean;
   errors: string[];
-  promiseTag: string | null;
+  promiseTag: CompletionStatus | null;
   completionDetected: boolean;
   exitCode: number;
 }
 
 export function checkIterationCompletion(
   output: string,
-  promise?: string,
-): { detected: boolean; tag: string | null } {
-  const detected = promise ? detectPromiseTag(output, promise) : detectPromiseTag(output);
+  _promise?: string,
+): { detected: boolean; tag: CompletionStatus | null } {
   const tag = extractPromiseTag(output);
+  const detected = tag !== null;
   return { detected, tag };
 }
 
@@ -192,12 +200,25 @@ export function mergeIterationIntoState(
 
 export function recordAttempt(
   sessionId: string,
-  promiseTag: string | null,
+  promiseTag: CompletionStatus | null,
   projectRoot?: string,
   completionPromise = 'DONE',
 ): { attempt: number; completed: boolean; blocked?: boolean } {
   const state = getSession(sessionId);
-  const completed = promiseTag !== null && promiseTag.toUpperCase() === completionPromise.toUpperCase();
+
+  const root = projectRoot ?? findProjectRoot();
+  if (root) {
+    const index = readPlanIndex(root);
+    if (index?.activePlanId) {
+      const activeEntry = index.plans.find(p => p.id === index.activePlanId);
+      if (activeEntry?.status === 'blocked') {
+        state.attempts++;
+        return { attempt: state.attempts, completed: false, blocked: true };
+      }
+    }
+  }
+
+  const completed = promiseTag !== null && promiseTag === completionPromise;
 
   if (completed) {
     state.lastPromiseTag = promiseTag;
@@ -234,6 +255,23 @@ function autoBlockPlan(projectRoot: string | undefined, attempts: number, strugg
     if (!root) return;
     const active = getLatestActivePlan(root);
     if (!active) return;
+
+    if (active.entry.blocked >= MAX_BLOCK_CHAIN) {
+      createPlanIteration({
+        parent: active.entry.id,
+        summary: 'Cascade abandon: blocked chain exceeded limit',
+        goal: active.content.match(/^Goal:\s*(.+)$/m)?.[1] ?? 'Unknown goal',
+        check: active.content.match(/^Check:\s*(.+)$/m)?.[1] ?? 'unknown check',
+        tasksMarkdown: (active.content.match(/Tasks:\n([\s\S]*?)(?:\n\n|$)/)?.[1]?.trim()) ?? '- [ ] Unknown',
+        status: 'abandoned',
+        completed: active.entry.completed,
+        blocked: active.entry.blocked,
+        attempts,
+        struggle,
+        projectRoot: root,
+      });
+      return;
+    }
 
     const goalMatch = active.content.match(/^Goal:\s*(.+)$/m);
     const checkMatch = active.content.match(/^Check:\s*(.+)$/m);
@@ -312,7 +350,7 @@ export function buildExecutionContext(entry: PlanIndexEntry): string {
     }
   }
 
-  lines.push('Output <promise>DONE</promise> when the task is genuinely complete.');
+  lines.push('Output {"type":"completion","status":"DONE","summary":"..."} when the task is genuinely complete.');
 
   return lines.join('\n');
 }
@@ -441,5 +479,87 @@ export function assertTaskScope(editedFiles: string[], planScope: string[]): voi
   if (outOfScope.length > 0) {
     throw new Error(`Task scope violation: edited files outside plan scope: [${outOfScope.join(', ')}]`);
   }
+}
+
+export async function executeWave(
+  planId: string,
+  tasks: TaskDescriptor[],
+  middleware: MiddlewareChain,
+  flow: FlowController,
+): Promise<{ results: ResultMessage[]; nextAction: JumpTarget | null }> {
+  let waveCtx: WaveContext = {
+    planId,
+    waveIndex: 0,
+    tasks,
+    state: {},
+  };
+
+  waveCtx = await middleware.executeBeforeWave(waveCtx);
+
+  const beforeJump = flow.getJump();
+  if (beforeJump) {
+    return { results: [], nextAction: beforeJump };
+  }
+
+  const results: ResultMessage[] = [];
+
+  for (const task of tasks) {
+    const subCtx: SubagentContext = { task, wave: waveCtx };
+
+    if (flow.shouldSkip()) {
+      flow.consumeSignal();
+      continue;
+    }
+    if (flow.isBlocked()) {
+      break;
+    }
+
+    const handler = async (_ctx: SubagentContext): Promise<ResultMessage> => {
+      throw new Error('Subagent handler not yet wired — executeWave is structural only');
+    };
+
+    try {
+      const result = await middleware.executeSubagent(subCtx, handler);
+      results.push(result);
+    } catch (err) {
+      results.push({
+        type: 'error',
+        id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+        timestamp: new Date().toISOString(),
+        taskId: `task-${task.skill}`,
+        errorType: err instanceof Error ? err.constructor.name : 'UnknownError',
+        detail: err instanceof Error ? err.message : String(err),
+      } as unknown as ResultMessage);
+    }
+
+    const jump = flow.getJump();
+    if (jump) {
+      return { results, nextAction: jump };
+    }
+  }
+
+  waveCtx = await middleware.executeAfterWave(waveCtx, results);
+
+  const finalJump = flow.getJump();
+  return { results, nextAction: finalJump };
+}
+
+export async function runWaveGates(
+  gates: Gate[],
+  flow: FlowController,
+): Promise<GateResult[]> {
+  const results = await runGates(gates);
+
+  for (const result of results) {
+    if (result.status === 'FAIL') {
+      const gate = gates.find(g => g.id === result.gateId);
+      if (gate?.isBlocking) {
+        flow.setJump('blocked', `Gate ${result.gateId} failed: ${result.evidence.errors.join('; ')}`);
+        break;
+      }
+    }
+  }
+
+  return results;
 }
 

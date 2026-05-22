@@ -14,6 +14,84 @@ import { fileURLToPath } from "url";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+
+// src/protocol.ts
+var VALID_TYPES = new Set([
+  "task",
+  "result",
+  "error",
+  "status",
+  "completion"
+]);
+function stripCodeFences(text) {
+  const trimmed = text.trim();
+  const fenceStart = trimmed.match(/^```(?:json)?\s*\n/);
+  const fenceEnd = trimmed.match(/\n```\s*$/);
+  if (fenceStart && fenceEnd) {
+    return trimmed.slice(fenceStart[0].length, -fenceEnd[0].length).trim();
+  }
+  return trimmed;
+}
+function findJsonInText(text) {
+  const trimmed = text.trim();
+  if (!trimmed)
+    return null;
+  const firstBrace = trimmed.indexOf("{");
+  if (firstBrace === -1)
+    return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = firstBrace;i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\" && inString) {
+      escape = true;
+      continue;
+    }
+    if (ch === '"' && !escape) {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (ch === "{")
+        depth++;
+      if (ch === "}")
+        depth--;
+      if (depth === 0) {
+        return trimmed.slice(firstBrace, i + 1);
+      }
+    }
+  }
+  return null;
+}
+function parseAgnesMessage(text) {
+  const cleaned = stripCodeFences(text);
+  const jsonCandidate = findJsonInText(cleaned);
+  if (!jsonCandidate)
+    return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonCandidate);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object")
+    return null;
+  const obj = parsed;
+  if (typeof obj.type !== "string" || !VALID_TYPES.has(obj.type))
+    return null;
+  return obj;
+}
+function serializeAgnesMessage(msg) {
+  const json = JSON.stringify(msg);
+  return `<agnes:message>${json}</agnes:message>`;
+}
+
+// src/state.ts
 var OPENCODE_CACHE_ROOT = path.join(os.homedir(), ".cache", "opencode", "packages");
 var AGNES_DIR = ".agnes";
 var PLANS_DIR = "plans";
@@ -325,9 +403,21 @@ function updatePlanStatus(input) {
   return entry;
 }
 var PROMISE_TAG_PATTERN = /<promise>\s*(\S+)\s*<\/promise>/i;
-function extractPromiseTag(output) {
-  const match = output.match(PROMISE_TAG_PATTERN);
-  return match ? match[1] : null;
+function extractPromiseTag(text) {
+  const msg = parseAgnesMessage(text);
+  if (msg?.type === "completion")
+    return msg.status;
+  if (msg?.type === "result")
+    return msg.status;
+  const match = text.match(PROMISE_TAG_PATTERN);
+  if (match) {
+    const tag = match[1].trim();
+    const statuses = ["DONE", "DONE_WITH_CONCERNS", "NEEDS_CONTEXT", "BLOCKED"];
+    if (statuses.includes(tag))
+      return tag;
+    return "DONE";
+  }
+  return null;
 }
 function freshStruggleMetrics() {
   return {
@@ -443,6 +533,7 @@ ${planSummary}
 
 // src/runtime.ts
 var MAX_RETRIES_BEFORE_BLOCK = 3;
+var MAX_BLOCK_CHAIN = 3;
 var sessions = new Map;
 var MAX_SESSIONS = 200;
 var SESSION_TTL_MS = 3600000;
@@ -523,7 +614,18 @@ function getPlanGate(workspaceRoot) {
 }
 function recordAttempt(sessionId, promiseTag, projectRoot, completionPromise = "DONE") {
   const state = getSession(sessionId);
-  const completed = promiseTag !== null && promiseTag.toUpperCase() === completionPromise.toUpperCase();
+  const root = projectRoot ?? findProjectRoot();
+  if (root) {
+    const index = readPlanIndex(root);
+    if (index?.activePlanId) {
+      const activeEntry = index.plans.find((p) => p.id === index.activePlanId);
+      if (activeEntry?.status === "blocked") {
+        state.attempts++;
+        return { attempt: state.attempts, completed: false, blocked: true };
+      }
+    }
+  }
+  const completed = promiseTag !== null && promiseTag === completionPromise;
   if (completed) {
     state.lastPromiseTag = promiseTag;
     state.attempts = 0;
@@ -557,6 +659,22 @@ function autoBlockPlan(projectRoot, attempts, struggle) {
     const active = getLatestActivePlan(root);
     if (!active)
       return;
+    if (active.entry.blocked >= MAX_BLOCK_CHAIN) {
+      createPlanIteration({
+        parent: active.entry.id,
+        summary: "Cascade abandon: blocked chain exceeded limit",
+        goal: active.content.match(/^Goal:\s*(.+)$/m)?.[1] ?? "Unknown goal",
+        check: active.content.match(/^Check:\s*(.+)$/m)?.[1] ?? "unknown check",
+        tasksMarkdown: active.content.match(/Tasks:\n([\s\S]*?)(?:\n\n|$)/)?.[1]?.trim() ?? "- [ ] Unknown",
+        status: "abandoned",
+        completed: active.entry.completed,
+        blocked: active.entry.blocked,
+        attempts,
+        struggle,
+        projectRoot: root
+      });
+      return;
+    }
     const goalMatch = active.content.match(/^Goal:\s*(.+)$/m);
     const checkMatch = active.content.match(/^Check:\s*(.+)$/m);
     const goal = goalMatch ? goalMatch[1] : "Unknown goal";
@@ -622,7 +740,7 @@ function buildExecutionContext(entry) {
       lines.push(`Last promise tag seen: <promise>${s.lastPromiseTag}</promise>`);
     }
   }
-  lines.push("Output <promise>DONE</promise> when the task is genuinely complete.");
+  lines.push('Output {"type":"completion","status":"DONE","summary":"..."} when the task is genuinely complete.');
   return lines.join(`
 `);
 }
@@ -671,6 +789,9 @@ var STOPWORDS = new Set([
   "that"
 ]);
 
+// src/schema.ts
+var SKILL_REGISTRY = new Map;
+
 // src/plugin.ts
 var __dirname3 = path3.dirname(fileURLToPath2(import.meta.url));
 var skillsDir2 = path3.resolve(__dirname3, "../skills");
@@ -700,9 +821,13 @@ var AgnesPlugin = async ({ client }) => {
         const lastAssistant = assistantMsgs[assistantMsgs.length - 1];
         const assistantText = extractAssistantText(lastAssistant.parts);
         if (assistantText) {
-          const promiseTag = extractPromiseTag(assistantText);
-          const sessionId = lastAssistant.info?.sessionID ?? "global";
-          recordAttempt(sessionId, promiseTag);
+          const agnesMsg = parseAgnesMessage(assistantText);
+          if (agnesMsg?.type === "completion" || agnesMsg?.type === "result") {
+            recordAttempt(lastAssistant.info?.sessionID ?? "global", agnesMsg.status);
+          } else {
+            const promiseTag = extractPromiseTag(assistantText);
+            recordAttempt(lastAssistant.info?.sessionID ?? "global", promiseTag);
+          }
         }
       }
       const firstUser = output.messages.find((m) => m.info?.role === "user");
@@ -733,6 +858,28 @@ var AgnesPlugin = async ({ client }) => {
 
 ## Execution Context
 ${execContext}
+`;
+      }
+      fullBootstrap += `
+
+## Completion Protocol
+When all tasks are complete, output this EXACT JSON (NOT markdown):
+${serializeAgnesMessage({ type: "completion", id: randomUUID(), timestamp: new Date().toISOString(), status: "DONE", summary: "all tasks completed successfully" })}
+For partial results, use:
+${serializeAgnesMessage({ type: "result", taskId: "task-000", id: randomUUID(), timestamp: new Date().toISOString(), status: "DONE", content: "...", artifact: {} })}
+`;
+      if (SKILL_REGISTRY.size > 0) {
+        const schemaLines = [`
+## Registered Skill Schemas`];
+        for (const [name, desc] of SKILL_REGISTRY) {
+          schemaLines.push(`- **${name}**: ${desc.description}`);
+          schemaLines.push(`  Input schema: ${JSON.stringify(desc.inputSchema)}`);
+          schemaLines.push(`  Output schema: ${JSON.stringify(desc.outputSchema)}`);
+          schemaLines.push(`  Response format: ${desc.responseFormat}`);
+        }
+        fullBootstrap += `
+` + schemaLines.join(`
+`) + `
 `;
       }
       const ref = firstUser.parts[0];

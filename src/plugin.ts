@@ -9,6 +9,8 @@ import {
   extractPromiseTag,
 } from './state.js';
 import { getPlanGate, buildExecutionContext, recordAttempt } from './runtime.js';
+import { parseAgnesMessage, serializeAgnesMessage } from './protocol.js';
+import { SKILL_REGISTRY } from './schema.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const skillsDir = path.resolve(__dirname, '../skills');
@@ -52,7 +54,7 @@ export const AgnesPlugin: Plugin = async ({ client }) => {
       const bootstrap = getBootstrapContent();
       if (!bootstrap || !output.messages?.length) return;
 
-      // Track completion via promise tags across conversation turns
+      // Track completion via JSON protocol + legacy promise tags
       const assistantMsgs = output.messages.filter(
         (m) => m.info?.role === 'assistant'
       );
@@ -60,9 +62,13 @@ export const AgnesPlugin: Plugin = async ({ client }) => {
         const lastAssistant = assistantMsgs[assistantMsgs.length - 1];
         const assistantText = extractAssistantText(lastAssistant.parts);
         if (assistantText) {
-          const promiseTag = extractPromiseTag(assistantText);
-          const sessionId = lastAssistant.info?.sessionID ?? 'global';
-          recordAttempt(sessionId, promiseTag);
+          const agnesMsg = parseAgnesMessage(assistantText);
+          if (agnesMsg?.type === 'completion' || agnesMsg?.type === 'result') {
+            recordAttempt(lastAssistant.info?.sessionID ?? 'global', agnesMsg.status);
+          } else {
+            const promiseTag = extractPromiseTag(assistantText);
+            recordAttempt(lastAssistant.info?.sessionID ?? 'global', promiseTag);
+          }
         }
       }
 
@@ -94,6 +100,19 @@ export const AgnesPlugin: Plugin = async ({ client }) => {
       let fullBootstrap = bootstrap + (planGate || '');
       if (execContext) {
         fullBootstrap += `\n\n## Execution Context\n${execContext}\n`;
+      }
+
+      fullBootstrap += `\n\n## Completion Protocol\nWhen all tasks are complete, output this EXACT JSON (NOT markdown):\n${serializeAgnesMessage({type:'completion',id:randomUUID(),timestamp:new Date().toISOString(),status:'DONE',summary:'all tasks completed successfully'})}\nFor partial results, use:\n${serializeAgnesMessage({type:'result',taskId:'task-000',id:randomUUID(),timestamp:new Date().toISOString(),status:'DONE',content:'...',artifact:{}})}\n`;
+
+      if (SKILL_REGISTRY.size > 0) {
+        const schemaLines: string[] = ['\n## Registered Skill Schemas'];
+        for (const [name, desc] of SKILL_REGISTRY) {
+          schemaLines.push(`- **${name}**: ${desc.description}`);
+          schemaLines.push(`  Input schema: ${JSON.stringify(desc.inputSchema)}`);
+          schemaLines.push(`  Output schema: ${JSON.stringify(desc.outputSchema)}`);
+          schemaLines.push(`  Response format: ${desc.responseFormat}`);
+        }
+        fullBootstrap += '\n' + schemaLines.join('\n') + '\n';
       }
 
       const ref = firstUser.parts[0];

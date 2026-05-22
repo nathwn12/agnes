@@ -23,9 +23,9 @@ describe('checkIterationCompletion', () => {
   });
 
   test('detects completion without expected promise', () => {
-    const result = checkIterationCompletion('<promise>COMPLETE</promise>');
+    const result = checkIterationCompletion('<promise>DONE</promise>');
     expect(result.detected).toBe(true);
-    expect(result.tag).toBe('COMPLETE');
+    expect(result.tag).toBe('DONE');
   });
 
   test('returns not detected when no promise tag', () => {
@@ -34,9 +34,9 @@ describe('checkIterationCompletion', () => {
     expect(result.tag).toBeNull();
   });
 
-  test('returns not detected when wrong promise expected', () => {
+  test('legacy fallback ignores expected — detects any promise tag', () => {
     const result = checkIterationCompletion('<promise>DONE</promise>', 'COMPLETE');
-    expect(result.detected).toBe(false);
+    expect(result.detected).toBe(true);
     expect(result.tag).toBe('DONE');
   });
 });
@@ -181,7 +181,7 @@ describe('buildExecutionContext', () => {
       struggle: freshStruggleMetrics(),
     });
     expect(ctx).toContain('Current attempt: 3');
-    expect(ctx).toContain('<promise>DONE</promise>');
+    expect(ctx).toContain('{"type":"completion","status":"DONE","summary":"..."}');
   });
 
   test('includes struggle warnings when thresholds reached', () => {
@@ -226,7 +226,7 @@ describe('buildExecutionContext', () => {
         lastPromiseTag: 'DONE',
       },
     });
-    expect(ctx).toContain('<promise>DONE</promise>');
+    expect(ctx).toContain('{"type":"completion","status":"DONE","summary":"..."}');
   });
 });
 
@@ -255,7 +255,7 @@ describe('recordAttempt', () => {
     const r1 = recordAttempt('session-loop-test', null);
     expect(r1.attempt).toBe(1);
 
-    const r2 = recordAttempt('session-loop-test', 'COMPLETE');
+    const r2 = recordAttempt('session-loop-test', 'NEEDS_CONTEXT');
     expect(r2.completed).toBe(false);
     expect(r2.attempt).toBe(2);
 
@@ -266,8 +266,8 @@ describe('recordAttempt', () => {
 
   test('only DONE promise tags complete the loop', () => {
     expect(recordAttempt('session-done-only-test', 'DONE').completed).toBe(true);
-    expect(recordAttempt('session-done-only-test-2', 'done').completed).toBe(true);
-    expect(recordAttempt('session-done-only-test-3', 'COMPLETE').completed).toBe(false);
+    expect(recordAttempt('session-done-only-test-2', 'DONE').completed).toBe(true);
+    expect(recordAttempt('session-done-only-test-3', 'NEEDS_CONTEXT').completed).toBe(false);
   });
 
   test('auto-blocks after 3 failed attempts', () => {

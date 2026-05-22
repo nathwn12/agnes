@@ -1,6 +1,6 @@
 {
   "name": "agnes",
-  "version": "0.7.4",
+  "version": "0.8.0",
   "description": "AGNES — OpenCode Native Plugin: orchestrator plugin that routes tasks across 23 fused skills",
   "type": "module",
   "main": ".opencode/plugins/agnes.js",

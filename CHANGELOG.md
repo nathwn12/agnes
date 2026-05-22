@@ -2,6 +2,27 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.8.0 (2026-05-23)
+
+### Added
+
+- **JSON message protocol**: Typed message system (`src/protocol.ts`) replacing regex-based `<promise>` tag detection. Defines `TaskMessage`, `ResultMessage`, `ErrorMessage`, `StatusMessage`, `CompletionMessage` with structured parser/serializer. (verified: 160 tests pass, typecheck clean)
+- **Skill contracts**: Self-describing skill descriptors (`src/schema.ts`) with JSON Schema input/output validation — `SkillDescriptor`, `TaskDescriptor`, `validatePayload()`. (verified: typecheck clean)
+- **Middleware hooks**: Composable middleware chain (`src/middleware.ts`) with `beforeWave`/`afterWave`/`beforeSubagent`/`afterSubagent`/`wrapSubagent` hooks. `MiddlewareChain.executeSubagent()` composes handlers in LangChain-style `outer(inner(innermost(handler)))` pattern. (verified: typecheck clean)
+- **Ephemeral flow control**: `FlowController` (`src/flowcontrol.ts`) with single-read `JumpTarget` signals — retry/skip/blocked/next_wave/end. Signal auto-clears after read. (verified: typecheck clean)
+- **Verification gates**: Structured gate system (`src/verification.ts`) with `PASS`/`FAIL`/`SKIP` status, blocking gate support, `runGates()`, `formatGateReport()`, `allGatesPassed()`. (verified: typecheck clean)
+- **Allowlist validation**: `validateResultMessage()` (`src/validation.ts`) enforces allowed message types and error types. `escapeUserData()` prevents protocol-key injection in user data. (verified: typecheck clean)
+
+### Changed
+
+- **Completion detection**: `extractPromiseTag()` and `detectPromiseTag()` in `state.ts` now check JSON protocol messages first, fall back to legacy `<promise>` regex for backward compatibility.
+- **Plugin transform hook**: `plugin.ts` updated to parse JSON completion messages, inject protocol instructions and skill schemas into subagent prompts.
+- **Runtime loop**: `runtime.ts` updated with structured completion handling (`CompletionStatus` type), `executeWave()` function, and `runWaveGates()` gate integration.
+
+### Architecture
+
+- **Phase transition**: AGNES moves from stage 1 (procedural text-injection loop) to stage 2 (declarative typed pipe chains) with middleware foundation enabling stage 3 (reactive graph with hook-based extensibility). Inspired by LangChain's evolution: AgentExecutor → Runnable composition → StateGraph + Middleware.
+
 ## 0.7.4 (2026-05-23)
 
 ### Changed

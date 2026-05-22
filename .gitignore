@@ -2,3 +2,5 @@ node_modules/
 .cache/
 review-package/
 verification/
+/.agnes
+nul
