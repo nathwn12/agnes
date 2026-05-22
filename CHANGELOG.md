@@ -2,6 +2,37 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.9.0 (2026-05-22)
+
+### Fixed
+
+- **Version drift**: Hardcoded `AGNES_VERSION = '0.7.2'` in state.ts now reads from package.json at runtime — plans record correct version.
+- **detectPromiseTag ignores expected parameter**: Regex fallback path now validates expected tag. `<promise>DONE</promise>` with `expected='FAIL'` correctly returns false.
+- **Wrong type cast in error handler**: Subagent error catch block produced ErrorMessage shape but cast as ResultMessage — corrected to valid ResultMessage with status/content.
+- **Fragile reference copy in plugin.ts**: Shallow-copy of sessionID/messageID before array unshift instead of holding array-element reference.
+- **Unsafe casts in protocol.ts/validation.ts**: Added `isValidAgnesMessage` runtime type guard replacing `as unknown as AnyAgnesMessage`.
+
+### Changed
+
+- **classifyIntent now returns structured object**: Returns `IntentClassification` with `.category` and `.suggestedSkills` array mapping to skill names (implement→ag-builder, debug→ag-debugger/ag-griller, etc.).
+- **SKILL_REGISTRY populated**: 7 core skills registered with payload schemas — SKILL_REGISTRY.size > 0 conditional in plugin.ts now activates.
+- **executeWave returns blocked result instead of throwing**: Subagent handler stub produces `ResultMessage` with `status: 'BLOCKED'` instead of crashing.
+- **Architecture wiring**: Verification gates, middleware chain, and flow controller now execute during the plugin transform lifecycle — gates run post-response, middleware hooks fire, flow control signals active.
+- **Session state persisted**: `recordAttempt()` now writes to `.agnes/sessions.json` using atomic tmp+rename pattern — attempt counts and struggle metrics survive restarts.
+- **Filler pattern list extended**: Added `tweak`, `polish`, `clean up`, `touch up`, `minor change` to quality assessment set.
+- **too_many_tasks threshold**: Hardcoded 10 extracted to named `DEFAULT_MAX_PLAN_TASKS` constant.
+
+### Added
+
+- **7 test files**: protocol.test.ts, validation.test.ts, schema.test.ts, middleware.test.ts, verification.test.ts, flowcontrol.test.ts, bootstrap.test.ts — covering parser/serializer round-trips, gate execution, middleware hook ordering, flow control signal lifecycle, schema validation, and bootstrap caching.
+- **Shared test utilities**: `src/test-utils.ts` with `createTempProject()`, `writeIndex()`, `readIndex()`, `cleanupTempDirs()` — extracted from duplication in state.test.ts/integration.test.ts.
+- **Test temp directory cleanup**: `afterAll` hooks in state.test.ts and integration.test.ts remove temp dirs after runs (M-03).
+- **CI workflow**: `.github/workflows/ci.yml` with Bun setup, typecheck, test, and bundle on push/PR.
+
+### Tests
+
+- **165→292 tests**, 395→736 expect calls across 3→10 test files. (verified: `bun test`)
+
 ## 0.8.1 (2026-05-23)
 
 ### Fixed

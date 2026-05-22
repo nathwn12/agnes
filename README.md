@@ -1,7 +1,7 @@
 <h1 align="center">AGNES — OpenCode Native Plugin</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.8.1-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.9.0-blue" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
   <img src="https://img.shields.io/badge/skills-23-orange" alt="23 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
@@ -172,6 +172,7 @@ To override per-project, add a `retention` field to `index.json`:
 ```bash
 bun run bundle      # bundles to .opencode/plugins/agnes.js
 bun run typecheck   # type-safety gate
+bun test            # 292 tests across 10 suites
 ```
 
 ---

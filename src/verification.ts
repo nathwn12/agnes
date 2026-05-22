@@ -70,6 +70,108 @@ export function formatGateReport(results: GateResult[]): string {
   return lines.join('\n');
 }
 
+export function registerGate(
+  gates: Gate[],
+  gate: Gate,
+): Gate[] {
+  return [...gates, gate];
+}
+
+function hasCompletionSignal(text: string): boolean {
+  if (text.includes('<promise>')) return true;
+  if (!text.includes('<agnes:message>')) return false;
+  try {
+    const match = text.match(/<agnes:message>([\s\S]*?)<\/agnes:message>/);
+    if (!match) return false;
+    const parsed = JSON.parse(match[1]);
+    return parsed?.type === 'completion' || parsed?.type === 'result';
+  } catch {
+    return false;
+  }
+}
+
+export const promiseComplianceGate: Gate = {
+  id: 'promise-compliance',
+  name: 'Promise Compliance',
+  description: 'Checks that output contains a completion signal (<promise> or <agnes:message>) before allowing completion',
+  isBlocking: true,
+  run: async () => {
+    const start = Date.now();
+    const errors: string[] = [];
+    const output = process.env.AGNES_LAST_OUTPUT || '';
+    if (!hasCompletionSignal(output)) {
+      errors.push('Output does not contain a completion signal (<promise> or <agnes:message>)');
+    }
+    return {
+      gateId: 'promise-compliance',
+      status: errors.length === 0 ? 'PASS' : 'FAIL',
+      evidence: { errors, command: 'check-completion-signal', exitCode: errors.length === 0 ? 0 : 1, output },
+      timestamp: new Date().toISOString(),
+      durationMs: Date.now() - start,
+    };
+  },
+};
+
+export const planExistsGate: Gate = {
+  id: 'plan-exists',
+  name: 'Plan Exists',
+  description: 'Checks that .agnes/index.json has an active plan',
+  isBlocking: true,
+  run: async () => {
+    const start = Date.now();
+    const errors: string[] = [];
+    try {
+      const fs = await import('fs/promises');
+      const content = await fs.readFile('.agnes/index.json', 'utf-8');
+      const index = JSON.parse(content);
+      if (!index.activePlanId) {
+        errors.push('No active plan found in .agnes/index.json');
+      }
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err));
+    }
+    return {
+      gateId: 'plan-exists',
+      status: errors.length === 0 ? 'PASS' : 'FAIL',
+      evidence: { errors, command: 'check-active-plan', exitCode: errors.length === 0 ? 0 : 1 },
+      timestamp: new Date().toISOString(),
+      durationMs: Date.now() - start,
+    };
+  },
+};
+
+export const stateFileIntegrityGate: Gate = {
+  id: 'state-file-integrity',
+  name: 'State File Integrity',
+  description: 'Checks that .agnes/ state files are valid JSON',
+  isBlocking: false,
+  run: async () => {
+    const start = Date.now();
+    const errors: string[] = [];
+    try {
+      const fs = await import('fs/promises');
+      const files = ['.agnes/index.json', '.agnes/config.json'];
+      for (const file of files) {
+        try {
+          const content = await fs.readFile(file, 'utf-8');
+          JSON.parse(content);
+        } catch {
+          errors.push(`${file} is not valid JSON or does not exist`);
+        }
+      }
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err));
+    }
+    return {
+      gateId: 'state-file-integrity',
+      status: errors.length === 0 ? 'PASS' : 'FAIL',
+      evidence: { errors, command: 'validate-state-files', exitCode: errors.length === 0 ? 0 : 1 },
+      timestamp: new Date().toISOString(),
+      durationMs: Date.now() - start,
+    };
+  },
+};
+
 /** True if all results have PASS or SKIP status, false otherwise. */
 export function allGatesPassed(results: GateResult[]): boolean {
   return results.every(r => r.status === 'PASS' || r.status === 'SKIP');

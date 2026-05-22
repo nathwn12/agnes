@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { parseAgnesMessage } from './protocol.js';
 import type { CompletionStatus } from './protocol.js';
@@ -17,7 +18,25 @@ function assertShape<T>(data: unknown, shape: Record<string, string>): data is T
 const OPENCODE_CACHE_ROOT = path.join(os.homedir(), '.cache', 'opencode', 'packages');
 const AGNES_DIR = '.agnes';
 const PLANS_DIR = 'plans';
-const AGNES_VERSION = '0.7.2';
+const DEFAULT_MAX_PLAN_TASKS = 10;
+
+let _agnesVersion: string | null = null;
+
+export function getAgnesVersion(): string {
+  if (_agnesVersion) return _agnesVersion;
+  let version: string;
+  try {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const pkgPath = path.join(__dirname, '..', '..', 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    version = pkg.version ?? '0.0.0';
+  } catch {
+    version = '0.0.0';
+  }
+  _agnesVersion = version;
+  return _agnesVersion;
+}
 
 function isBlockedPath(dir: string): boolean {
   const resolved = path.resolve(dir);
@@ -424,7 +443,7 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
   };
 
   const index = readPlanIndex(root) ?? {
-    agnesVersion: AGNES_VERSION,
+    agnesVersion: getAgnesVersion(),
     schemaVersion: 2 as const,
     projectDir: root,
     projectName: path.basename(root),
@@ -569,6 +588,14 @@ export function detectPromiseTag(output: string, expected?: string): boolean {
   // Check JSON protocol first
   const msg = parseAgnesMessage(output);
   if (msg?.type === 'completion') return msg.status === (expected ?? 'DONE');
+  // When expected is provided, also check legacy regex
+  if (expected) {
+    const match = output.match(PROMISE_TAG_PATTERN);
+    if (match) {
+      return match[1] === expected;
+    }
+    return false;
+  }
   // Fall back to legacy regex
   return PROMISE_TAG_PATTERN.test(output);
 }
@@ -692,7 +719,7 @@ export interface PlanQualityReport {
   flags: string[];
 }
 
-const FILLER_PATTERNS = ['fix things', 'make better', 'improve stuff', 'do work', 'get things done', 'make improvements'];
+const FILLER_PATTERNS = ['fix things', 'make better', 'improve stuff', 'do work', 'get things done', 'make improvements', 'tweak', 'polish', 'clean up', 'touch up', 'minor change'];
 
 function extractSection(content: string, heading: string): string {
   const startRe = new RegExp(`^## ${heading}\\s*\\n`, 'm');
@@ -814,7 +841,7 @@ export function assessPlanQuality(content: string): PlanQualityReport {
     }
   }
 
-  if (tasks.length <= 10) {
+  if (tasks.length <= DEFAULT_MAX_PLAN_TASKS) {
     score += 10;
   } else {
     flags.push('too_many_tasks');
@@ -848,7 +875,7 @@ export function createAutoPlan(params: { goal: string; source: 'gate' | 'user' |
   };
 
   const index = readPlanIndex(root) ?? {
-    agnesVersion: AGNES_VERSION,
+    agnesVersion: getAgnesVersion(),
     schemaVersion: 2 as const,
     projectDir: root,
     projectName: path.basename(root),

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
 import {
   checkIterationCompletion,
   buildIterationReport,
@@ -232,119 +233,142 @@ describe('buildExecutionContext', () => {
 
 describe('recordAttempt', () => {
   test('with promise tag returns completed:true and resets attempt count', () => {
-    const result1 = recordAttempt('session-reset-test', null);
+    const sessionId = randomUUID();
+    const result1 = recordAttempt(sessionId, null);
     expect(result1.attempt).toBe(1);
     expect(result1.completed).toBe(false);
 
-    const result2 = recordAttempt('session-reset-test', 'DONE');
+    const result2 = recordAttempt(sessionId, 'DONE');
     expect(result2.attempt).toBe(0);
     expect(result2.completed).toBe(true);
   });
 
   test('without promise tag increments attempt count', () => {
-    const result1 = recordAttempt('session-incr-test', null);
+    const sessionId = randomUUID();
+    const result1 = recordAttempt(sessionId, null);
     expect(result1.attempt).toBe(1);
     expect(result1.completed).toBe(false);
 
-    const result2 = recordAttempt('session-incr-test', null);
+    const result2 = recordAttempt(sessionId, null);
     expect(result2.attempt).toBe(2);
     expect(result2.completed).toBe(false);
   });
 
   test('resets after promise tag then increments again', () => {
-    const r1 = recordAttempt('session-loop-test', null);
+    const sessionId = randomUUID();
+    const r1 = recordAttempt(sessionId, null);
     expect(r1.attempt).toBe(1);
 
-    const r2 = recordAttempt('session-loop-test', 'NEEDS_CONTEXT');
+    const r2 = recordAttempt(sessionId, 'NEEDS_CONTEXT');
     expect(r2.completed).toBe(false);
     expect(r2.attempt).toBe(2);
 
-    const r3 = recordAttempt('session-loop-test', null);
+    const r3 = recordAttempt(sessionId, null);
     expect(r3.attempt).toBe(3);
     expect(r3.completed).toBe(false);
   });
 
   test('only DONE promise tags complete the loop', () => {
-    expect(recordAttempt('session-done-only-test', 'DONE').completed).toBe(true);
-    expect(recordAttempt('session-done-only-test-2', 'DONE').completed).toBe(true);
-    expect(recordAttempt('session-done-only-test-3', 'NEEDS_CONTEXT').completed).toBe(false);
+    expect(recordAttempt(randomUUID(), 'DONE').completed).toBe(true);
+    expect(recordAttempt(randomUUID(), 'DONE').completed).toBe(true);
+    expect(recordAttempt(randomUUID(), 'NEEDS_CONTEXT').completed).toBe(false);
   });
 
   test('auto-blocks after 3 failed attempts', () => {
-    const r1 = recordAttempt('session-block-test', null);
+    const sessionId = randomUUID();
+    const r1 = recordAttempt(sessionId, null);
     expect(r1.attempt).toBe(1);
     expect(r1.blocked).toBeUndefined();
 
-    const r2 = recordAttempt('session-block-test', null);
+    const r2 = recordAttempt(sessionId, null);
     expect(r2.attempt).toBe(2);
     expect(r2.blocked).toBeUndefined();
 
-    const r3 = recordAttempt('session-block-test', null);
+    const r3 = recordAttempt(sessionId, null);
     expect(r3.attempt).toBe(3);
     expect(r3.completed).toBe(false);
     expect(r3.blocked).toBe(true);
   });
 
   test('tracks struggle metrics across failed attempts', () => {
+    const sessionId = randomUUID();
     // Each failed attempt should increment noProgressIterations
-    const r1 = recordAttempt('session-struggle-test', null);
+    const r1 = recordAttempt(sessionId, null);
     expect(r1.attempt).toBe(1);
 
-    const r2 = recordAttempt('session-struggle-test', null);
+    const r2 = recordAttempt(sessionId, null);
     expect(r2.attempt).toBe(2);
 
-    const r3 = recordAttempt('session-struggle-test', null);
+    const r3 = recordAttempt(sessionId, null);
     expect(r3.blocked).toBe(true);
   });
 });
 
 describe('classifyIntent', () => {
   test('returns clarify for questions with ?', () => {
-    expect(classifyIntent('what is AGNES?')).toBe('clarify');
+    expect(classifyIntent('what is AGNES?').category).toBe('clarify');
   });
 
   test('returns clarify for explanatory phrases', () => {
-    expect(classifyIntent('explain how this works')).toBe('clarify');
-    expect(classifyIntent('describe the architecture')).toBe('clarify');
-    expect(classifyIntent('why is it failing')).toBe('clarify');
+    expect(classifyIntent('explain how this works').category).toBe('clarify');
+    expect(classifyIntent('describe the architecture').category).toBe('clarify');
+    expect(classifyIntent('why is it failing').category).toBe('clarify');
   });
 
   test('returns implement for bug fixes', () => {
-    expect(classifyIntent('fix the login bug')).toBe('implement');
+    expect(classifyIntent('fix the login bug').category).toBe('implement');
   });
 
   test('returns implement for feature additions', () => {
-    expect(classifyIntent('add a new feature')).toBe('implement');
-    expect(classifyIntent('build user authentication')).toBe('implement');
+    expect(classifyIntent('add a new feature').category).toBe('implement');
+    expect(classifyIntent('build user authentication').category).toBe('implement');
   });
 
   test('returns implement for refactoring', () => {
-    expect(classifyIntent('refactor the auth module')).toBe('implement');
+    expect(classifyIntent('refactor the auth module').category).toBe('implement');
   });
 
   test('returns plan when both plan and implementation words present', () => {
-    expect(classifyIntent('plan to implement login')).toBe('plan');
-    expect(classifyIntent('plan for build')).toBe('plan');
+    expect(classifyIntent('plan to implement login').category).toBe('plan');
+    expect(classifyIntent('plan for build').category).toBe('plan');
   });
 
   test('returns unknown for greetings', () => {
-    expect(classifyIntent('hello there')).toBe('unknown');
+    expect(classifyIntent('hello there').category).toBe('unknown');
   });
 
   test('returns unknown for empty string', () => {
-    expect(classifyIntent('')).toBe('unknown');
+    expect(classifyIntent('').category).toBe('unknown');
   });
 
   test('returns implement for "doesn\'t work" phrases', () => {
-    expect(classifyIntent("it doesn't work")).toBe('implement');
+    expect(classifyIntent("it doesn't work").category).toBe('implement');
+  });
+
+  test('returns debug intent for debug requests', () => {
+    const result = classifyIntent('debug the login issue');
+    expect(result.category).toBe('debug');
+    expect(result.suggestedSkills).toEqual(['ag-debugger', 'ag-griller']);
+  });
+
+  test('returns review intent for review requests', () => {
+    const result = classifyIntent('review the auth module');
+    expect(result.category).toBe('review');
+    expect(result.suggestedSkills).toEqual(['ag-reviewer', 'ag-verifier']);
+  });
+
+  test('returns test intent for test requests', () => {
+    const result = classifyIntent('test the login flow');
+    expect(result.category).toBe('test');
+    expect(result.suggestedSkills).toEqual(['ag-tdd', 'ag-tester']);
   });
 
   test('returns implement for "test fails" phrases', () => {
-    expect(classifyIntent('the test fails')).toBe('implement');
+    expect(classifyIntent('the test fails').category).toBe('implement');
   });
 
   test('clarify takes precedence over implement and plan', () => {
-    expect(classifyIntent('what is the plan to fix the bug?')).toBe('clarify');
+    expect(classifyIntent('what is the plan to fix the bug?').category).toBe('clarify');
   });
 });
 

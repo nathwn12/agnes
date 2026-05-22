@@ -1,33 +1,18 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, afterAll } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+
+import { createTempProject, writeIndex, readIndex, cleanupTempDirs } from './test-utils';
 
 import { classifyIntent, processMessage, requestMatchesPlan, checkPlanDrift, assertTaskScope } from './runtime';
 import type { ProcessMessageResult } from './runtime';
 import { createAutoPlan, assessPlanQuality, transitionPlanStatus } from './state';
 import type { PlanIndex } from './state';
 
-function createTempProject(): string {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-int-'));
-  fs.mkdirSync(path.join(tmp, '.agnes'), { recursive: true });
-  fs.mkdirSync(path.join(tmp, '.agnes', 'plans'), { recursive: true });
-  return tmp;
-}
-
-function writeIndex(projectRoot: string, index: PlanIndex): void {
-  const indexPath = path.join(projectRoot, '.agnes', 'index.json');
-  fs.writeFileSync(indexPath, JSON.stringify(index), 'utf8');
-}
-
-function readIndex(projectRoot: string): PlanIndex | null {
-  const indexPath = path.join(projectRoot, '.agnes', 'index.json');
-  try {
-    return JSON.parse(fs.readFileSync(indexPath, 'utf8')) as PlanIndex;
-  } catch {
-    return null;
-  }
-}
+afterAll(() => {
+  cleanupTempDirs();
+});
 
 function makeCleanIndex(tmp: string): PlanIndex {
   return {
@@ -72,7 +57,7 @@ describe('planning discipline integration', () => {
     const tmp = createTempProject();
     writeIndex(tmp, makeCleanIndex(tmp));
 
-    expect(classifyIntent('fix the broken login')).toBe('implement');
+    expect(classifyIntent('fix the broken login').category).toBe('implement');
 
     const index = readIndex(tmp)!;
     const result = processMessage('fix the broken login', index, null) as Extract<ProcessMessageResult, { type: 'block' }>;

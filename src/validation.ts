@@ -1,3 +1,4 @@
+import { isValidAgnesMessage } from './protocol.js';
 import type { AnyAgnesMessage } from './protocol.js';
 
 export const ALLOWED_MESSAGE_TYPES: Set<string> = new Set([
@@ -51,7 +52,10 @@ export function validateMessage(raw: unknown): AnyAgnesMessage {
     throw new ValidationError('Missing required field: timestamp');
   }
 
-  return msg as unknown as AnyAgnesMessage;
+  if (isValidAgnesMessage(msg)) {
+    return msg;
+  }
+  throw new ValidationError('Object does not match AnyAgnesMessage shape');
 }
 
 /**

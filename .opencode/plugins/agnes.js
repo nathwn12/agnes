@@ -1,7 +1,7 @@
 // @bun
 // src/plugin.ts
 import { randomUUID } from "crypto";
-import * as path3 from "path";
+import * as path4 from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 
 // src/bootstrap.ts
@@ -23,95 +23,6 @@ var VALID_TYPES = new Set([
   "status",
   "completion"
 ]);
-function stripCodeFences(text) {
-  const trimmed = text.trim();
-  const fenceStart = trimmed.match(/^```(?:json)?\s*\n/);
-  const fenceEnd = trimmed.match(/\n```\s*$/);
-  if (fenceStart && fenceEnd) {
-    return trimmed.slice(fenceStart[0].length, -fenceEnd[0].length).trim();
-  }
-  return trimmed;
-}
-function findJsonInText(text) {
-  const trimmed = text.trim();
-  if (!trimmed)
-    return null;
-  const firstBrace = trimmed.indexOf("{");
-  if (firstBrace === -1)
-    return null;
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-  for (let i = firstBrace;i < trimmed.length; i++) {
-    const ch = trimmed[i];
-    if (escape) {
-      escape = false;
-      continue;
-    }
-    if (ch === "\\" && inString) {
-      escape = true;
-      continue;
-    }
-    if (ch === '"' && !escape) {
-      inString = !inString;
-      continue;
-    }
-    if (!inString) {
-      if (ch === "{")
-        depth++;
-      if (ch === "}")
-        depth--;
-      if (depth === 0) {
-        return trimmed.slice(firstBrace, i + 1);
-      }
-    }
-  }
-  return null;
-}
-function validCompletionStatus(s) {
-  return s === "DONE" || s === "DONE_WITH_CONCERNS" || s === "NEEDS_CONTEXT" || s === "BLOCKED";
-}
-var REQUIRED_FIELDS = {
-  task: { skill: "string" },
-  result: { taskId: "string", status: "string", content: "string" },
-  error: { taskId: "string", errorType: "string", detail: "string" },
-  status: { taskId: "string", phase: "string" },
-  completion: { status: "string", summary: "string" }
-};
-function parseAgnesMessage(text) {
-  const cleaned = stripCodeFences(text);
-  const jsonCandidate = findJsonInText(cleaned);
-  if (!jsonCandidate)
-    return null;
-  let parsed;
-  try {
-    parsed = JSON.parse(jsonCandidate);
-  } catch {
-    return null;
-  }
-  if (!parsed || typeof parsed !== "object")
-    return null;
-  const obj = parsed;
-  if (typeof obj.type !== "string" || !VALID_TYPES.has(obj.type))
-    return null;
-  if (typeof obj.id !== "string")
-    return null;
-  if (typeof obj.timestamp !== "string")
-    return null;
-  const type = obj.type;
-  const required = REQUIRED_FIELDS[type];
-  if (required) {
-    for (const [field, expectedType] of Object.entries(required)) {
-      if (typeof obj[field] !== expectedType)
-        return null;
-    }
-    if (type === "completion" || type === "result") {
-      if (!validCompletionStatus(obj.status))
-        return null;
-    }
-  }
-  return obj;
-}
 function serializeAgnesMessage(msg) {
   const json = JSON.stringify(msg);
   return `<agnes:message>${json}</agnes:message>`;
@@ -170,6 +81,12 @@ function findProjectRoot(startDir) {
     _cachedProjectRoot = found;
   }
   return found;
+}
+function cacheDir(projectRoot) {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root)
+    return null;
+  return path.join(root, AGNES_DIR);
 }
 var ENTRY_REQUIRED_SHAPE = {
   id: "string",
@@ -370,170 +287,12 @@ Struggle: ${parts.join(", ")}`;
   }
   return line;
 }
-function getNextPlanId(projectRoot) {
-  const root = projectRoot ?? findProjectRoot();
-  if (!root)
-    return "plan-001";
-  const cache = path.join(root, AGNES_DIR, PLANS_DIR);
-  fs.mkdirSync(cache, { recursive: true });
-  let max = 0;
-  try {
-    const files = fs.readdirSync(cache);
-    for (const f of files) {
-      const match = f.match(/^plan-(\d+)\.md$/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > max)
-          max = num;
-      }
-    }
-  } catch {}
-  return `plan-${String(max + 1).padStart(3, "0")}`;
-}
-function writePlanFile(root, id, content) {
-  const file = `${id}.md`;
-  const filePath = path.join(root, AGNES_DIR, PLANS_DIR, file);
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmp = `${filePath}.tmp`;
-  fs.writeFileSync(tmp, content, "utf8");
-  fs.renameSync(tmp, filePath);
-  return file;
-}
-function createPlanIteration(input) {
-  const root = input.projectRoot ?? findProjectRoot();
-  if (!root)
-    throw new Error("Cannot create plan iteration: no project root found");
-  const now = new Date().toISOString();
-  const id = getNextPlanId(root);
-  const total = (input.tasksMarkdown.match(/^- \[.?\]/gm) || []).length;
-  let content = `---
-id: ${id}
-createdAt: ${now}
-updatedAt: ${now}
-parent: ${input.parent}
----
-
-Goal: ${input.goal}
-
-Check: ${input.check}
-
-Tasks:
-${input.tasksMarkdown}
-
-${input.notes && input.notes.length > 0 ? `Notes:
-${input.notes.map((n) => `- ${n}`).join(`
-`)}
-
-` : ""}Next:
-- <first executable action>
-`;
-  const file = writePlanFile(root, id, content);
-  const index = readPlanIndex(root);
-  if (!index)
-    throw new Error("Cannot create plan iteration: no index found");
-  const parentEntry = index.plans.find((p) => p.id === input.parent);
-  const carryAttempts = input.attempts ?? parentEntry?.attempts ?? 0;
-  const carryStruggle = input.struggle ?? parentEntry?.struggle;
-  const entry = {
-    id,
-    status: input.status,
-    createdAt: now,
-    updatedAt: now,
-    parent: input.parent,
-    summary: input.summary,
-    total,
-    completed: input.completed,
-    blocked: input.blocked,
-    file,
-    attempts: carryAttempts,
-    ...carryStruggle ? { struggle: carryStruggle } : {}
-  };
-  if (parentEntry && !["done", "abandoned"].includes(parentEntry.status)) {
-    parentEntry.status = "abandoned";
-    parentEntry.updatedAt = now;
-  }
-  index.plans.push(entry);
-  index.updatedAt = now;
-  if (input.status === "done" || input.status === "abandoned") {
-    index.activePlanId = null;
-  } else {
-    index.activePlanId = id;
-  }
-  writePlanIndex(index, root);
-  return { entry, content };
-}
-function updatePlanStatus(input) {
-  const root = input.projectRoot ?? findProjectRoot();
-  if (!root)
-    return null;
-  const index = readPlanIndex(root);
-  if (!index)
-    return null;
-  const entry = index.plans.find((p) => p.id === input.id);
-  if (!entry)
-    return null;
-  const now = new Date().toISOString();
-  entry.status = input.status;
-  entry.updatedAt = now;
-  if (input.completed !== undefined)
-    entry.completed = input.completed;
-  if (input.blocked !== undefined)
-    entry.blocked = input.blocked;
-  if (input.attempts !== undefined)
-    entry.attempts = input.attempts;
-  if (input.struggle !== undefined)
-    entry.struggle = input.struggle;
-  index.updatedAt = now;
-  if (input.status === "done" || input.status === "abandoned") {
-    if (index.activePlanId === input.id)
-      index.activePlanId = null;
-  }
-  if (input.status === "draft" || input.status === "reviewed" || input.status === "ready" || input.status === "in_progress" || input.status === "blocked") {
-    index.activePlanId = input.id;
-  }
-  writePlanIndex(index, root);
-  return entry;
-}
-var PROMISE_TAG_PATTERN = /<promise>\s*(\S+)\s*<\/promise>/i;
-function extractPromiseTag(text) {
-  const msg = parseAgnesMessage(text);
-  if (msg?.type === "completion")
-    return msg.status;
-  if (msg?.type === "result")
-    return msg.status;
-  const match = text.match(PROMISE_TAG_PATTERN);
-  if (match) {
-    const tag = match[1].trim();
-    const statuses = ["DONE", "DONE_WITH_CONCERNS", "NEEDS_CONTEXT", "BLOCKED"];
-    if (statuses.includes(tag))
-      return tag;
-    return "DONE";
-  }
-  return null;
-}
 function freshStruggleMetrics() {
   return {
     noProgressIterations: 0,
     repeatedErrors: {},
     shortIterations: 0,
     lastPromiseTag: null
-  };
-}
-function updateStruggleMetrics(current, events) {
-  return {
-    noProgressIterations: events.hadProgress ? 0 : current.noProgressIterations + 1,
-    repeatedErrors: (() => {
-      if (events.errors.length === 0)
-        return current.repeatedErrors;
-      const merged = { ...current.repeatedErrors };
-      for (const e of events.errors) {
-        const key = e.substring(0, 100);
-        merged[key] = (merged[key] || 0) + 1;
-      }
-      return merged;
-    })(),
-    shortIterations: events.durationMs < 30000 ? current.shortIterations + 1 : 0,
-    lastPromiseTag: events.promiseTag ?? current.lastPromiseTag
   };
 }
 
@@ -624,37 +383,32 @@ ${planSummary}
 }
 
 // src/runtime.ts
-var MAX_RETRIES_BEFORE_BLOCK = 3;
-var MAX_BLOCK_CHAIN = 3;
+import * as fs3 from "fs";
+import * as path3 from "path";
 var sessions = new Map;
-var MAX_SESSIONS = 200;
-var SESSION_TTL_MS = 3600000;
-function pruneSessions() {
-  const now = Date.now();
-  for (const [key, state] of sessions) {
-    if (now - state.lastAccessed > SESSION_TTL_MS) {
-      sessions.delete(key);
-    }
-  }
-  if (sessions.size > MAX_SESSIONS) {
-    const entries = [...sessions.entries()];
-    const toDelete = entries.slice(0, entries.length - MAX_SESSIONS);
-    for (const [key] of toDelete) {
-      sessions.delete(key);
-    }
-  }
+loadSessions();
+function sessionsFilePath(projectRoot) {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root)
+    return null;
+  const dir = cacheDir(root);
+  return dir ? path3.join(dir, "sessions.json") : null;
 }
-function getSession(sessionId) {
-  let s = sessions.get(sessionId);
-  if (!s) {
-    s = { attempts: 0, struggle: freshStruggleMetrics(), lastPromiseTag: null, lastAccessed: Date.now() };
-    sessions.set(sessionId, s);
-  } else {
-    s.lastAccessed = Date.now();
-    sessions.delete(sessionId);
-    sessions.set(sessionId, s);
-  }
-  return s;
+function loadSessions(projectRoot) {
+  try {
+    const filePath = sessionsFilePath(projectRoot);
+    if (!filePath)
+      return;
+    if (!fs3.existsSync(filePath))
+      return;
+    const raw = fs3.readFileSync(filePath, "utf8");
+    const data = JSON.parse(raw);
+    for (const [key, state] of Object.entries(data)) {
+      if (state && typeof state.attempts === "number" && state.struggle && typeof state.lastAccessed === "number") {
+        sessions.set(key, state);
+      }
+    }
+  } catch {}
 }
 function getPlanState(workspaceRoot) {
   if (workspaceRoot === undefined) {
@@ -704,112 +458,6 @@ function getPlanGate(workspaceRoot) {
   }
   return null;
 }
-function recordAttempt(sessionId, promiseTag, projectRoot, completionPromise = "DONE") {
-  const state = getSession(sessionId);
-  const root = projectRoot ?? findProjectRoot();
-  if (root) {
-    const index = readPlanIndex(root);
-    if (index?.activePlanId) {
-      const activeEntry = index.plans.find((p) => p.id === index.activePlanId);
-      if (activeEntry?.status === "blocked") {
-        state.attempts++;
-        return { attempt: state.attempts, completed: false, blocked: true };
-      }
-    }
-  }
-  const completed = promiseTag !== null && promiseTag === completionPromise;
-  if (completed) {
-    state.lastPromiseTag = promiseTag;
-    state.attempts = 0;
-    state.struggle = freshStruggleMetrics();
-    pruneSessions();
-    persistToPlan("done", 0, freshStruggleMetrics(), projectRoot);
-    return { attempt: 0, completed: true };
-  }
-  state.attempts++;
-  state.struggle = updateStruggleMetrics(state.struggle, {
-    hadProgress: false,
-    durationMs: 0,
-    errors: [],
-    promiseTag: null
-  });
-  if (state.attempts >= MAX_RETRIES_BEFORE_BLOCK) {
-    autoBlockPlan(projectRoot, state.attempts, state.struggle);
-    state.attempts = 0;
-    state.struggle = freshStruggleMetrics();
-    pruneSessions();
-    return { attempt: MAX_RETRIES_BEFORE_BLOCK, completed: false, blocked: true };
-  }
-  persistToPlan("in_progress", state.attempts, state.struggle, projectRoot);
-  return { attempt: state.attempts, completed: false };
-}
-function autoBlockPlan(projectRoot, attempts, struggle) {
-  try {
-    const root = projectRoot ?? findProjectRoot();
-    if (!root)
-      return;
-    const active = getLatestActivePlan(root);
-    if (!active)
-      return;
-    if (active.entry.blocked >= MAX_BLOCK_CHAIN) {
-      createPlanIteration({
-        parent: active.entry.id,
-        summary: "Cascade abandon: blocked chain exceeded limit",
-        goal: active.content.match(/^Goal:\s*(.+)$/m)?.[1] ?? "Unknown goal",
-        check: active.content.match(/^Check:\s*(.+)$/m)?.[1] ?? "unknown check",
-        tasksMarkdown: active.content.match(/Tasks:\n([\s\S]*?)(?:\n\n|$)/)?.[1]?.trim() ?? "- [ ] Unknown",
-        status: "abandoned",
-        completed: active.entry.completed,
-        blocked: active.entry.blocked,
-        attempts,
-        struggle,
-        projectRoot: root
-      });
-      return;
-    }
-    const goalMatch = active.content.match(/^Goal:\s*(.+)$/m);
-    const checkMatch = active.content.match(/^Check:\s*(.+)$/m);
-    const goal = goalMatch ? goalMatch[1] : "Unknown goal";
-    const check = checkMatch ? checkMatch[1] : "unknown check";
-    const tasksMatch = active.content.match(/Tasks:\n([\s\S]*?)(?:\n\n|$)/);
-    const tasksMarkdown = tasksMatch ? tasksMatch[1].trim() : "- [ ] Unknown";
-    createPlanIteration({
-      parent: active.entry.id,
-      summary: `Auto-blocked after ${attempts} failed attempts`,
-      goal,
-      check,
-      tasksMarkdown,
-      status: "blocked",
-      completed: active.entry.completed,
-      blocked: active.entry.blocked + 1,
-      attempts,
-      struggle,
-      projectRoot: root
-    });
-  } catch {}
-}
-function persistToPlan(status, attempts, struggle, projectRoot) {
-  try {
-    const root = projectRoot ?? findProjectRoot();
-    if (!root)
-      return;
-    const index = readPlanIndex(root);
-    if (!index || !index.activePlanId)
-      return;
-    const activeEntry = index.plans.find((p) => p.id === index.activePlanId);
-    if (!activeEntry)
-      return;
-    if (activeEntry.status === "blocked")
-      return;
-    updatePlanStatus({
-      id: index.activePlanId,
-      status,
-      attempts,
-      struggle,
-      projectRoot: root
-    });
-  } catch {}
-}
 function buildExecutionContext(entry) {
   const lines = [];
   if (entry.attempts !== undefined && entry.attempts > 0) {
@@ -849,11 +497,9 @@ var IMPLEMENT_WORDS = new Set([
   "update",
   "remove",
   "delete",
-  "bug",
   "broken",
   "fails",
   "error",
-  "test",
   "feature",
   "support",
   "need",
@@ -882,46 +528,55 @@ var STOPWORDS = new Set([
 ]);
 
 // src/schema.ts
-var SKILL_REGISTRY = new Map;
+function createDefaultSkillEntry(name, description, phase) {
+  return {
+    name,
+    description,
+    phase,
+    inputSchema: {
+      type: "object",
+      properties: {
+        payload: { type: "object", description: `Payload for ${name}` }
+      },
+      required: ["payload"]
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        result: { type: "object", description: `Result from ${name}` }
+      }
+    },
+    responseFormat: "content_and_artifact"
+  };
+}
+var SKILL_REGISTRY = new Map([
+  ["ag-orchestrator", createDefaultSkillEntry("ag-orchestrator", "AGNES swarm brain \u2014 delegates, parallelizes, and orchestrates work across all fused skills", "META")],
+  ["ag-planner", createDefaultSkillEntry("ag-planner", "Writing specs and implementation plans with structured design documents", "PLAN")],
+  ["ag-builder", createDefaultSkillEntry("ag-builder", "Disciplined plan execution with worktree isolation and verify-review-commit cycle", "BUILD")],
+  ["ag-tdd", createDefaultSkillEntry("ag-tdd", "Red-green-refactor TDD through vertical slices with failing test first", "TEST")],
+  ["ag-reviewer", createDefaultSkillEntry("ag-reviewer", "Code quality gate with spec compliance and quality issue classification", "REVIEW")],
+  ["ag-verifier", createDefaultSkillEntry("ag-verifier", "Gate discipline enforcer running automated checks with evidence-based pass/fail", "VERIFY")],
+  ["ag-debugger", createDefaultSkillEntry("ag-debugger", "Collaborative debugging through reproduce-hypothesise-instrument-narrow-document", "DEBUG")]
+]);
 
 // src/plugin.ts
-var __dirname3 = path3.dirname(fileURLToPath2(import.meta.url));
-var skillsDir2 = path3.resolve(__dirname3, "../skills");
-function extractAssistantText(parts) {
-  return parts.filter((p) => p.type === "text" && typeof p.text === "string").map((p) => p.text).join(`
-`);
-}
-var AgnesPlugin = async ({ client }) => {
-  client.app.log({
-    body: { service: "agnes", level: "info", message: "AGNES plugin loaded successfully" }
-  });
+var __dirname3 = path4.dirname(fileURLToPath2(import.meta.url));
+var skillsDir2 = path4.resolve(__dirname3, "../skills");
+var AgnesPlugin = async () => {
   return {
     config: async (config) => {
-      const paths = config.skills?.paths ? [...config.skills.paths] : [];
+      const configObj = config;
+      const paths = configObj.skills?.paths ? [...configObj.skills.paths] : [];
       if (!paths.includes(skillsDir2)) {
         paths.push(skillsDir2);
       }
-      config.skills = config.skills || {};
-      config.skills.paths = paths;
+      configObj.skills = configObj.skills || {};
+      configObj.skills.paths = paths;
     },
     "experimental.chat.messages.transform": async (_input, output) => {
       const bootstrap = getBootstrapContent();
       if (!bootstrap || !output.messages?.length)
         return;
-      const assistantMsgs = output.messages.filter((m) => m.info?.role === "assistant");
-      if (assistantMsgs.length > 0) {
-        const lastAssistant = assistantMsgs[assistantMsgs.length - 1];
-        const assistantText = extractAssistantText(lastAssistant.parts);
-        if (assistantText) {
-          const agnesMsg = parseAgnesMessage(assistantText);
-          if (agnesMsg?.type === "completion" || agnesMsg?.type === "result") {
-            recordAttempt(lastAssistant.info?.sessionID ?? "global", agnesMsg.status);
-          } else {
-            const promiseTag = extractPromiseTag(assistantText);
-            recordAttempt(lastAssistant.info?.sessionID ?? "global", promiseTag);
-          }
-        }
-      }
       const firstUser = output.messages.find((m) => m.info?.role === "user");
       if (!firstUser || !firstUser.parts?.length)
         return;
@@ -941,9 +596,7 @@ var AgnesPlugin = async ({ client }) => {
             }
           }
         }
-      } catch (err) {
-        console.debug("agnes: state read failed \u2014", err);
-      }
+      } catch {}
       let fullBootstrap = bootstrap + (planGate || "");
       if (execContext) {
         fullBootstrap += `
@@ -974,11 +627,11 @@ ${serializeAgnesMessage({ type: "result", taskId: "task-000", id: randomUUID(), 
 `) + `
 `;
       }
-      const ref = firstUser.parts[0];
+      const { sessionID, messageID } = firstUser.parts[0];
       firstUser.parts.unshift({
         id: randomUUID(),
-        sessionID: ref.sessionID,
-        messageID: ref.messageID,
+        sessionID,
+        messageID,
         type: "text",
         text: fullBootstrap
       });

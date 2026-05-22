@@ -50,3 +50,13 @@ export class FlowController {
     this.consumeSignal();
   }
 }
+
+export function createFlowController(initialTarget?: JumpTarget, reason?: string): FlowController {
+  const controller = new FlowController();
+  if (initialTarget) {
+    controller.setJump(initialTarget, reason);
+  }
+  return controller;
+}
+
+export const defaultFlowController = createFlowController();

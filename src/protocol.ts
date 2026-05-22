@@ -162,7 +162,31 @@ export function parseAgnesMessage(text: string): AnyAgnesMessage | null {
     }
   }
 
-  return obj as unknown as AnyAgnesMessage;
+  if (isValidAgnesMessage(obj)) {
+    return obj;
+  }
+  return null;
+}
+
+export function isValidAgnesMessage(obj: unknown): obj is AnyAgnesMessage {
+  if (!obj || typeof obj !== 'object') return false;
+  const msg = obj as Record<string, unknown>;
+  if (typeof msg.type !== 'string' || !VALID_TYPES.has(msg.type)) return false;
+  if (typeof msg.id !== 'string') return false;
+  if (typeof msg.timestamp !== 'string') return false;
+
+  const type = msg.type;
+  const required = REQUIRED_FIELDS[type];
+  if (required) {
+    for (const [field, expectedType] of Object.entries(required)) {
+      if (typeof msg[field] !== expectedType) return false;
+    }
+    if (type === 'completion' || type === 'result') {
+      if (!validCompletionStatus(msg.status)) return false;
+    }
+  }
+
+  return true;
 }
 
 export function serializeAgnesMessage(msg: AnyAgnesMessage): string {

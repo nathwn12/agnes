@@ -88,7 +88,7 @@ export function validatePayload(
   return { valid: true };
 }
 
-function typeMatches(value: unknown, expectedType: string): boolean {
+export function typeMatches(value: unknown, expectedType: string): boolean {
   switch (expectedType) {
     case 'string':
       return typeof value === 'string';
@@ -109,4 +109,62 @@ function typeMatches(value: unknown, expectedType: string): boolean {
   }
 }
 
-export const SKILL_REGISTRY: Map<string, SkillDescriptor> = new Map();
+function createDefaultSkillEntry(name: string, description: string, phase: SkillPhase): SkillDescriptor {
+  return {
+    name,
+    description,
+    phase,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        payload: { type: 'object', description: `Payload for ${name}` },
+      },
+      required: ['payload'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        result: { type: 'object', description: `Result from ${name}` },
+      },
+    },
+    responseFormat: 'content_and_artifact',
+  };
+}
+
+export const SKILL_REGISTRY: Map<string, SkillDescriptor> = new Map([
+  ['ag-orchestrator', createDefaultSkillEntry(
+    'ag-orchestrator',
+    'AGNES swarm brain — delegates, parallelizes, and orchestrates work across all fused skills',
+    'META',
+  )],
+  ['ag-planner', createDefaultSkillEntry(
+    'ag-planner',
+    'Writing specs and implementation plans with structured design documents',
+    'PLAN',
+  )],
+  ['ag-builder', createDefaultSkillEntry(
+    'ag-builder',
+    'Disciplined plan execution with worktree isolation and verify-review-commit cycle',
+    'BUILD',
+  )],
+  ['ag-tdd', createDefaultSkillEntry(
+    'ag-tdd',
+    'Red-green-refactor TDD through vertical slices with failing test first',
+    'TEST',
+  )],
+  ['ag-reviewer', createDefaultSkillEntry(
+    'ag-reviewer',
+    'Code quality gate with spec compliance and quality issue classification',
+    'REVIEW',
+  )],
+  ['ag-verifier', createDefaultSkillEntry(
+    'ag-verifier',
+    'Gate discipline enforcer running automated checks with evidence-based pass/fail',
+    'VERIFY',
+  )],
+  ['ag-debugger', createDefaultSkillEntry(
+    'ag-debugger',
+    'Collaborative debugging through reproduce-hypothesise-instrument-narrow-document',
+    'DEBUG',
+  )],
+]);

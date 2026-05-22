@@ -91,3 +91,40 @@ export class MiddlewareChain {
     return result;
   }
 }
+
+export async function applyMiddleware<T>(
+  ctx: WaveContext,
+  middleware: MiddlewareChain,
+  fn: (ctx: WaveContext) => Promise<T>,
+): Promise<T> {
+  const beforeCtx = await middleware.executeBeforeWave(ctx);
+  try {
+    const result = await fn(beforeCtx);
+    await middleware.executeAfterWave(beforeCtx, []);
+    return result;
+  } catch (err) {
+    await middleware.executeAfterWave(beforeCtx, []);
+    throw err;
+  }
+}
+
+const defaultPreWave: MiddlewareHooks = {
+  name: 'default-pre-wave',
+  beforeWave: (ctx: WaveContext) => ctx,
+};
+
+const defaultPostWave: MiddlewareHooks = {
+  name: 'default-post-wave',
+  afterWave: (ctx: WaveContext, _results: ResultMessage[]) => ctx,
+};
+
+const defaultOnError: MiddlewareHooks = {
+  name: 'default-on-error',
+  afterWave: (ctx: WaveContext, _results: ResultMessage[]) => ctx,
+};
+
+export const defaultMiddlewareChain = new MiddlewareChain([
+  defaultPreWave,
+  defaultPostWave,
+  defaultOnError,
+]);

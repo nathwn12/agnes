@@ -1,3 +1,6 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import {
   findProjectRoot,
   getLatestActivePlan,
@@ -8,6 +11,7 @@ import {
   freshStruggleMetrics,
   updateStruggleMetrics,
   detectStruggle,
+  cacheDir,
 } from './state.js';
 import type { PlanIndexEntry, PlanIndex, ActivePlan, StruggleMetrics } from './state.js';
 import { MiddlewareChain } from './middleware.js';
@@ -33,6 +37,8 @@ const sessions = new Map<string, SessionState>();
 const MAX_SESSIONS = 200;
 const SESSION_TTL_MS = 3600000;
 
+loadSessions();
+
 function pruneSessions(): void {
   const now = Date.now();
   for (const [key, state] of sessions) {
@@ -46,6 +52,47 @@ function pruneSessions(): void {
     for (const [key] of toDelete) {
       sessions.delete(key);
     }
+  }
+}
+
+function sessionsFilePath(projectRoot?: string): string | null {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root) return null;
+  const dir = cacheDir(root);
+  return dir ? path.join(dir, 'sessions.json') : null;
+}
+
+function persistSessions(projectRoot?: string): void {
+  try {
+    const filePath = sessionsFilePath(projectRoot);
+    if (!filePath) return;
+    const tmp = filePath + '.tmp';
+    const data: Record<string, SessionState> = {};
+    for (const [key, state] of sessions) {
+      data[key] = state;
+    }
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+    fs.renameSync(tmp, filePath);
+  } catch {
+    // Persistence must never break runtime.
+  }
+}
+
+function loadSessions(projectRoot?: string): void {
+  try {
+    const filePath = sessionsFilePath(projectRoot);
+    if (!filePath) return;
+    if (!fs.existsSync(filePath)) return;
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const data = JSON.parse(raw) as Record<string, SessionState>;
+    for (const [key, state] of Object.entries(data)) {
+      if (state && typeof state.attempts === 'number' && state.struggle && typeof state.lastAccessed === 'number') {
+        sessions.set(key, state);
+      }
+    }
+  } catch {
+    // Load must never break runtime.
   }
 }
 
@@ -213,6 +260,7 @@ export function recordAttempt(
       const activeEntry = index.plans.find(p => p.id === index.activePlanId);
       if (activeEntry?.status === 'blocked') {
         state.attempts++;
+        persistSessions(root);
         return { attempt: state.attempts, completed: false, blocked: true };
       }
     }
@@ -225,6 +273,7 @@ export function recordAttempt(
     state.attempts = 0;
     state.struggle = freshStruggleMetrics();
     pruneSessions();
+    persistSessions(projectRoot);
     persistToPlan('done', 0, freshStruggleMetrics(), projectRoot);
     return { attempt: 0, completed: true };
   }
@@ -242,10 +291,12 @@ export function recordAttempt(
     state.attempts = 0;
     state.struggle = freshStruggleMetrics();
     pruneSessions();
+    persistSessions(projectRoot);
     return { attempt: MAX_RETRIES_BEFORE_BLOCK, completed: false, blocked: true };
   }
 
   persistToPlan('in_progress', state.attempts, state.struggle, projectRoot);
+  persistSessions(projectRoot);
   return { attempt: state.attempts, completed: false };
 }
 
@@ -357,8 +408,8 @@ export function buildExecutionContext(entry: PlanIndexEntry): string {
 
 const IMPLEMENT_WORDS = new Set([
   'implement', 'build', 'add', 'fix', 'change', 'create', 'refactor',
-  'write', 'edit', 'update', 'remove', 'delete', 'bug', 'broken',
-  'fails', 'error', 'test', 'feature', 'support', 'need', 'want', 'should',
+  'write', 'edit', 'update', 'remove', 'delete', 'broken',
+  'fails', 'error', 'feature', 'support', 'need', 'want', 'should',
 ]);
 
 const CLARIFY_PATTERNS = ['what is', 'how does', 'explain', 'why', 'describe', 'tell me', 'show me'];
@@ -368,31 +419,67 @@ const STOPWORDS = new Set([
   'by', 'and', 'or', 'is', 'it', 'be', 'this', 'that',
 ]);
 
-export function classifyIntent(message: string): 'implement' | 'clarify' | 'plan' | 'unknown' {
+export interface IntentClassification {
+  category: 'implement' | 'clarify' | 'plan' | 'unknown' | 'review' | 'test' | 'debug';
+  suggestedSkills: string[];
+}
+
+const INTENT_SKILL_MAP: Record<string, string[]> = {
+  implement: ['ag-builder'],
+  clarify: ['ag-clarifier'],
+  plan: ['ag-planner', 'ag-prd'],
+  review: ['ag-reviewer', 'ag-verifier'],
+  test: ['ag-tdd', 'ag-tester'],
+  debug: ['ag-debugger', 'ag-griller'],
+  unknown: [],
+};
+
+export function classifyIntent(message: string): IntentClassification {
   const lower = message.toLowerCase().trim();
-  if (!lower) return 'unknown';
+  if (!lower) return { category: 'unknown', suggestedSkills: [] };
 
   if (lower.includes('?') || CLARIFY_PATTERNS.some(p => lower.includes(p))) {
-    return 'clarify';
+    return { category: 'clarify', suggestedSkills: INTENT_SKILL_MAP.clarify };
   }
 
   const tokens = lower.split(/[^a-z0-9]+/).filter(t => t.length > 0);
+
+  const hasDebugPhrase = lower.includes("debug") || lower.includes("bug");
+  const hasReviewPhrase = lower.includes("review") || lower.includes("check") || lower.includes("verify");
+  const hasTestPhrase = lower.includes("test");
 
   const hasImplPhrase = lower.includes("doesn't work") || lower.includes("test fails");
   const hasImplToken = tokens.some(t => IMPLEMENT_WORDS.has(t));
   const hasImplementationSignal = hasImplPhrase || hasImplToken;
 
   const hasPlanToken = tokens.some(t => t === 'plan');
+  const hasAnyWorkSignal = hasImplementationSignal || hasTestPhrase || hasDebugPhrase || hasReviewPhrase;
 
-  if (hasPlanToken && hasImplementationSignal) {
-    return 'plan';
+  if (hasPlanToken && hasAnyWorkSignal) {
+    return { category: 'plan', suggestedSkills: INTENT_SKILL_MAP.plan };
+  }
+
+  if (hasDebugPhrase && !hasImplPhrase && !hasImplToken) {
+    return { category: 'debug', suggestedSkills: INTENT_SKILL_MAP.debug };
+  }
+
+  if (hasReviewPhrase && !hasImplPhrase && !hasImplToken) {
+    return { category: 'review', suggestedSkills: INTENT_SKILL_MAP.review };
+  }
+
+  if (hasTestPhrase && !hasImplPhrase) {
+    return { category: 'test', suggestedSkills: INTENT_SKILL_MAP.test };
   }
 
   if (hasImplementationSignal) {
-    return 'implement';
+    return { category: 'implement', suggestedSkills: INTENT_SKILL_MAP.implement };
   }
 
-  return 'unknown';
+  if (hasTestPhrase) {
+    return { category: 'test', suggestedSkills: INTENT_SKILL_MAP.test };
+  }
+
+  return { category: 'unknown', suggestedSkills: [] };
 }
 
 export function requestMatchesPlan(message: string, plan: string): boolean {
@@ -417,7 +504,7 @@ export function requestMatchesPlan(message: string, plan: string): boolean {
 export type ProcessMessageResult =
   | { type: 'block'; reason: 'no_active_plan'; message: string }
   | { type: 'block'; reason: 'plan_mismatch'; message: string }
-  | { type: 'proceed'; intent: 'implement' | 'clarify' | 'plan' | 'unknown' };
+  | { type: 'proceed'; intent: IntentClassification['category'] };
 
 export function processMessage(
   message: string,
@@ -426,7 +513,7 @@ export function processMessage(
 ): ProcessMessageResult {
   const intent = classifyIntent(message);
 
-  if (intent === 'implement') {
+  if (intent.category === 'implement') {
     const index = planIndex !== undefined ? planIndex : readPlanIndex();
 
     if (!index || index.activePlanId === null) {
@@ -455,7 +542,7 @@ export function processMessage(
     }
   }
 
-  return { type: 'proceed', intent };
+  return { type: 'proceed', intent: intent.category };
 }
 
 export function checkPlanDrift(editedFiles: string[], planScope: string[]): { inScope: string[]; outOfScope: string[] } {
@@ -514,22 +601,28 @@ export async function executeWave(
       break;
     }
 
-    const handler = async (_ctx: SubagentContext): Promise<ResultMessage> => {
-      throw new Error('Subagent handler not yet wired — executeWave is structural only');
-    };
+    // TODO: Wire subagent spawning via OpenCode API. Currently returns a BLOCKED result for each task.
+    const handler = async (_ctx: SubagentContext): Promise<ResultMessage> => ({
+      type: 'result',
+      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+      timestamp: new Date().toISOString(),
+      taskId: `task-${_ctx.task.skill}`,
+      status: 'BLOCKED',
+      content: `Subagent handler not yet wired — executeWave is structural only. Task ${_ctx.task.skill} skipped.`,
+    });
 
     try {
       const result = await middleware.executeSubagent(subCtx, handler);
       results.push(result);
     } catch (err) {
       results.push({
-        type: 'error',
+        type: 'result',
         id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
         timestamp: new Date().toISOString(),
         taskId: `task-${task.skill}`,
-        errorType: err instanceof Error ? err.constructor.name : 'UnknownError',
-        detail: err instanceof Error ? err.message : String(err),
-      } as unknown as ResultMessage);
+        status: 'BLOCKED',
+        content: err instanceof Error ? err.message : String(err),
+      });
     }
 
     const jump = flow.getJump();

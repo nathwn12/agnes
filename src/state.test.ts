@@ -1,7 +1,9 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test, afterAll } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+
+import { createTempProject, writeIndex, readIndex, cleanupTempDirs } from './test-utils';
 
 import {
   findProjectRoot,
@@ -32,26 +34,9 @@ import type { PlanIndex, PlanIndexEntry, ActivePlan, StruggleMetrics, RetentionP
 import { getPlanState, getPlanGate, getCurrentState, getPlanGateFromState } from './runtime.js';
 import type { AgnesRuntimeState } from './runtime.js';
 
-function createTempProject(): string {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-'));
-  fs.mkdirSync(path.join(tmp, '.agnes'), { recursive: true });
-  fs.mkdirSync(path.join(tmp, '.agnes', 'plans'), { recursive: true });
-  return tmp;
-}
-
-function writeIndex(projectRoot: string, index: PlanIndex): void {
-  const indexPath = path.join(projectRoot, '.agnes', 'index.json');
-  fs.writeFileSync(indexPath, JSON.stringify(index), 'utf8');
-}
-
-function readIndex(projectRoot: string): PlanIndex | null {
-  const indexPath = path.join(projectRoot, '.agnes', 'index.json');
-  try {
-    return JSON.parse(fs.readFileSync(indexPath, 'utf8')) as PlanIndex;
-  } catch {
-    return null;
-  }
-}
+afterAll(() => {
+  cleanupTempDirs();
+});
 
 describe('findProjectRoot', () => {
   test('reset helper clears cached no-arg root', () => {
@@ -975,8 +960,8 @@ describe('detectPromiseTag', () => {
     expect(detectPromiseTag('<promise>DONE</promise>', 'DONE')).toBe(true);
   });
 
-  test('rejects wrong expected tag in JSON protocol', () => {
-    expect(detectPromiseTag('<promise>DONE</promise>', 'FAIL')).toBe(true);
+  test('rejects wrong expected tag in legacy tag format', () => {
+    expect(detectPromiseTag('<promise>DONE</promise>', 'FAIL')).toBe(false);
   });
 
   test('rejects wrong expected status via JSON completion message', () => {
