@@ -1,7 +1,7 @@
 <h1 align="center">AGNES — OpenCode Native Plugin</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.7.2-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.7.3-blue" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
   <img src="https://img.shields.io/badge/skills-23-orange" alt="23 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
@@ -133,6 +133,21 @@ AGNES tracks progress via `.cache/agnes/` in any project:
 
 Plan files are immutable — every state change creates a new `plan-NNN.md`.
 Search by project/status through `index.json` without re-reading old plan files.
+
+### Retention policy
+
+Completed (`done`) and abandoned plans are auto-pruned after 7 days. Pruning runs transparently every time the index is loaded — no explicit trigger needed.
+
+To override per-project, add a `retention` field to `index.json`:
+
+```json
+{
+  "retention": {
+    "maxAgeDays": 3,
+    "terminalStatuses": ["done", "abandoned"]
+  }
+}
+```
 
 ---
 

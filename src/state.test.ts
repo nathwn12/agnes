@@ -9,6 +9,7 @@ import {
   cacheDir,
   readPlanIndex,
   writePlanIndex,
+  pruneExpiredPlans,
   getLatestActivePlan,
   buildPlanSummary,
   getNextPlanId,
@@ -20,8 +21,14 @@ import {
   freshStruggleMetrics,
   updateStruggleMetrics,
   detectStruggle,
+  createAutoPlan,
+  generatePlanTemplate,
+  assessPlanQuality,
+  validatePlanTransition,
+  transitionPlanStatus,
+  generateRetrospective,
 } from './state.js';
-import type { PlanIndex, ActivePlan, StruggleMetrics } from './state.js';
+import type { PlanIndex, PlanIndexEntry, ActivePlan, StruggleMetrics, RetentionPolicy, PlanQualityReport } from './state.js';
 import { getPlanState, getPlanGate, getCurrentState, getPlanGateFromState } from './runtime.js';
 import type { AgnesRuntimeState } from './runtime.js';
 
@@ -1172,4 +1179,613 @@ describe('updatePlanStatus with attempts/struggle', () => {
     expect(entry.struggle?.noProgressIterations).toBe(1);
   });
 });
+}); // closes describe('updatePlanStatus with attempts/struggle', ...)
+
+describe('pruneExpiredPlans', () => {
+  const oldDate = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+  const freshDate = new Date().toISOString();
+
+  function makeEntry(id: string, status: 'done' | 'abandoned' | 'in_progress', updatedAt: string, file?: string): PlanIndexEntry {
+    return {
+      id,
+      status,
+      createdAt: updatedAt,
+      updatedAt,
+      summary: `${id} summary`,
+      total: 1,
+      completed: status === 'done' ? 1 : 0,
+      blocked: 0,
+      file: file ?? `${id}.md`,
+    };
+  }
+
+  test('removes done plans older than 7 days', () => {
+    const tmp = createTempProject();
+    const index: PlanIndex = {
+      agnesVersion: '0.7.2',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: freshDate,
+      activePlanId: null,
+      plans: [makeEntry('plan-001', 'done', oldDate, 'plan-001.md')],
+    };
+    writeIndex(tmp, index);
+    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'old plan', 'utf8');
+
+    const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
+    expect(result.plans.length).toBe(0);
+    expect(fs.existsSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'))).toBe(false);
+  });
+
+  test('removes abandoned plans older than 7 days', () => {
+    const tmp = createTempProject();
+    const index: PlanIndex = {
+      agnesVersion: '0.7.2',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: freshDate,
+      activePlanId: null,
+      plans: [makeEntry('plan-001', 'abandoned', oldDate, 'plan-001.md')],
+    };
+    writeIndex(tmp, index);
+    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'old plan', 'utf8');
+
+    const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
+    expect(result.plans.length).toBe(0);
+    expect(fs.existsSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'))).toBe(false);
+  });
+
+  test('keeps non-terminal plans regardless of age', () => {
+    const tmp = createTempProject();
+    const index: PlanIndex = {
+      agnesVersion: '0.7.2',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: freshDate,
+      activePlanId: null,
+      plans: [makeEntry('plan-001', 'in_progress', oldDate, 'plan-001.md')],
+    };
+    writeIndex(tmp, index);
+    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'still active', 'utf8');
+
+    const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
+    expect(result.plans.length).toBe(1);
+    expect(fs.existsSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'))).toBe(true);
+  });
+
+  test('keeps done plans newer than 7 days', () => {
+    const tmp = createTempProject();
+    const index: PlanIndex = {
+      agnesVersion: '0.7.2',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: freshDate,
+      activePlanId: null,
+      plans: [makeEntry('plan-001', 'done', freshDate, 'plan-001.md')],
+    };
+    writeIndex(tmp, index);
+    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'recent plan', 'utf8');
+
+    const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
+    expect(result.plans.length).toBe(1);
+    expect(fs.existsSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'))).toBe(true);
+  });
+
+  test('clears activePlanId when pruned plan was active', () => {
+    const tmp = createTempProject();
+    const index: PlanIndex = {
+      agnesVersion: '0.7.2',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: freshDate,
+      activePlanId: 'plan-001',
+      plans: [makeEntry('plan-001', 'done', oldDate, 'plan-001.md')],
+    };
+    writeIndex(tmp, index);
+    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'was active', 'utf8');
+
+    const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
+    expect(result.activePlanId).toBeNull();
+    expect(result.plans.length).toBe(0);
+  });
+
+  test('uses custom retention policy when provided', () => {
+    const tmp = createTempProject();
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    const index: PlanIndex = {
+      agnesVersion: '0.7.2',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: freshDate,
+      activePlanId: null,
+      plans: [makeEntry('plan-001', 'done', twoDaysAgo, 'plan-001.md')],
+      retention: { maxAgeDays: 1, terminalStatuses: ['done'] },
+    };
+    writeIndex(tmp, index);
+    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), '2 days old, 1 day retention', 'utf8');
+
+    const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
+    expect(result.plans.length).toBe(0);
+    expect(fs.existsSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'))).toBe(false);
+  });
+
+  test('does nothing on empty plan list', () => {
+    const tmp = createTempProject();
+    const index: PlanIndex = {
+      agnesVersion: '0.7.2',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: freshDate,
+      activePlanId: null,
+      plans: [],
+    };
+    writeIndex(tmp, index);
+    const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
+    expect(result.plans.length).toBe(0);
+  });
+
+  test('handles NaN updatedAt gracefully (skips, does not crash)', () => {
+    const tmp = createTempProject();
+    const index: PlanIndex = {
+      agnesVersion: '0.7.2',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: freshDate,
+      activePlanId: null,
+      plans: [{
+        id: 'plan-001',
+        status: 'done',
+        createdAt: freshDate,
+        updatedAt: 'not-a-date',
+        summary: 'broken date plan',
+        total: 1,
+        completed: 1,
+        blocked: 0,
+        file: 'plan-001.md',
+      }],
+    };
+    writeIndex(tmp, index);
+    fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), 'bad date', 'utf8');
+
+    const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
+    expect(result.plans.length).toBe(1);
+    expect(fs.existsSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'))).toBe(true);
+  });
+});
+
+describe('planning discipline', () => {
+  const minValidPlan = `# plan-001 — Test goal
+
+## Intent
+<!-- What must be true after this plan executes -->
+
+## Goal
+Build a login system with OAuth and proper validation
+
+## Tasks
+| # | Task | Dependencies | Effort | Verification |
+|---|------|-------------|--------|-------------|
+| 1 | Add OAuth provider |  | M | Integration test passes |
+| 2 | Add session handling | 1 | L | Unit test coverage > 80% |
+| 3 | Add login UI | 1 | M | E2E login flow works |
+
+## Risks
+<!-- What could go wrong, how to detect it early -->
+OAuth tokens may expire. Monitor token refresh errors.
+
+## Completion Criteria
+<!-- Verifiable conditions -->
+All tests pass, login flow verified, security review completed
+
+## Validation
+<!-- How to confirm the plan was correct after execution -->
+Manual smoke test of login flow
+`;
+
+  describe('generatePlanTemplate', () => {
+    test('produces valid markdown with all required sections', () => {
+      const result = generatePlanTemplate('plan-001', 'Test goal');
+      expect(result).toContain('# plan-001');
+      expect(result).toContain('## Intent');
+      expect(result).toContain('## Goal');
+      expect(result).toContain('## Tasks');
+      expect(result).toContain('## Risks');
+      expect(result).toContain('## Completion Criteria');
+      expect(result).toContain('## Validation');
+    });
+
+    test('truncates long goal in heading', () => {
+      const longGoal = 'a'.repeat(100);
+      const result = generatePlanTemplate('plan-001', longGoal);
+      expect(result).toContain('# plan-001 —');
+      expect(result).toContain(longGoal);
+    });
+  });
+
+  describe('assessPlanQuality', () => {
+    test('scores a minimal plan low', () => {
+      const minimal = `# plan-001 — Test
+
+## Intent
+
+
+## Goal
+fix things
+
+## Tasks
+| # | Task | Dependencies | Effort | Verification |
+|---|------|-------------|--------|-------------|
+
+## Risks
+<!-- What could go wrong, how to detect it early -->
+
+## Completion Criteria
+<!-- Verifiable conditions -->
+
+## Validation
+<!-- How to confirm the plan was correct after execution -->
+`;
+      const report = assessPlanQuality(minimal);
+      expect(report.score).toBeLessThan(60);
+      expect(report.flags.length).toBeGreaterThan(0);
+    });
+
+    test('scores a complete plan high', () => {
+      const report = assessPlanQuality(minValidPlan);
+      expect(report.score).toBeGreaterThanOrEqual(60);
+    });
+
+    test('flags missing tasks', () => {
+      const noTasks = `# plan-001 — Test
+
+## Intent
+
+
+## Goal
+Build a login system
+
+## Tasks
+| # | Task | Dependencies | Effort | Verification |
+|---|------|-------------|--------|-------------|
+
+## Risks
+Some risks
+
+## Completion Criteria
+All tests pass and verified
+
+## Validation
+
+`;
+      const report = assessPlanQuality(noTasks);
+      expect(report.flags).toContain('no_tasks');
+    });
+
+    test('flags missing verification', () => {
+      const noVerification = `# plan-001 — Test
+
+## Intent
+
+
+## Goal
+Build a login system with OAuth validation
+
+## Tasks
+| # | Task | Dependencies | Effort | Verification |
+|---|------|-------------|--------|-------------|
+| 1 | Add OAuth provider |  | M |  |
+| 2 | Add session handling | 1 | L | Unit test passes |
+
+## Risks
+Some risks
+
+## Completion Criteria
+All tests pass and verified
+
+## Validation
+
+`;
+      const report = assessPlanQuality(noVerification);
+      expect(report.flags).toContain('task_1_missing_verification');
+    });
+
+    test('flags goal with filler', () => {
+      const fillerGoal = `# plan-001 — Test
+
+## Intent
+
+
+## Goal
+fix things
+
+## Tasks
+| # | Task | Dependencies | Effort | Verification |
+|---|------|-------------|--------|-------------|
+| 1 | Do something |  | M | Check |
+
+## Risks
+Some risks
+
+## Completion Criteria
+All tests pass and verified
+
+## Validation
+
+`;
+      const report = assessPlanQuality(fillerGoal);
+      expect(report.flags).toContain('goal_has_filler');
+    });
+
+    test('flags dependency cycles', () => {
+      const cyclicPlan = `# plan-001 — Test
+
+## Intent
+
+
+## Goal
+Build a login system with proper validation
+
+## Tasks
+| # | Task | Dependencies | Effort | Verification |
+|---|------|-------------|--------|-------------|
+| 1 | Task one | 2 | M | Test passes |
+| 2 | Task two | 1 | L | Test passes |
+
+## Risks
+Some risks
+
+## Completion Criteria
+All tests pass and verified
+
+## Validation
+
+`;
+      const report = assessPlanQuality(cyclicPlan);
+      expect(report.flags).toContain('dependency_cycle');
+    });
+
+    test('flags weak completion criteria', () => {
+      const weakCriteria = `# plan-001 — Test
+
+## Intent
+
+
+## Goal
+Build a login system with proper validation
+
+## Tasks
+| # | Task | Dependencies | Effort | Verification |
+|---|------|-------------|--------|-------------|
+| 1 | Add OAuth |  | M | Test passes |
+
+## Risks
+Some risks
+
+## Completion Criteria
+fix things
+
+## Validation
+
+`;
+      const report = assessPlanQuality(weakCriteria);
+      expect(report.flags).toContain('weak_completion_criteria');
+    });
+  });
+
+  describe('validatePlanTransition', () => {
+    test('allows valid transitions', () => {
+      expect(validatePlanTransition('draft', 'reviewed')).toBe(true);
+      expect(validatePlanTransition('reviewed', 'ready')).toBe(true);
+      expect(validatePlanTransition('ready', 'in_progress')).toBe(true);
+      expect(validatePlanTransition('in_progress', 'done')).toBe(true);
+      expect(validatePlanTransition('in_progress', 'blocked')).toBe(true);
+      expect(validatePlanTransition('blocked', 'ready')).toBe(true);
+      expect(validatePlanTransition('draft', 'abandoned')).toBe(true);
+      expect(validatePlanTransition('reviewed', 'draft')).toBe(true);
+    });
+
+    test('rejects invalid transitions', () => {
+      expect(validatePlanTransition('draft', 'done')).toBe(false);
+      expect(validatePlanTransition('draft', 'in_progress')).toBe(false);
+      expect(validatePlanTransition('done', 'in_progress')).toBe(false);
+      expect(validatePlanTransition('abandoned', 'draft')).toBe(false);
+      expect(validatePlanTransition('reviewed', 'in_progress')).toBe(false);
+    });
+
+    test('rejects transition for unknown current status', () => {
+      expect(validatePlanTransition('unknown', 'done')).toBe(false);
+    });
+  });
+
+  describe('createAutoPlan', () => {
+    test('creates entry with correct id and initial draft status', () => {
+      const tmp = createTempProject();
+      const id = createAutoPlan({ goal: 'Test the system', source: 'user' }, tmp);
+      expect(id).toBe('plan-001');
+
+      const index = readPlanIndex(tmp)!;
+      const entry = index.plans.find(p => p.id === id)!;
+      expect(entry).toBeDefined();
+      expect(entry.status).toBe('draft');
+      expect(entry.summary).toBe('Test the system');
+      expect(entry.total).toBe(0);
+      expect(fs.existsSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'))).toBe(true);
+    });
+
+    test('creates entry with ready status for user_ready source', () => {
+      const tmp = createTempProject();
+      const id = createAutoPlan({ goal: 'Ready to go', source: 'user_ready' }, tmp);
+      const index = readPlanIndex(tmp)!;
+      const entry = index.plans.find(p => p.id === id)!;
+      expect(entry.status).toBe('ready');
+    });
+
+    test('creates entry with draft status for gate source', () => {
+      const tmp = createTempProject();
+      const id = createAutoPlan({ goal: 'Gate triggered', source: 'gate' }, tmp);
+      const index = readPlanIndex(tmp)!;
+      const entry = index.plans.find(p => p.id === id)!;
+      expect(entry.status).toBe('draft');
+    });
+
+    test('increments plan id correctly', () => {
+      const tmp = createTempProject();
+      const id1 = createAutoPlan({ goal: 'First', source: 'user' }, tmp);
+      const id2 = createAutoPlan({ goal: 'Second', source: 'user' }, tmp);
+      expect(id1).toBe('plan-001');
+      expect(id2).toBe('plan-002');
+    });
+  });
+
+  describe('transitionPlanStatus', () => {
+    test('transitions draft→reviewed→ready→in_progress→done', () => {
+      const tmp = createTempProject();
+      const id = createAutoPlan({ goal: 'Build the feature with full test coverage', source: 'user' }, tmp);
+      const planPath = path.join(tmp, '.cache', 'agnes', `${id}.md`);
+      fs.writeFileSync(planPath, minValidPlan, 'utf8');
+
+      let index = transitionPlanStatus(id, 'reviewed', tmp);
+      expect(index).not.toBeNull();
+      expect(index!.plans.find(p => p.id === id)!.status).toBe('reviewed');
+
+      index = transitionPlanStatus(id, 'ready', tmp);
+      expect(index!.plans.find(p => p.id === id)!.status).toBe('ready');
+
+      index = transitionPlanStatus(id, 'in_progress', tmp);
+      expect(index!.plans.find(p => p.id === id)!.status).toBe('in_progress');
+      expect(index!.activePlanId).toBe(id);
+
+      index = transitionPlanStatus(id, 'done', tmp);
+      expect(index!.plans.find(p => p.id === id)!.status).toBe('done');
+      expect(index!.activePlanId).toBeNull();
+    });
+
+    test('blocks invalid transition', () => {
+      const tmp = createTempProject();
+      const id = createAutoPlan({ goal: 'Test', source: 'user' }, tmp);
+      const result = transitionPlanStatus(id, 'done', tmp);
+      expect(result).toBeNull();
+
+      const index = readPlanIndex(tmp)!;
+      expect(index.plans.find(p => p.id === id)!.status).toBe('draft');
+    });
+
+    test('blocks draft→reviewed when quality insufficient', () => {
+      const tmp = createTempProject();
+      const id = createAutoPlan({ goal: 'fix things', source: 'user' }, tmp);
+      const planPath = path.join(tmp, '.cache', 'agnes', `${id}.md`);
+      const badPlan = `# ${id} — Test
+
+## Intent
+
+
+## Goal
+fix things
+
+## Tasks
+| # | Task | Dependencies | Effort | Verification |
+|---|------|-------------|--------|-------------|
+
+## Risks
+<!-- What could go wrong, how to detect it early -->
+
+## Completion Criteria
+<!-- Verifiable conditions -->
+
+## Validation
+<!-- How to confirm the plan was correct after execution -->
+`;
+      fs.writeFileSync(planPath, badPlan, 'utf8');
+
+      const result = transitionPlanStatus(id, 'reviewed', tmp);
+      expect(result).toBeNull();
+
+      const index = readPlanIndex(tmp)!;
+      expect(index.plans.find(p => p.id === id)!.status).toBe('draft');
+    });
+
+    test('returns null for nonexistent plan', () => {
+      const tmp = createTempProject();
+      const result = transitionPlanStatus('plan-999', 'done', tmp);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('generateRetrospective', () => {
+    test('produces correct stats for completed plan', () => {
+      const tmp = createTempProject();
+      const now = new Date().toISOString();
+      const index: PlanIndex = {
+        agnesVersion: '0.7.2',
+        schemaVersion: 2,
+        projectDir: tmp,
+        projectName: 'test',
+        updatedAt: now,
+        activePlanId: null,
+        plans: [{
+          id: 'plan-001',
+          status: 'done',
+          createdAt: now,
+          updatedAt: now,
+          summary: 'Completed plan',
+          total: 4,
+          completed: 3,
+          blocked: 1,
+          file: 'plan-001.md',
+        }],
+      };
+      writeIndex(tmp, index);
+      fs.writeFileSync(path.join(tmp, '.cache', 'agnes', 'plan-001.md'), '# plan content', 'utf8');
+
+      const retro = generateRetrospective('plan-001', tmp);
+      expect(retro).toContain('plan-001');
+      expect(retro).toContain('done');
+      expect(retro).toContain('3/4');
+      expect(retro).toContain('1');
+      expect(retro).toContain('75%');
+    });
+  });
+
+  describe('integration: full planning discipline flow', () => {
+    test('createAutoPlan → assessPlanQuality → transitionPlanStatus full flow', () => {
+      const tmp = createTempProject();
+      const id = createAutoPlan({ goal: 'Implement user authentication with OAuth', source: 'user' }, tmp);
+      expect(id).toBe('plan-001');
+
+      const planPath = path.join(tmp, '.cache', 'agnes', 'plan-001.md');
+      fs.writeFileSync(planPath, minValidPlan, 'utf8');
+
+      const initialIndex = readPlanIndex(tmp)!;
+      expect(initialIndex.plans[0].status).toBe('draft');
+
+      const quality = assessPlanQuality(minValidPlan);
+      expect(quality.score).toBeGreaterThanOrEqual(60);
+
+      const reviewed = transitionPlanStatus(id, 'reviewed', tmp);
+      expect(reviewed!.plans.find(p => p.id === id)!.status).toBe('reviewed');
+
+      const ready = transitionPlanStatus(id, 'ready', tmp);
+      expect(ready!.plans.find(p => p.id === id)!.status).toBe('ready');
+
+      const inProgress = transitionPlanStatus(id, 'in_progress', tmp);
+      expect(inProgress!.activePlanId).toBe(id);
+
+      const retro = generateRetrospective(id, tmp);
+      expect(retro).toContain('plan-001');
+
+      const done = transitionPlanStatus(id, 'done', tmp);
+      expect(done!.activePlanId).toBeNull();
+
+      const planContent = fs.readFileSync(planPath, 'utf8');
+      expect(planContent).toContain('Retrospective for plan-001');
+    });
+  });
 });

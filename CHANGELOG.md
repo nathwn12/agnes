@@ -2,6 +2,28 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.7.3 (2026-05-23)
+
+### Added
+
+- **Retention policy**: `index.json` now supports an optional `retention` field controlling auto-pruning of old plans. `pruneExpiredPlans()` runs inside `readPlanIndex()` — default: 7 days for `done`/`abandoned` plans. Supports per-project override via `{ maxAgeDays, terminalStatuses }`. Clears `activePlanId` when the active plan is pruned. (verified: 8 pruneExpiredPlans tests)
+- **Plan gate**: `processMessage()` now enforces a plan-first discipline — `classifyIntent()` detects implementation intent, and the gate blocks execution with `{ type: 'block', reason: 'no_active_plan' }` when no active plan exists. `requestMatchesPlan()` validates the plan matches the request before allowing implementation. (verified: integration tests)
+- **Auto-planning**: `createAutoPlan()` auto-generates plan entries from gate triggers with structured `generatePlanTemplate()`. New plans get status `draft` (gate/user) or `ready` (user_ready). (verified: state.test.ts planning tests)
+- **Plan quality checks**: `assessPlanQuality()` scores plans 0-100 across 7 criteria (goal clarity, task completeness, verification coverage, etc.). Score < 60 blocks the `draft→reviewed` transition. (verified: quality gate tests)
+- **Status state machine**: `VALID_TRANSITIONS` defines the lifecycle (draft → reviewed → ready → in_progress → done/blocked/abandoned). `transitionPlanStatus()` enforces valid transitions with built-in quality gate. (verified: transition tests)
+- **Plan drift detection**: `checkPlanDrift()` / `assertTaskScope()` detect when subagent edits fall outside the plan's declared file scope. (verified: drift detection tests)
+- **Plan retrospectives**: `generateRetrospective()` auto-appends completion analysis to plan files when marked done/abandoned. (verified: retro generation tests)
+
+### Changed
+
+- **README**: Added retention policy documentation in the State section.
+
+### Tests
+
+- **8 new tests**: retention policy pruning (old-done removal, old-abandoned removal, fresh-done kept, in-progress kept, activePlanId clearing, custom retention, empty list, NaN date gracefulness).
+- **~50 new tests**: planning discipline (intent classification, plan matching, quality scoring, status transitions, drift detection, retro generation, full gate-to-implement integration).
+- Total: 159 tests, 388 expect calls. (verified: `bun test`)
+
 ## 0.7.2 (2026-05-23)
 
 ### Added

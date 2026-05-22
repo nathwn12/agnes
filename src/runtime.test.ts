@@ -5,8 +5,14 @@ import {
   mergeIterationIntoState,
   buildExecutionContext,
   recordAttempt,
+  classifyIntent,
+  requestMatchesPlan,
+  processMessage,
+  checkPlanDrift,
+  assertTaskScope,
 } from './runtime.js';
-import type { AgnesRuntimeState } from './runtime.js';
+import type { AgnesRuntimeState, ProcessMessageResult } from './runtime.js';
+import type { PlanIndex } from './state.js';
 import { freshStruggleMetrics } from './state.js';
 
 describe('checkIterationCompletion', () => {
@@ -289,5 +295,176 @@ describe('recordAttempt', () => {
 
     const r3 = recordAttempt('session-struggle-test', null);
     expect(r3.blocked).toBe(true);
+  });
+});
+
+describe('classifyIntent', () => {
+  test('returns clarify for questions with ?', () => {
+    expect(classifyIntent('what is AGNES?')).toBe('clarify');
+  });
+
+  test('returns clarify for explanatory phrases', () => {
+    expect(classifyIntent('explain how this works')).toBe('clarify');
+    expect(classifyIntent('describe the architecture')).toBe('clarify');
+    expect(classifyIntent('why is it failing')).toBe('clarify');
+  });
+
+  test('returns implement for bug fixes', () => {
+    expect(classifyIntent('fix the login bug')).toBe('implement');
+  });
+
+  test('returns implement for feature additions', () => {
+    expect(classifyIntent('add a new feature')).toBe('implement');
+    expect(classifyIntent('build user authentication')).toBe('implement');
+  });
+
+  test('returns implement for refactoring', () => {
+    expect(classifyIntent('refactor the auth module')).toBe('implement');
+  });
+
+  test('returns plan when both plan and implementation words present', () => {
+    expect(classifyIntent('plan to implement login')).toBe('plan');
+    expect(classifyIntent('plan for build')).toBe('plan');
+  });
+
+  test('returns unknown for greetings', () => {
+    expect(classifyIntent('hello there')).toBe('unknown');
+  });
+
+  test('returns unknown for empty string', () => {
+    expect(classifyIntent('')).toBe('unknown');
+  });
+
+  test('returns implement for "doesn\'t work" phrases', () => {
+    expect(classifyIntent("it doesn't work")).toBe('implement');
+  });
+
+  test('returns implement for "test fails" phrases', () => {
+    expect(classifyIntent('the test fails')).toBe('implement');
+  });
+
+  test('clarify takes precedence over implement and plan', () => {
+    expect(classifyIntent('what is the plan to fix the bug?')).toBe('clarify');
+  });
+});
+
+describe('requestMatchesPlan', () => {
+  test('returns true when significant token overlap', () => {
+    expect(requestMatchesPlan('fix the login bug', 'Plan to fix the login bug')).toBe(true);
+  });
+
+  test('returns true with partial overlap meeting threshold', () => {
+    expect(requestMatchesPlan('add search bar', 'Implement search feature')).toBe(true);
+  });
+
+  test('returns false when no overlap', () => {
+    expect(requestMatchesPlan('fix the login bug', 'Add user profile page')).toBe(false);
+  });
+
+  test('returns false for empty message', () => {
+    expect(requestMatchesPlan('', 'some plan content')).toBe(false);
+  });
+
+  test('ignores stopwords in matching', () => {
+    expect(requestMatchesPlan('the bug in the login', 'fix the login bug')).toBe(true);
+  });
+});
+
+describe('processMessage', () => {
+  const mockIndexWithPlan: PlanIndex = {
+    agnesVersion: '0.7.2',
+    schemaVersion: 2,
+    projectDir: '/test',
+    projectName: 'test',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    activePlanId: 'plan-001',
+    plans: [
+      { id: 'plan-001', status: 'in_progress', createdAt: '', updatedAt: '', summary: 'Test', total: 1, completed: 0, blocked: 0, file: 'plan-001.md' },
+    ],
+  };
+
+  const mockIndexWithoutPlan: PlanIndex = {
+    agnesVersion: '0.7.2',
+    schemaVersion: 2,
+    projectDir: '/test',
+    projectName: 'test',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    activePlanId: null,
+    plans: [],
+  };
+
+  test('blocks implement intent without active plan', () => {
+    const result = processMessage('fix the login bug', mockIndexWithoutPlan, null) as Extract<ProcessMessageResult, { type: 'block' }>;
+    expect(result.type).toBe('block');
+    expect(result.reason).toBe('no_active_plan');
+  });
+
+  test('blocks implement intent when plan does not match', () => {
+    const result = processMessage('fix the login bug', mockIndexWithPlan, 'Add user profile page') as Extract<ProcessMessageResult, { type: 'block' }>;
+    expect(result.type).toBe('block');
+    expect(result.reason).toBe('plan_mismatch');
+  });
+
+  test('allows implement intent when plan matches', () => {
+    const result = processMessage('fix the login bug', mockIndexWithPlan, 'Plan to fix the login bug') as Extract<ProcessMessageResult, { type: 'proceed' }>;
+    expect(result.type).toBe('proceed');
+    expect(result.intent).toBe('implement');
+  });
+
+  test('bypasses gate for clarify intent', () => {
+    const result = processMessage('what is AGNES?', mockIndexWithoutPlan) as Extract<ProcessMessageResult, { type: 'proceed' }>;
+    expect(result.type).toBe('proceed');
+    expect(result.intent).toBe('clarify');
+  });
+
+  test('bypasses gate for plan intent', () => {
+    const result = processMessage('plan to implement login', mockIndexWithoutPlan) as Extract<ProcessMessageResult, { type: 'proceed' }>;
+    expect(result.type).toBe('proceed');
+    expect(result.intent).toBe('plan');
+  });
+
+  test('bypasses gate for unknown intent', () => {
+    const result = processMessage('hello there', mockIndexWithoutPlan) as Extract<ProcessMessageResult, { type: 'proceed' }>;
+    expect(result.type).toBe('proceed');
+    expect(result.intent).toBe('unknown');
+  });
+});
+
+describe('checkPlanDrift', () => {
+  test('finds in-scope and out-of-scope files', () => {
+    const { inScope, outOfScope } = checkPlanDrift(
+      ['src/auth.ts', 'src/utils.ts', 'README.md'],
+      ['src/auth.ts', 'src/utils.ts', 'src/main.ts'],
+    );
+    expect(inScope).toEqual(['src/auth.ts', 'src/utils.ts']);
+    expect(outOfScope).toEqual(['README.md']);
+  });
+
+  test('handles empty edited files', () => {
+    const { inScope, outOfScope } = checkPlanDrift([], ['src/auth.ts']);
+    expect(inScope).toEqual([]);
+    expect(outOfScope).toEqual([]);
+  });
+
+  test('handles empty plan scope', () => {
+    const { inScope, outOfScope } = checkPlanDrift(['src/auth.ts'], []);
+    expect(inScope).toEqual([]);
+    expect(outOfScope).toEqual(['src/auth.ts']);
+  });
+});
+
+describe('assertTaskScope', () => {
+  test('does not throw when all files in scope', () => {
+    expect(() => assertTaskScope(['src/auth.ts'], ['src/auth.ts', 'src/utils.ts'])).not.toThrow();
+  });
+
+  test('throws when out-of-scope files detected', () => {
+    expect(() => assertTaskScope(['src/auth.ts', 'README.md'], ['src/auth.ts'])).toThrow(
+      'Task scope violation: edited files outside plan scope: [README.md]',
+    );
+  });
+
+  test('does not throw for empty lists', () => {
+    expect(() => assertTaskScope([], [])).not.toThrow();
   });
 });

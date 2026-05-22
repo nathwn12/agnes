@@ -16,6 +16,8 @@ function isBlockedPath(dir: string): boolean {
 
 export type PlanStatus =
   | "draft"
+  | "reviewed"
+  | "ready"
   | "in_progress"
   | "blocked"
   | "done"
@@ -43,6 +45,11 @@ export interface PlanIndexEntry {
   struggle?: StruggleMetrics;
 }
 
+export interface RetentionPolicy {
+  maxAgeDays: number;
+  terminalStatuses: ('done' | 'abandoned')[];
+}
+
 export interface PlanIndex {
   agnesVersion: string;
   schemaVersion: 2;
@@ -51,6 +58,7 @@ export interface PlanIndex {
   updatedAt: string;
   activePlanId: string | null;
   plans: PlanIndexEntry[];
+  retention?: RetentionPolicy;
 }
 
 export interface ActivePlan {
@@ -117,6 +125,7 @@ export function readPlanIndex(projectRoot?: string): PlanIndex | null {
     const raw = fs.readFileSync(indexPath, 'utf8');
     const parsed = JSON.parse(raw);
     if (!validatePlanIndex(parsed)) return null;
+    pruneExpiredPlans(parsed, root);
     return parsed;
   } catch {
     return null;
@@ -134,13 +143,54 @@ export function writePlanIndex(index: PlanIndex, projectRoot?: string): void {
   fs.renameSync(tmp, filePath);
 }
 
+const DEFAULT_RETENTION: RetentionPolicy = { maxAgeDays: 7, terminalStatuses: ['done', 'abandoned'] };
+
+export function pruneExpiredPlans(index: PlanIndex, projectRoot?: string): PlanIndex {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root || index.plans.length === 0) return index;
+
+  const retention = index.retention ?? DEFAULT_RETENTION;
+  const cutoffMs = Date.now() - retention.maxAgeDays * 24 * 60 * 60 * 1000;
+  const terminalSet = new Set(retention.terminalStatuses);
+
+  const kept: PlanIndexEntry[] = [];
+  let changed = false;
+
+  for (const entry of index.plans) {
+    if (terminalSet.has(entry.status as 'done' | 'abandoned')) {
+      const updatedMs = new Date(entry.updatedAt).getTime();
+      if (!isNaN(updatedMs) && updatedMs <= cutoffMs) {
+        const planPath = path.join(root, '.cache', 'agnes', entry.file);
+        try {
+          fs.rmSync(planPath, { force: true });
+        } catch {
+          // File may already be gone
+        }
+        changed = true;
+        continue;
+      }
+    }
+    kept.push(entry);
+  }
+
+  if (!changed) return index;
+
+  index.plans = kept;
+  index.updatedAt = new Date().toISOString();
+  if (index.activePlanId && !kept.some(p => p.id === index.activePlanId)) {
+    index.activePlanId = null;
+  }
+  writePlanIndex(index, root);
+  return index;
+}
+
 export function getLatestActivePlan(projectRoot?: string): ActivePlan | null {
   const root = projectRoot ?? findProjectRoot();
   if (!root) return null;
   const index = readPlanIndex(root);
   if (!index) return null;
 
-  const activeStatuses: PlanStatus[] = ['draft', 'in_progress', 'blocked'];
+  const activeStatuses: PlanStatus[] = ['draft', 'reviewed', 'ready', 'in_progress', 'blocked'];
 
   let target: PlanIndexEntry | undefined;
 
@@ -319,7 +369,7 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
 
   index.plans.push(entry);
   index.updatedAt = now;
-  const isActive = status === 'draft' || status === 'in_progress' || status === 'blocked';
+  const isActive = status === 'draft' || status === 'reviewed' || status === 'ready' || status === 'in_progress' || status === 'blocked';
   index.activePlanId = isActive ? id : null;
   writePlanIndex(index, root);
 
@@ -438,7 +488,7 @@ export function updatePlanStatus(input: {
     if (index.activePlanId === input.id) index.activePlanId = null;
   }
 
-  if (input.status === 'draft' || input.status === 'in_progress' || input.status === 'blocked') {
+  if (input.status === 'draft' || input.status === 'reviewed' || input.status === 'ready' || input.status === 'in_progress' || input.status === 'blocked') {
     index.activePlanId = input.id;
   }
 
@@ -513,4 +563,297 @@ export function detectStruggle(metrics: StruggleMetrics): string[] {
     warnings.push(`Same error ${count}x: "${error.substring(0, 60)}..."`);
   }
   return warnings;
+}
+
+// ─── Planning Discipline ─────────────────────────────────────────────────────
+
+export const VALID_TRANSITIONS: Record<string, string[]> = {
+  draft: ['reviewed', 'abandoned'],
+  reviewed: ['ready', 'draft', 'abandoned'],
+  ready: ['in_progress', 'abandoned'],
+  in_progress: ['done', 'blocked', 'abandoned'],
+  blocked: ['ready', 'abandoned'],
+  done: [],
+  abandoned: [],
+};
+
+export function validatePlanTransition(currentStatus: string, newStatus: string): boolean {
+  const allowed = VALID_TRANSITIONS[currentStatus];
+  return allowed ? allowed.includes(newStatus) : false;
+}
+
+export function generatePlanTemplate(planId: string, goal: string): string {
+  const shortGoal = goal.length > 64 ? goal.substring(0, 60) + '...' : goal;
+  return `# ${planId} — ${shortGoal}
+
+## Intent
+<!-- What must be true after this plan executes -->
+
+## Goal
+${goal}
+
+## Tasks
+| # | Task | Dependencies | Effort | Verification |
+|---|------|-------------|--------|-------------|
+
+## Risks
+<!-- What could go wrong, how to detect it early -->
+
+## Completion Criteria
+<!-- Verifiable conditions -->
+
+## Validation
+<!-- How to confirm the plan was correct after execution -->
+`;
+}
+
+export interface PlanQualityReport {
+  score: number;
+  flags: string[];
+}
+
+const FILLER_PATTERNS = ['fix things', 'make better', 'improve stuff', 'do work', 'get things done', 'make improvements'];
+
+function extractSection(content: string, heading: string): string {
+  const startRe = new RegExp(`^## ${heading}\\s*\\n`, 'm');
+  const startMatch = content.match(startRe);
+  if (!startMatch) return '';
+  const startIdx = startMatch.index! + startMatch[0].length;
+  const endRe = /^## /m;
+  const rest = content.slice(startIdx);
+  const endMatch = rest.match(endRe);
+  const endIdx = endMatch ? startIdx + endMatch.index! : content.length;
+  return content.slice(startIdx, endIdx).trim();
+}
+
+function parseTaskRows(content: string): { num: string; deps: string; verification: string }[] {
+  const rows: { num: string; deps: string; verification: string }[] = [];
+  const lines = content.split('\n');
+  let inTable = false;
+  let headerCount = 0;
+  for (const line of lines) {
+    if (/^## Tasks/.test(line)) { inTable = true; headerCount = 0; continue; }
+    if (!inTable) continue;
+    if (/^## /.test(line)) break;
+    if (!line.startsWith('|')) continue;
+    headerCount++;
+    if (headerCount <= 2) continue;
+    const cols = line.split('|').map(c => c.trim());
+    const num = cols[1] || '';
+    if (!/^\d+$/.test(num)) continue;
+    rows.push({
+      num,
+      deps: cols[3] || '',
+      verification: cols[5] || '',
+    });
+  }
+  return rows;
+}
+
+export function assessPlanQuality(content: string): PlanQualityReport {
+  const flags: string[] = [];
+  let score = 0;
+
+  const goal = extractSection(content, 'Goal');
+  const criteria = extractSection(content, 'Completion Criteria');
+  const risks = extractSection(content, 'Risks');
+  const tasks = parseTaskRows(content);
+
+  if (goal.length > 10) {
+    score += 5;
+  } else {
+    flags.push('goal_too_short');
+  }
+
+  if (goal.length > 0 && !FILLER_PATTERNS.some(f => goal.toLowerCase().includes(f))) {
+    score += 5;
+  } else if (goal.length === 0) {
+    if (!flags.includes('goal_too_short')) flags.push('goal_too_short');
+  } else {
+    flags.push('goal_has_filler');
+  }
+
+  if (tasks.length >= 1) {
+    score += 15;
+  } else {
+    flags.push('no_tasks');
+  }
+
+  if (tasks.length > 0) {
+    const withVerification = tasks.filter(t => t.verification.length > 2 && t.verification !== ' ');
+    const prorated = Math.round(30 * withVerification.length / tasks.length);
+    score += prorated;
+    for (const t of tasks) {
+      if (t.verification.length <= 2 || t.verification === ' ') {
+        flags.push(`task_${t.num}_missing_verification`);
+      }
+    }
+  }
+
+  const strippedCriteria = criteria.replace(/<!--.*?-->/gs, '').trim();
+  if (strippedCriteria.length > 15 && !FILLER_PATTERNS.some(f => strippedCriteria.toLowerCase().includes(f))) {
+    score += 15;
+  } else {
+    flags.push('weak_completion_criteria');
+  }
+
+  const strippedRisks = risks.replace(/<!--.*?-->/gs, '').trim();
+  if (strippedRisks.length > 0) {
+    score += 10;
+  } else {
+    flags.push('no_risks');
+  }
+
+  if (tasks.length > 0) {
+    const adj: Record<string, string[]> = {};
+    for (const t of tasks) {
+      adj[t.num] = t.deps.split(',').map(d => d.trim()).filter(d => /^\d+$/.test(d));
+    }
+    let cyclic = false;
+    for (const node of Object.keys(adj)) {
+      const visited = new Set<string>();
+      const inStack = new Set<string>();
+      function dfs(n: string): boolean {
+        if (inStack.has(n)) { cyclic = true; return true; }
+        if (visited.has(n)) return false;
+        visited.add(n);
+        inStack.add(n);
+        for (const dep of (adj[n] || [])) {
+          if (dfs(dep)) return true;
+        }
+        inStack.delete(n);
+        return false;
+      }
+      dfs(node);
+      if (cyclic) break;
+    }
+    if (cyclic) {
+      flags.push('dependency_cycle');
+    } else {
+      score += 10;
+    }
+  }
+
+  if (tasks.length <= 10) {
+    score += 10;
+  } else {
+    flags.push('too_many_tasks');
+  }
+
+  return { score, flags };
+}
+
+export function createAutoPlan(params: { goal: string; source: 'gate' | 'user' | 'user_ready' }, projectRoot?: string): string {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root) throw new Error('Cannot create auto plan: no project root found');
+
+  const now = new Date().toISOString();
+  const id = getNextPlanId(root);
+  const status: PlanStatus = params.source === 'user_ready' ? 'ready' : 'draft';
+  const summary = params.goal.length > 80 ? params.goal.substring(0, 80) + '...' : params.goal;
+
+  const content = generatePlanTemplate(id, params.goal);
+  writePlanFile(root, id, content);
+
+  const entry: PlanIndexEntry = {
+    id,
+    status,
+    createdAt: now,
+    updatedAt: now,
+    summary,
+    total: 0,
+    completed: 0,
+    blocked: 0,
+    file: `${id}.md`,
+  };
+
+  const index = readPlanIndex(root) ?? {
+    agnesVersion: AGNES_VERSION,
+    schemaVersion: 2 as const,
+    projectDir: root,
+    projectName: path.basename(root),
+    updatedAt: now,
+    activePlanId: null,
+    plans: [],
+  };
+
+  index.plans.push(entry);
+  index.updatedAt = now;
+  writePlanIndex(index, root);
+
+  return id;
+}
+
+export function transitionPlanStatus(planId: string, newStatus: string, projectRoot?: string): PlanIndex | null {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root) return null;
+
+  const index = readPlanIndex(root);
+  if (!index) return null;
+
+  const entry = index.plans.find(p => p.id === planId);
+  if (!entry) return null;
+
+  if (!validatePlanTransition(entry.status, newStatus)) return null;
+
+  const transitionsRequiringQuality = new Set(['reviewed', 'ready']);
+  if (transitionsRequiringQuality.has(newStatus)) {
+    const planPath = path.join(root, '.cache', 'agnes', entry.file);
+    let content: string;
+    try {
+      content = fs.readFileSync(planPath, 'utf8');
+    } catch {
+      return null;
+    }
+    const report = assessPlanQuality(content);
+    if (report.score < 60) return null;
+  }
+
+  const now = new Date().toISOString();
+  entry.status = newStatus as PlanStatus;
+  entry.updatedAt = now;
+
+  if (newStatus === 'in_progress') {
+    index.activePlanId = planId;
+  }
+
+  if (newStatus === 'done' || newStatus === 'abandoned') {
+    if (index.activePlanId === planId) {
+      index.activePlanId = null;
+    }
+    try {
+      const planPath = path.join(root, '.cache', 'agnes', entry.file);
+      const existingContent = fs.readFileSync(planPath, 'utf8');
+      const retro = generateRetrospective(planId, root);
+      fs.writeFileSync(planPath, existingContent + '\n\n' + retro, 'utf8');
+    } catch {
+      // Retrospective appending is best-effort
+    }
+  }
+
+  index.updatedAt = now;
+  writePlanIndex(index, root);
+
+  return index;
+}
+
+export function generateRetrospective(planId: string, projectRoot?: string): string {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root) return `## Retrospective for ${planId}\n- Error: No project root found`;
+
+  const index = readPlanIndex(root);
+  if (!index) return `## Retrospective for ${planId}\n- Error: No plan index found`;
+
+  const entry = index.plans.find(p => p.id === planId);
+  if (!entry) return `## Retrospective for ${planId}\n- Error: Plan not found`;
+
+  const completionRate = entry.total > 0 ? Math.round((entry.completed / entry.total) * 100) : 0;
+
+  return `## Retrospective for ${planId}
+- Status: ${entry.status}
+- Tasks completed: ${entry.completed}/${entry.total}
+- Tasks blocked: ${entry.blocked}
+- Planned vs actual: ${completionRate}% completion rate
+- Score: N/A
+`;
 }

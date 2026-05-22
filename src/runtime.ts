@@ -317,3 +317,129 @@ export function buildExecutionContext(entry: PlanIndexEntry): string {
   return lines.join('\n');
 }
 
+const IMPLEMENT_WORDS = new Set([
+  'implement', 'build', 'add', 'fix', 'change', 'create', 'refactor',
+  'write', 'edit', 'update', 'remove', 'delete', 'bug', 'broken',
+  'fails', 'error', 'test', 'feature', 'support', 'need', 'want', 'should',
+]);
+
+const CLARIFY_PATTERNS = ['what is', 'how does', 'explain', 'why', 'describe', 'tell me', 'show me'];
+
+const STOPWORDS = new Set([
+  'a', 'an', 'the', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
+  'by', 'and', 'or', 'is', 'it', 'be', 'this', 'that',
+]);
+
+export function classifyIntent(message: string): 'implement' | 'clarify' | 'plan' | 'unknown' {
+  const lower = message.toLowerCase().trim();
+  if (!lower) return 'unknown';
+
+  if (lower.includes('?') || CLARIFY_PATTERNS.some(p => lower.includes(p))) {
+    return 'clarify';
+  }
+
+  const tokens = lower.split(/[^a-z0-9]+/).filter(t => t.length > 0);
+
+  const hasImplPhrase = lower.includes("doesn't work") || lower.includes("test fails");
+  const hasImplToken = tokens.some(t => IMPLEMENT_WORDS.has(t));
+  const hasImplementationSignal = hasImplPhrase || hasImplToken;
+
+  const hasPlanToken = tokens.some(t => t === 'plan');
+
+  if (hasPlanToken && hasImplementationSignal) {
+    return 'plan';
+  }
+
+  if (hasImplementationSignal) {
+    return 'implement';
+  }
+
+  return 'unknown';
+}
+
+export function requestMatchesPlan(message: string, plan: string): boolean {
+  const messageTokens = message.toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(t => t.length > 0 && !STOPWORDS.has(t));
+
+  if (messageTokens.length === 0) return false;
+
+  const planTokens = new Set(
+    plan.toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(t => t.length > 0 && !STOPWORDS.has(t)),
+  );
+
+  const overlap = messageTokens.filter(t => planTokens.has(t)).length;
+  const threshold = Math.ceil(messageTokens.length * 0.3);
+
+  return overlap >= threshold;
+}
+
+export type ProcessMessageResult =
+  | { type: 'block'; reason: 'no_active_plan'; message: string }
+  | { type: 'block'; reason: 'plan_mismatch'; message: string }
+  | { type: 'proceed'; intent: 'implement' | 'clarify' | 'plan' | 'unknown' };
+
+export function processMessage(
+  message: string,
+  planIndex?: PlanIndex | null,
+  planContent?: string | null,
+): ProcessMessageResult {
+  const intent = classifyIntent(message);
+
+  if (intent === 'implement') {
+    const index = planIndex !== undefined ? planIndex : readPlanIndex();
+
+    if (!index || index.activePlanId === null) {
+      return {
+        type: 'block',
+        reason: 'no_active_plan',
+        message: 'I need a plan before I can implement. Do you have a plan in mind?',
+      };
+    }
+
+    let content: string | null = planContent !== undefined ? planContent : null;
+    if (content === null && planContent === undefined) {
+      const root = findProjectRoot();
+      if (root) {
+        const active = getLatestActivePlan(root);
+        content = active?.content ?? null;
+      }
+    }
+
+    if (content !== null && !requestMatchesPlan(message, content)) {
+      return {
+        type: 'block',
+        reason: 'plan_mismatch',
+        message: 'Active plan doesn\'t match this request. Clarify or create a new plan.',
+      };
+    }
+  }
+
+  return { type: 'proceed', intent };
+}
+
+export function checkPlanDrift(editedFiles: string[], planScope: string[]): { inScope: string[]; outOfScope: string[] } {
+  const planSet = new Set(planScope);
+  const inScope: string[] = [];
+  const outOfScope: string[] = [];
+
+  for (const file of editedFiles) {
+    if (planSet.has(file)) {
+      inScope.push(file);
+    } else {
+      outOfScope.push(file);
+    }
+  }
+
+  return { inScope, outOfScope };
+}
+
+export function assertTaskScope(editedFiles: string[], planScope: string[]): void {
+  const { outOfScope } = checkPlanDrift(editedFiles, planScope);
+  if (outOfScope.length > 0) {
+    throw new Error(`Task scope violation: edited files outside plan scope: [${outOfScope.join(', ')}]`);
+  }
+}
+
