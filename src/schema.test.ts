@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { typeMatches, validatePayload, SKILL_REGISTRY, PlanSchema, PlanTaskSchema, PlanStatusSchema } from './schema.js';
+import { typeMatches, validatePayload, SKILL_REGISTRY, SKILL_NAME_ALIASES, resolveSkillName, PlanSchema, PlanTaskSchema, PlanStatusSchema } from './schema.js';
 import type { SkillDescriptor } from './schema.js';
 
 describe('PlanSchema', () => {
@@ -245,16 +245,23 @@ describe('SKILL_REGISTRY', () => {
 
   test('contains expected skill names', () => {
     const expected = [
-      'ag-orchestrator',
-      'ag-planner',
-      'ag-builder',
-      'ag-tdd',
-      'ag-reviewer',
-      'ag-verifier',
-      'ag-debugger',
+      'orchestrator',
+      'planner',
+      'builder',
+      'tdd',
+      'reviewer',
+      'verifier',
+      'debugger',
     ];
     for (const name of expected) {
       expect(SKILL_REGISTRY.has(name)).toBe(true);
+    }
+  });
+
+  test('legacy aliases still resolve to canonical names', () => {
+    for (const [legacyName, canonicalName] of SKILL_NAME_ALIASES) {
+      expect(resolveSkillName(legacyName)).toBe(canonicalName);
+      expect(SKILL_REGISTRY.has(legacyName)).toBe(true);
     }
   });
 

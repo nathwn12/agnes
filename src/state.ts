@@ -100,8 +100,12 @@ export interface PlanIndex {
 }
 
 function getPlanFilePath(root: string, entry: PlanIndexEntry): string {
-  const filename = entry.file || `${entry.id}.md`;
+  const filename = entry.file || `${entry.id}.yaml`;
   return path.join(root, AGNES_DIR, PLANS_DIR, filename);
+}
+
+function getPlanMirrorPath(root: string, planId: string): string {
+  return path.join(root, AGNES_DIR, PLANS_DIR, `${planId}.md`);
 }
 
 export interface ActivePlan {
@@ -186,10 +190,19 @@ function validatePlanIndex(raw: unknown): raw is PlanIndex {
   return true;
 }
 
-function migratePlanEntry(entry: PlanIndexEntry): boolean {
+function migratePlanEntry(root: string, entry: PlanIndexEntry): boolean {
   let changed = false;
+
+  const yamlFile = `${entry.id}.yaml`;
+  const mdFile = `${entry.id}.md`;
+  const yamlPath = path.join(root, AGNES_DIR, PLANS_DIR, yamlFile);
+  const mdPath = path.join(root, AGNES_DIR, PLANS_DIR, mdFile);
+
   if (!entry.file) {
-    entry.file = `${entry.id}.md`;
+    entry.file = fs.existsSync(yamlPath) ? yamlFile : fs.existsSync(mdPath) ? mdFile : yamlFile;
+    changed = true;
+  } else if (entry.file.endsWith('.md') && fs.existsSync(yamlPath)) {
+    entry.file = yamlFile;
     changed = true;
   }
   if (typeof entry.attempts !== 'number') {
@@ -214,7 +227,7 @@ export function readPlanIndex(projectRoot?: string): PlanIndex | null {
 
     let migrated = false;
     for (const entry of parsed.plans) {
-      if (migratePlanEntry(entry)) migrated = true;
+      if (migratePlanEntry(root, entry)) migrated = true;
     }
     if (migrated) writePlanIndex(parsed, root);
 
@@ -329,6 +342,7 @@ export function pruneExpiredPlans(index: PlanIndex, projectRoot?: string): PlanI
       if (!isNaN(updatedMs) && updatedMs <= cutoffMs) {
         try {
           fs.rmSync(getPlanFilePath(root, entry), { force: true });
+          fs.rmSync(getPlanMirrorPath(root, entry.id), { force: true });
         } catch {
           // File may already be gone
         }
@@ -385,7 +399,9 @@ export function getLatestActivePlan(projectRoot?: string): ActivePlan | null {
 
   if (!target) return null;
 
-  const planPath = getPlanFilePath(root, target);
+  const planPath = fs.existsSync(getPlanMirrorPath(root, target.id))
+    ? getPlanMirrorPath(root, target.id)
+    : getPlanFilePath(root, target);
   try {
     const content = fs.readFileSync(planPath, 'utf8');
     return { entry: target, content };
@@ -440,7 +456,7 @@ export function getNextPlanId(projectRoot?: string): string {
   try {
     const files = fs.readdirSync(cache);
     for (const f of files) {
-      const match = f.match(/^plan-(\d+)\.md$/);
+      const match = f.match(/^plan-(\d+)\.(?:md|yaml)$/);
       if (match) {
         const num = parseInt(match[1], 10);
         if (num > max) max = num;
@@ -507,7 +523,7 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
 - <first executable action>
 `;
 
-  const file = writeLegacyPlanFile(root, id, content);
+  writeLegacyPlanFile(root, id, content);
 
   const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
   const plan: Plan = {
@@ -549,7 +565,7 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
     total,
     completed,
     blocked,
-    file,
+    file: `${id}.yaml`,
     ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
     ...(input.struggle !== undefined ? { struggle: input.struggle } : {}),
   };
@@ -612,7 +628,7 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
 - <first executable action>
 `;
 
-  const file = writeLegacyPlanFile(root, id, content);
+  writeLegacyPlanFile(root, id, content);
 
   const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
   const plan: Plan = {
@@ -663,7 +679,7 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
     total,
     completed: input.completed,
     blocked: input.blocked,
-    file,
+    file: `${id}.yaml`,
     attempts: carryAttempts,
     ...(carryStruggle ? { struggle: carryStruggle } : {}),
   };
@@ -1018,7 +1034,7 @@ export function createAutoPlan(params: { goal: string; source: 'gate' | 'user' |
     total: 0,
     completed: 0,
     blocked: 0,
-    file: `${id}.md`,
+    file: `${id}.yaml`,
   };
 
   const index = readPlanIndex(root) ?? {
@@ -1052,7 +1068,9 @@ export function transitionPlanStatus(planId: string, newStatus: string, projectR
 
   const transitionsRequiringQuality = new Set(['reviewed', 'ready']);
   if (transitionsRequiringQuality.has(newStatus)) {
-    const planPath = getPlanFilePath(root, entry);
+    const planPath = fs.existsSync(getPlanMirrorPath(root, planId))
+      ? getPlanMirrorPath(root, planId)
+      : getPlanFilePath(root, entry);
     let content: string;
     try {
       content = fs.readFileSync(planPath, 'utf8');
@@ -1074,14 +1092,6 @@ export function transitionPlanStatus(planId: string, newStatus: string, projectR
   if (newStatus === 'done' || newStatus === 'abandoned') {
     if (index.activePlanId === planId) {
       index.activePlanId = null;
-    }
-    try {
-      const planPath = getPlanFilePath(root, entry);
-      const existingContent = fs.readFileSync(planPath, 'utf8');
-      const retro = generateRetrospective(planId, root);
-      fs.writeFileSync(planPath, existingContent + '\n\n' + retro, 'utf8');
-    } catch {
-      // Retrospective appending is best-effort
     }
   }
 

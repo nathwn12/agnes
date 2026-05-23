@@ -348,19 +348,19 @@ describe('classifyIntent', () => {
   test('returns debug intent for debug requests', () => {
     const result = classifyIntent('debug the login issue');
     expect(result.category).toBe('debug');
-    expect(result.suggestedSkills).toEqual(['ag-debugger', 'ag-griller']);
+    expect(result.suggestedSkills).toEqual(['debugger', 'griller']);
   });
 
   test('returns review intent for review requests', () => {
     const result = classifyIntent('review the auth module');
     expect(result.category).toBe('review');
-    expect(result.suggestedSkills).toEqual(['ag-reviewer', 'ag-verifier']);
+    expect(result.suggestedSkills).toEqual(['reviewer', 'verifier']);
   });
 
   test('returns test intent for test requests', () => {
     const result = classifyIntent('test the login flow');
     expect(result.category).toBe('test');
-    expect(result.suggestedSkills).toEqual(['ag-tdd', 'ag-tester']);
+    expect(result.suggestedSkills).toEqual(['tdd', 'tester']);
   });
 
   test('returns implement for "test fails" phrases', () => {

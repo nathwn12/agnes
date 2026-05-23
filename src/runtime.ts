@@ -432,12 +432,12 @@ export interface IntentClassification {
 }
 
 const INTENT_SKILL_MAP: Record<string, string[]> = {
-  implement: ['ag-builder'],
-  clarify: ['ag-clarifier'],
-  plan: ['ag-planner', 'ag-prd'],
-  review: ['ag-reviewer', 'ag-verifier'],
-  test: ['ag-tdd', 'ag-tester'],
-  debug: ['ag-debugger', 'ag-griller'],
+  implement: ['builder'],
+  clarify: ['clarifier'],
+  plan: ['planner', 'prd'],
+  review: ['reviewer', 'verifier'],
+  test: ['tdd', 'tester'],
+  debug: ['debugger', 'griller'],
   unknown: [],
 };
 

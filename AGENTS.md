@@ -9,29 +9,29 @@ AGNES is a swarm orchestrator plugin that routes tasks across 23 fused skills. I
 ## Available Skills
 | Skill | Phase | Use When |
 |-------|-------|----------|
-| ag-init | SETUP | Initialize AGNES state files and AGENTS.md in a project |
-| ag-orchestrator | META | Routing, delegation, parallelism coordination |
-| ag-clarifier | THINK | Vague requests, terminology conflicts |
-| ag-explorer | RESEARCH | Understanding codebase, dependency research |
-| ag-architect | RESEARCH / DESIGN | Codebase deepening, architecture improvement |
-| ag-planner | PLAN | Writing specs and implementation plans |
-| ag-plan-reviewer | PLAN REVIEW | CEO/Eng/Design/DX plan quality gate |
-| ag-prd | PLAN | Synthesizing context into product requirements |
-| ag-prototype | DESIGN / BUILD | Throwaway code to answer one question |
-| ag-builder | BUILD | Executing plans with subagent swarms |
-| ag-tdd | TEST / BUILD | Red-green-refactor vertical-slice TDD |
-| ag-tester | TEST | Unit, integration, edge case testing |
-| ag-verifier | VERIFY | Gate checks, verification evidence |
-| ag-reviewer | REVIEW | Code quality, spec compliance |
-| ag-feedback-receiver | REVIEW | Processing code review feedback |
-| ag-debugger | DEBUG | Collaborative investigation |
-| ag-griller | DEBUG | Adversarial systematic debugging |
-| ag-shipper | SHIP | PR, merge, deploy |
-| ag-triage | SHIP / PROCESS | Issue state machine management |
-| ag-documenter | REFLECT | Documentation, changelog, ADRs |
-| ag-retro | REFLECT | Retrospectives, learnings management |
-| ag-skillwriter | REFLECT / META | Creating and refining skills via TDD |
-| ag-brandkit | DESIGN | Visual design, brand identity |
+| init | SETUP | Initialize AGNES state files and AGENTS.md in a project |
+| orchestrator | META | Routing, delegation, parallelism coordination |
+| clarifier | THINK | Vague requests, terminology conflicts |
+| explorer | RESEARCH | Understanding codebase, dependency research |
+| architect | RESEARCH / DESIGN | Codebase deepening, architecture improvement |
+| planner | PLAN | Writing specs and implementation plans |
+| plan-reviewer | PLAN REVIEW | CEO/Eng/Design/DX plan quality gate |
+| prd | PLAN | Synthesizing context into product requirements |
+| prototype | DESIGN / BUILD | Throwaway code to answer one question |
+| builder | BUILD | Executing plans with subagent swarms |
+| tdd | TEST / BUILD | Red-green-refactor vertical-slice TDD |
+| tester | TEST | Unit, integration, edge case testing |
+| verifier | VERIFY | Gate checks, verification evidence |
+| reviewer | REVIEW | Code quality, spec compliance |
+| feedback-receiver | REVIEW | Processing code review feedback |
+| debugger | DEBUG | Collaborative investigation |
+| griller | DEBUG | Adversarial systematic debugging |
+| shipper | SHIP | PR, merge, deploy |
+| triage | SHIP / PROCESS | Issue state machine management |
+| documenter | REFLECT | Documentation, changelog, ADRs |
+| retro | REFLECT | Retrospectives, learnings management |
+| skillwriter | REFLECT / META | Creating and refining skills via TDD |
+| brandkit | DESIGN | Visual design, brand identity |
 
 ## Swarm Ethos (Override — Always Active)
 
@@ -67,16 +67,16 @@ AGNES is a swarm intelligence. These principles override all default behavior:
 - Source exploration rules apply to subagents only: prefer shallow inspection, glob before read, grep before full-file scan.
 - AGNES main context never uses source glob/grep/read/edit.
 - Monitor session age and create handoff before context degradation.
-- **Proactive skill routing**: After completing any skill, suggest the next from its `suggest_next` list (see structured protocol blocks). Format: "Should we fire up **ag-[skill]** next?"
+- **Proactive skill routing**: After completing any skill, suggest the next from its `suggest_next` list (see structured protocol blocks). Format: "Should we fire up **`<skill>`** next?"
 
 ## Structured Protocol (Approach B)
 
 AGNES now uses typed, machine-optimized internal formats instead of prose:
 
 ### Plan Files
-- New plans: `.agnes/plans/plan-NNN.yaml` — YAML with JSON Schema (schema: agnes/plan-v1)
-- Legacy: `.agnes/plans/plan-NNN.md` — still readable, backward compat
-- New plans get both `.yaml` and `.md` files
+- New plans: `.agnes/plans/plan-NNN.yaml` — canonical YAML with JSON Schema (schema: agnes/plan-v1)
+- Mirror: `.agnes/plans/plan-NNN.md` — human-readable companion
+- Each new iteration writes both files
 
 ### Bootstrap Injection
 - DS V4 models (deepseek-v4-pro, deepseek-v4-flash, ds4/): structured YAML blocks wrapped in `<structured type="...">` tags

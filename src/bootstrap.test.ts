@@ -165,19 +165,19 @@ describe('buildSkillRegistryBlock', () => {
     expect(block).toContain('</structured>');
   });
 
-  test('contains known skills (ag-planner, ag-tdd, ag-builder, ag-verifier, ag-debugger)', () => {
+  test('contains known skills (planner, tdd, builder, verifier, debugger)', () => {
     const block = buildSkillRegistryBlock();
-    expect(block).toContain('ag-planner');
-    expect(block).toContain('ag-tdd');
-    expect(block).toContain('ag-builder');
-    expect(block).toContain('ag-verifier');
-    expect(block).toContain('ag-debugger');
+    expect(block).toContain('planner');
+    expect(block).toContain('tdd');
+    expect(block).toContain('builder');
+    expect(block).toContain('verifier');
+    expect(block).toContain('debugger');
   });
 
   test('includes suggest_next with known downstream skills', () => {
     const block = buildSkillRegistryBlock();
-    expect(block).toContain('ag-plan-reviewer');
-    expect(block).toContain('ag-verifier');
+    expect(block).toContain('plan-reviewer');
+    expect(block).toContain('verifier');
   });
 
   test('yields valid YAML structure inside the tag', () => {
@@ -192,15 +192,15 @@ describe('buildSkillRegistryBlock', () => {
 describe('buildSkillRegistryText', () => {
   test('returns markdown with skill names', () => {
     const text = buildSkillRegistryText();
-    expect(text).toContain('ag-planner');
-    expect(text).toContain('ag-tdd');
-    expect(text).toContain('ag-builder');
+    expect(text).toContain('planner');
+    expect(text).toContain('tdd');
+    expect(text).toContain('builder');
   });
 
   test('includes suggest_next arrows for skills with downstream suggestions', () => {
     const text = buildSkillRegistryText();
     expect(text).toContain('→ next:');
-    expect(text).toContain('ag-plan-reviewer');
+    expect(text).toContain('plan-reviewer');
   });
 
   test('does NOT contain structured tags', () => {

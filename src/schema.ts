@@ -133,43 +133,64 @@ function createDefaultSkillEntry(name: string, description: string, phase: Skill
   };
 }
 
-export const SKILL_REGISTRY: Map<string, SkillDescriptor> = new Map([
-  ['ag-orchestrator', createDefaultSkillEntry(
-    'ag-orchestrator',
+export const SKILL_NAME_ALIASES = new Map<string, string>([
+  ['ag-orchestrator', 'orchestrator'],
+  ['ag-planner', 'planner'],
+  ['ag-builder', 'builder'],
+  ['ag-tdd', 'tdd'],
+  ['ag-reviewer', 'reviewer'],
+  ['ag-verifier', 'verifier'],
+  ['ag-debugger', 'debugger'],
+]);
+
+export function resolveSkillName(name: string): string {
+  return SKILL_NAME_ALIASES.get(name) ?? name;
+}
+
+const CANONICAL_SKILLS: Array<[string, SkillDescriptor]> = [
+  ['orchestrator', createDefaultSkillEntry(
+    'orchestrator',
     'AGNES swarm brain — delegates, parallelizes, and orchestrates work across all fused skills',
     'META',
   )],
-  ['ag-planner', createDefaultSkillEntry(
-    'ag-planner',
+  ['planner', createDefaultSkillEntry(
+    'planner',
     'Writing specs and implementation plans with structured design documents',
     'PLAN',
   )],
-  ['ag-builder', createDefaultSkillEntry(
-    'ag-builder',
+  ['builder', createDefaultSkillEntry(
+    'builder',
     'Disciplined plan execution with worktree isolation and verify-review-commit cycle',
     'BUILD',
   )],
-  ['ag-tdd', createDefaultSkillEntry(
-    'ag-tdd',
+  ['tdd', createDefaultSkillEntry(
+    'tdd',
     'Red-green-refactor TDD through vertical slices with failing test first',
     'TEST',
   )],
-  ['ag-reviewer', createDefaultSkillEntry(
-    'ag-reviewer',
+  ['reviewer', createDefaultSkillEntry(
+    'reviewer',
     'Code quality gate with spec compliance and quality issue classification',
     'REVIEW',
   )],
-  ['ag-verifier', createDefaultSkillEntry(
-    'ag-verifier',
+  ['verifier', createDefaultSkillEntry(
+    'verifier',
     'Gate discipline enforcer running automated checks with evidence-based pass/fail',
     'VERIFY',
   )],
-  ['ag-debugger', createDefaultSkillEntry(
-    'ag-debugger',
+  ['debugger', createDefaultSkillEntry(
+    'debugger',
     'Collaborative debugging through reproduce-hypothesise-instrument-narrow-document',
     'DEBUG',
   )],
-]);
+];
+
+export const SKILL_REGISTRY: Map<string, SkillDescriptor> = new Map(CANONICAL_SKILLS);
+
+for (const [legacyName, canonicalName] of SKILL_NAME_ALIASES) {
+  const entry = SKILL_REGISTRY.get(canonicalName);
+  if (entry) SKILL_REGISTRY.set(legacyName, entry);
+}
 
 // ── Plan schemas ──────────────────────────────────────────────────────────────
 

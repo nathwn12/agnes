@@ -2,6 +2,16 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.13.0 (2026-05-24)
+
+### Breaking
+
+- **Skill rename release**: README and AGENTS now use the new skill naming scheme, and the package version/badge have been bumped for the release.
+
+### Changed
+
+- **Release metadata**: `package.json` version updated to `0.13.0` and the README badge now matches.
+
 ## 0.12.0 (2026-05-23)
 
 ### New

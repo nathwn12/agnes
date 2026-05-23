@@ -21318,14 +21318,29 @@ function createDefaultSkillEntry(name, description, phase) {
   };
 }
 var SKILL_REGISTRY = new Map([
-  ["ag-orchestrator", createDefaultSkillEntry("ag-orchestrator", "AGNES swarm brain \u2014 delegates, parallelizes, and orchestrates work across all fused skills", "META")],
-  ["ag-planner", createDefaultSkillEntry("ag-planner", "Writing specs and implementation plans with structured design documents", "PLAN")],
-  ["ag-builder", createDefaultSkillEntry("ag-builder", "Disciplined plan execution with worktree isolation and verify-review-commit cycle", "BUILD")],
-  ["ag-tdd", createDefaultSkillEntry("ag-tdd", "Red-green-refactor TDD through vertical slices with failing test first", "TEST")],
-  ["ag-reviewer", createDefaultSkillEntry("ag-reviewer", "Code quality gate with spec compliance and quality issue classification", "REVIEW")],
-  ["ag-verifier", createDefaultSkillEntry("ag-verifier", "Gate discipline enforcer running automated checks with evidence-based pass/fail", "VERIFY")],
-  ["ag-debugger", createDefaultSkillEntry("ag-debugger", "Collaborative debugging through reproduce-hypothesise-instrument-narrow-document", "DEBUG")]
+  ["orchestrator", createDefaultSkillEntry("orchestrator", "AGNES swarm brain \u2014 delegates, parallelizes, and orchestrates work across all fused skills", "META")],
+  ["planner", createDefaultSkillEntry("planner", "Writing specs and implementation plans with structured design documents", "PLAN")],
+  ["builder", createDefaultSkillEntry("builder", "Disciplined plan execution with worktree isolation and verify-review-commit cycle", "BUILD")],
+  ["tdd", createDefaultSkillEntry("tdd", "Red-green-refactor TDD through vertical slices with failing test first", "TEST")],
+  ["reviewer", createDefaultSkillEntry("reviewer", "Code quality gate with spec compliance and quality issue classification", "REVIEW")],
+  ["verifier", createDefaultSkillEntry("verifier", "Gate discipline enforcer running automated checks with evidence-based pass/fail", "VERIFY")],
+  ["debugger", createDefaultSkillEntry("debugger", "Collaborative debugging through reproduce-hypothesise-instrument-narrow-document", "DEBUG")]
 ]);
+var SKILL_NAME_ALIASES = new Map([
+  ["ag-orchestrator", "orchestrator"],
+  ["ag-planner", "planner"],
+  ["ag-builder", "builder"],
+  ["ag-tdd", "tdd"],
+  ["ag-reviewer", "reviewer"],
+  ["ag-verifier", "verifier"],
+  ["ag-debugger", "debugger"]
+]);
+for (const [legacyName, canonicalName] of SKILL_NAME_ALIASES) {
+  const entry = SKILL_REGISTRY.get(canonicalName);
+  if (entry) {
+    SKILL_REGISTRY.set(legacyName, entry);
+  }
+}
 var PlanStatusSchema = exports_external.enum([
   "pending",
   "draft",
@@ -21844,7 +21859,7 @@ function simpleHash(str) {
   return Math.abs(hash2).toString(36);
 }
 function getStaticBootstrapContent() {
-  const skillPath = path2.join(skillsDir, "ag-orchestrator", "SKILL.md");
+  const skillPath = path2.join(skillsDir, "orchestrator", "SKILL.md");
   if (!fs2.existsSync(skillPath)) {
     return null;
   }
@@ -21876,7 +21891,7 @@ You are AGNES.
 - OpenCode package cache root: \`${opencodePackageCache}\`
 - If the user explicitly asks to clear or nuke AGNES's OpenCode cache, remove the installed AGNES cache directory or use: \`${cacheNukeCommand}\`, then restart OpenCode.
 
-**IMPORTANT: The ag-orchestrator skill content is below. It is ALREADY LOADED. Do NOT use the skill tool to load "ag-orchestrator" again.**
+**IMPORTANT: The orchestrator skill content is below. It is ALREADY LOADED. Do NOT use the skill tool to load "orchestrator" again.**
 
 ${trimmedContent}
 
@@ -21984,28 +21999,28 @@ function buildProtocolBlock() {
   }));
 }
 var SKILL_SUGGEST_NEXT = {
-  "ag-clarifier": ["ag-explorer", "ag-planner"],
-  "ag-explorer": ["ag-architect", "ag-planner"],
-  "ag-architect": ["ag-planner"],
-  "ag-planner": ["ag-plan-reviewer"],
-  "ag-plan-reviewer": ["ag-tdd", "ag-builder"],
-  "ag-prd": ["ag-planner"],
-  "ag-prototype": ["ag-tdd", "ag-builder"],
-  "ag-builder": ["ag-tester", "ag-verifier"],
-  "ag-tdd": ["ag-verifier"],
-  "ag-tester": ["ag-reviewer"],
-  "ag-verifier": ["ag-reviewer", "ag-shipper"],
-  "ag-reviewer": ["ag-documenter", "ag-shipper"],
-  "ag-feedback-receiver": ["ag-builder", "ag-debugger"],
-  "ag-debugger": ["ag-verifier"],
-  "ag-griller": ["ag-debugger", "ag-verifier"],
-  "ag-shipper": ["ag-documenter", "ag-retro"],
-  "ag-triage": ["ag-planner", "ag-debugger"],
-  "ag-documenter": ["ag-retro"],
-  "ag-retro": [],
-  "ag-skillwriter": ["ag-tdd"],
-  "ag-brandkit": ["ag-prototype", "ag-builder"],
-  "ag-init": ["ag-clarifier", "ag-explorer"]
+  "clarifier": ["explorer", "planner"],
+  "explorer": ["architect", "planner"],
+  "architect": ["planner"],
+  "planner": ["plan-reviewer"],
+  "plan-reviewer": ["tdd", "builder"],
+  "prd": ["planner"],
+  "prototype": ["tdd", "builder"],
+  "builder": ["tester", "verifier"],
+  "tdd": ["verifier"],
+  "tester": ["reviewer"],
+  "verifier": ["reviewer", "shipper"],
+  "reviewer": ["documenter", "shipper"],
+  "feedback-receiver": ["builder", "debugger"],
+  "debugger": ["verifier"],
+  "griller": ["debugger", "verifier"],
+  "shipper": ["documenter", "retro"],
+  "triage": ["planner", "debugger"],
+  "documenter": ["retro"],
+  "retro": [],
+  "skillwriter": ["tdd"],
+  "brandkit": ["prototype", "builder"],
+  "init": ["clarifier", "explorer"]
 };
 function readSkillRegistry() {
   if (!fs2.existsSync(skillsDir))
@@ -22024,9 +22039,10 @@ function readSkillRegistry() {
       if (!m)
         continue;
       const fm = $parse(m[1]);
-      if (typeof fm.id !== "string" || typeof fm.phase !== "string")
-        continue;
-      skills.push({ id: fm.id, phase: fm.phase.toUpperCase(), suggest_next: SKILL_SUGGEST_NEXT[fm.id] || [] });
+       if (typeof fm.id !== "string" || typeof fm.phase !== "string")
+         continue;
+       const id = fm.id.startsWith("ag-") ? fm.id.slice(3) : fm.id;
+       skills.push({ id, phase: fm.phase.toUpperCase(), suggest_next: SKILL_SUGGEST_NEXT[id] || [] });
     } catch {}
   }
   return skills.sort((a, b) => a.id.localeCompare(b.id));

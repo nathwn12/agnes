@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPlanSummary, getLatestActivePlan } from './state.js';
 import type { PlanIndex } from './state.js';
+import { resolveSkillName } from './schema.js';
 import { detectShell } from './shell.js';
 import { parse as yamlParse, stringify as yamlDump } from 'yaml';
 
@@ -66,7 +67,7 @@ function simpleHash(str: string): string {
 }
 
 export function getStaticBootstrapContent(): string | null {
-  const skillPath = path.join(skillsDir, 'ag-orchestrator', 'SKILL.md');
+  const skillPath = path.join(skillsDir, 'orchestrator', 'SKILL.md');
   if (!fs.existsSync(skillPath)) {
     return null;
   }
@@ -82,7 +83,7 @@ export function getStaticBootstrapContent(): string | null {
 
   const bootstrapEnd = frontmatterContent.indexOf('<!-- bootstrap-end -->');
   const trimmedContent = bootstrapEnd !== -1 ? frontmatterContent.slice(0, bootstrapEnd).trim() : frontmatterContent;
-  const cacheNukeCommand = `Remove-Item -Recurse -Force "$env:USERPROFILE\\.cache\\opencode\\packages\\agnes@git+https_*"`;
+  const cacheNukeCommand = `rm -rf "$HOME/.cache/opencode/packages"/agnes@git+https_*`;
 
   const toolMapping = `**Tool Mapping for OpenCode:**
 When skills reference tools you don't have, substitute OpenCode equivalents:
@@ -103,7 +104,7 @@ You are AGNES.
 - OpenCode package cache root: \`${opencodePackageCache}\`
 - If the user explicitly asks to clear or nuke AGNES's OpenCode cache, remove the installed AGNES cache directory or use: \`${cacheNukeCommand}\`, then restart OpenCode.
 
-**IMPORTANT: The ag-orchestrator skill content is below. It is ALREADY LOADED. Do NOT use the skill tool to load "ag-orchestrator" again.**
+**IMPORTANT: The orchestrator skill content is below. It is ALREADY LOADED. Do NOT use the skill tool to load "orchestrator" again.**
 
 ${trimmedContent}
 
@@ -242,29 +243,29 @@ export function buildProtocolBlock(): string {
 
 // ── Skill registry (compact, auto-discovered from frontmatter) ─────────────
 
-const SKILL_SUGGEST_NEXT: Record<string, string[]> = {
-  'ag-clarifier': ['ag-explorer', 'ag-planner'],
-  'ag-explorer': ['ag-architect', 'ag-planner'],
-  'ag-architect': ['ag-planner'],
-  'ag-planner': ['ag-plan-reviewer'],
-  'ag-plan-reviewer': ['ag-tdd', 'ag-builder'],
-  'ag-prd': ['ag-planner'],
-  'ag-prototype': ['ag-tdd', 'ag-builder'],
-  'ag-builder': ['ag-tester', 'ag-verifier'],
-  'ag-tdd': ['ag-verifier'],
-  'ag-tester': ['ag-reviewer'],
-  'ag-verifier': ['ag-reviewer', 'ag-shipper'],
-  'ag-reviewer': ['ag-documenter', 'ag-shipper'],
-  'ag-feedback-receiver': ['ag-builder', 'ag-debugger'],
-  'ag-debugger': ['ag-verifier'],
-  'ag-griller': ['ag-debugger', 'ag-verifier'],
-  'ag-shipper': ['ag-documenter', 'ag-retro'],
-  'ag-triage': ['ag-planner', 'ag-debugger'],
-  'ag-documenter': ['ag-retro'],
-  'ag-retro': [],
-  'ag-skillwriter': ['ag-tdd'],
-  'ag-brandkit': ['ag-prototype', 'ag-builder'],
-  'ag-init': ['ag-clarifier', 'ag-explorer'],
+  const SKILL_SUGGEST_NEXT: Record<string, string[]> = {
+  'clarifier': ['explorer', 'planner'],
+  'explorer': ['architect', 'planner'],
+  'architect': ['planner'],
+  'planner': ['plan-reviewer'],
+  'plan-reviewer': ['tdd', 'builder'],
+  'prd': ['planner'],
+  'prototype': ['tdd', 'builder'],
+  'builder': ['tester', 'verifier'],
+  'tdd': ['verifier'],
+  'tester': ['reviewer'],
+  'verifier': ['reviewer', 'shipper'],
+  'reviewer': ['documenter', 'shipper'],
+  'feedback-receiver': ['builder', 'debugger'],
+  'debugger': ['verifier'],
+  'griller': ['debugger', 'verifier'],
+  'shipper': ['documenter', 'retro'],
+  'triage': ['planner', 'debugger'],
+  'documenter': ['retro'],
+  'retro': [],
+  'skillwriter': ['tdd'],
+  'brandkit': ['prototype', 'builder'],
+  'init': ['clarifier', 'explorer'],
 };
 
 function readSkillRegistry(): Array<{ id: string; phase: string; suggest_next: string[] }> {
@@ -281,7 +282,8 @@ function readSkillRegistry(): Array<{ id: string; phase: string; suggest_next: s
       if (!m) continue;
       const fm = yamlParse(m[1]) as Record<string, unknown>;
       if (typeof fm.id !== 'string' || typeof fm.phase !== 'string') continue;
-      skills.push({ id: fm.id, phase: fm.phase.toUpperCase(), suggest_next: SKILL_SUGGEST_NEXT[fm.id] || [] });
+      const id = resolveSkillName(fm.id);
+      skills.push({ id, phase: fm.phase.toUpperCase(), suggest_next: (SKILL_SUGGEST_NEXT[id] || []).map(resolveSkillName) });
     } catch { /* skip unparseable skills */ }
   }
   return skills.sort((a, b) => a.id.localeCompare(b.id));
