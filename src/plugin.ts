@@ -47,6 +47,14 @@ function buildStructuredBootstrap(): string {
     noSharedEdits: true,
     freshSubagents: true,
     scarcity: true,
+    answerDirectly: true,
+    namedRoles: {
+      executor: "Runs commands, tests, builds. Returns compact pass/fail + file refs. Never suggests fixes.",
+      explorer: "Codebase research only. Glob → grep → selective read. Read-only. Never edits.",
+      planner: "Creates/refreshes plan-NNN.yaml from task requirements using planner skill.",
+      builder: "Implements one sub-task from plan. Delegates bash to executor and review to reviewer.",
+      reviewer: "Reviews diff against sub-task scope using reviewer skill. Writes findings.",
+    },
   };
 
   let index: PlanIndex | null = null;

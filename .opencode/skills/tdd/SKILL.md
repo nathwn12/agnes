@@ -90,6 +90,21 @@ test       fail            code       pass             names/modules
 - **Git**: Required for stashing when refactoring produces red state
 - **Read/Write/Edit**: For creating test files and production code
 
+### Executor Discipline
+
+All bash commands, test runs, and build steps MUST be delegated to the @executor subagent. The TDD agent itself must NEVER run bash directly.
+
+When to use @executor:
+- Running tests (`npm test`, `pytest`, `cargo test`, `bun test`)
+- Running builds, type checks, or compilation
+- Running linters, formatters, or any validation tools
+- Installing dependencies or running setup commands
+- Any command that produces output that can be summarized
+
+The @executor returns compact pass/fail results with file references. The TDD agent reads these results and decides next actions (red → implement → green → refactor). The executor does not suggest fixes — only the TDD agent decides.
+
+Rationale: Keeping bash execution in the executor role preserves the TDD agent's focus on test logic and implementation. Execution output is summarized, not dumped, into the main context.
+
 ## Output
 
 Each RED→GREEN→REFACTOR cycle produces:

@@ -120,6 +120,28 @@ If violation exists:
 - **Dumb zone**: the portion where context has degraded and a boundary action is needed
 - **Scarcity**: the principle of using the cheapest sufficient path first — shallow-first exploration, compact outputs, minimal tool calls, bounded context per wave
 
+### Answer-Directly Rule
+
+Before entering plan→delegate mode, ask: "Can I answer this directly with no tools?"
+
+When the answer requires no tools (no reads, no searches, no commands), respond directly. Do not create plans, invoke skills, or spawn subagents for simple Q&A, definitions, or factual lookups the model already knows.
+
+This is a pre-flight check that runs BEFORE the 1% Rule. The 1% Rule applies to tool-requiring tasks only.
+
+### Named Subagent Roles
+
+AGNES defines 5 named subagent roles for consistent delegation. Each role has a specific discipline:
+
+| Role | Discipline | Used By |
+|------|------------|---------|
+| `@executor` | Runs commands, tests, builds. Returns compact pass/fail + file references. Never suggests next steps or fixes. | builder, tdd, verifier |
+| `@explorer` | Codebase research only. Glob → grep → selective read. Read-only. Never edits. | architect, planner, any context-gathering skill |
+| `@planner` | Creates/refreshes `.agnes/plans/plan-NNN.yaml` from task requirements using the planner skill. | orchestrator (planning phase) |
+| `@builder` | Implements one sub-task from plan. Delegates bash to @executor and review to @reviewer. | orchestrator (build phase) |
+| `@reviewer` | Reviews diff against sub-task scope using the reviewer skill. Writes findings. | builder, orchestrator (review phase) |
+
+These roles replace generic subagent dispatch. Every wave dispatches the appropriate named role for each work unit. Roles with overlapping work (e.g., builder + executor in the same wave) may run in parallel as long as they target different files.
+
 ## Context Requirements
 
 - Access to the `.agnes/` directory for state files

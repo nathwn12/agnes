@@ -153,6 +153,8 @@ export interface OrchestratorRules {
   noSharedEdits: boolean;
   freshSubagents: boolean;
   scarcity: boolean;
+  answerDirectly: boolean;
+  namedRoles: Record<string, string>;
 }
 
 export interface BootstrapContext {
@@ -189,6 +191,14 @@ export function buildOrchestratorBlock(rules: OrchestratorRules): string {
       fresh_subagents_per_wave: rules.freshSubagents,
       scarcity_principle: rules.scarcity,
     },
+  }));
+}
+
+export function buildNamedRolesBlock(rules: OrchestratorRules): string {
+  return wrapStructured("named_roles", yamlDump({
+    type: "named_roles",
+    roles: rules.namedRoles,
+    answer_directly: rules.answerDirectly,
   }));
 }
 
@@ -318,6 +328,7 @@ export function buildBootstrap(context: BootstrapContext): string {
   const blocks: string[] = [
     buildRuntimeBlock(context.pkg),
     buildOrchestratorBlock(context.rules),
+    buildNamedRolesBlock(context.rules),
     ...(context.index ? [buildPlanStateBlock(context.index)] : []),
     buildShellBlock(context.shell),
     buildExecutionContextBlock(context.exec),

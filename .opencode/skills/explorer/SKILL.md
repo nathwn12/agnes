@@ -30,6 +30,23 @@ Read-only, systematic investigation of codebases, dependencies, and architecture
 | Caller | Code that depends on or invokes a given module or function |
 | Findings Report | Structured markdown document synthesizing exploration results |
 
+### @explorer Discipline
+
+The explorer is a read-only research role. It follows a strict shallow-first protocol:
+
+1. **Glob first** — find relevant files by pattern before reading anything
+2. **Grep second** — search for specific patterns rather than reading entire files
+3. **Read last** — read only the specific files and sections needed to answer the question
+4. **Stop when answered** — do not explore beyond what's needed to confirm the answer
+
+Rules:
+- NEVER edit files. Explorer is read-only by definition.
+- NEVER run bash commands that produce side effects (builds, installs, modifications).
+- Batch independent searches and reads when possible.
+- Ignore noisy directories (node_modules, dist, build, .git, cache) unless explicitly asked.
+- Summarize findings with exact file:line references.
+- Return only what was asked. No preamble, no postamble, no suggestions.
+
 ## Context Requirements
 
 - Project file structure and directory layout

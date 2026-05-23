@@ -21,6 +21,20 @@ The planner skill transforms clarified requirements into structured design docum
 - **Vertical Slice** — An independently completable issue that adds user-visible value.
 - **Task Granularity** — Each task is one action taking 2-5 minutes, with complete code and exact file paths.
 
+### Requirement IDs
+
+Every plan includes a Requirements Snapshot with stable requirement IDs (R1, R2, R3...) that sub-tasks reference. This replaces the need for a separate task.md file.
+
+Format in plan-NNN.yaml:
+```yaml
+requirements:
+  - id: R1
+    description: "Description of the requirement"
+    source: "Source file or document"
+```
+
+Each sub-task in the plan includes a `requirementIds` field listing which requirements it satisfies. This provides traceability from requirements through implementation to verification.
+
 ## Context Requirements
 
 Requires codebase context before planning:
@@ -149,3 +163,13 @@ Two document types written to the project:
 - When no implementation will follow the planning phase
 - When architecture decisions do not need formal documentation
 - When the task is purely exploratory with no design decisions to make
+
+### Proportionality Rules
+
+- Do not create formal plans for purely advisory, exploratory, or review-only requests.
+- Keep the plan proportional to the task size and risk.
+- For simple tasks (≤3 steps, no ambiguity), use a short plan with only the necessary steps.
+- For complex or high-risk tasks, include dependencies, risks, validation, and rollout considerations.
+- Prefer the fewest steps that still make execution clear.
+- Preserve explicit acceptance criteria, edge cases, and out-of-scope limits when present.
+- Do not convert speculative implementation ideas into binding requirements.

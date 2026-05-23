@@ -96,3 +96,51 @@ AGNES now uses typed, machine-optimized internal formats instead of prose:
 - All 23 SKILL.md files have YAML frontmatter with `id`, `phase`, `use_when`, `version`
 - Human-readable body is unchanged
 - Agents can parse frontmatter for skill discovery metadata
+
+## Answer-Directly Rule
+
+Before entering plan→delegate mode, ask: "Can I answer this directly with no tools?"
+
+When the answer requires no tools, respond directly. Do not create plans, invoke skills, or spawn subagents for simple Q&A, definitions, or factual lookups the model already knows.
+
+## Named Subagent Roles
+
+AGNES defines 5 named subagent roles for consistent delegation:
+
+| Role | Discipline | Used By |
+|------|------------|---------|
+| `@executor` | Runs commands, tests, builds. Returns compact pass/fail + file refs. Never suggests fixes. | builder, tdd, verifier |
+| `@explorer` | Codebase research only. Glob → grep → selective read. Read-only. Never edits. | architect, planner, any context-gathering skill |
+| `@planner` | Creates/refreshes `.agnes/plans/plan-NNN.yaml` from task requirements using planner skill. | orchestrator (planning phase) |
+| `@builder` | Implements one sub-task from plan. Delegates bash to @executor and review to @reviewer. | orchestrator (build phase) |
+| `@reviewer` | Reviews diff against sub-task scope using reviewer skill. Writes findings to `.opencode/review.md`. | builder, orchestrator (review phase) |
+
+## Coding Priority Order
+
+When implementing, prioritize in this order:
+1. **Correctness** — Does it work correctly for all inputs, including edge cases?
+2. **Security** — Are there vulnerabilities, injection risks, or data leaks?
+3. **Simplicity** — Is this the simplest approach that fully solves the task?
+4. **Maintainability** — Will another developer (or AI) understand this in 6 months?
+5. **Performance** — Optimize only when measured and necessary.
+
+## Proportionality Rules
+
+- Do not create formal plans for purely advisory, exploratory, or review-only requests.
+- Keep the plan proportional to the task size and risk.
+- For simple tasks (≤3 steps, no ambiguity), use a short plan with only the necessary steps.
+- Prefer the fewest steps that still make execution clear.
+- Do not convert speculative ideas into binding requirements.
+
+## Code Review Quality Bar
+
+- **P0 (Blocking)**: Likely production breakage, data corruption, or exploitable security issue.
+- **P1 (High)**: Serious user, operational, or security impact.
+- **P2 (Medium)**: Meaningful but non-blocking risk.
+- **P3 (Low)**: Valid improvement that can be deferred.
+- Every finding requires **evidence** (specific code with file:line) and **impact** (what could go wrong).
+- Do NOT report: style-only preferences, hypothetical issues without plausible failure paths, duplicate findings for the same root cause, or low-value nits.
+
+## Executor Discipline
+
+All bash commands, test runs, builds, and validation MUST be delegated to the @executor subagent. No agent (builder, tdd, verifier, reviewer, planner) should run bash directly. The @executor returns compact pass/fail results and does not suggest next steps.

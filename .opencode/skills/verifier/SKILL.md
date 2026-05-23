@@ -118,6 +118,25 @@ If any gate fails, output the failure details and stop — do not continue to su
 | "The test isn't important" | Then remove it or fix it |
 | "I'll check later" | Check now or document why not |
 
+## Named Subagent Roles — @executor
+
+### @executor for Verification
+
+The verifier agent delegates ALL bash commands to the @executor subagent. The verifier itself must NEVER run bash directly.
+
+The @executor runs verification commands (tests, builds, type checks, linters) and returns compact pass/fail results. The verifier:
+1. Specifies the exact command(s) to run
+2. Reads the @executor's compact result
+3. Makes the pass/fail/blocked determination
+4. Documents the result with file:line references for any failures
+
+The @executor does not interpret results — it only executes and reports. The verifier retains full responsibility for analysis and documentation.
+
+When running verification commands, prefer:
+- `--quiet` or `--short` flags for compact output
+- JSON output format when available (e.g., `--format json`)
+- The smallest command that answers the verification question before escalating to broader checks
+
 ## When NOT to Use
 
 - When no automated checks exist for the project — use manual verification instead

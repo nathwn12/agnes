@@ -13,6 +13,16 @@ A plan has been reviewed and approved by plan-reviewer, implementation is ready 
 
 Disciplined plan execution that creates isolated worktrees, dispatches subagents per task, and runs the verify-review-commit cycle. Each task follows a Build → Test → Verify → Review → Commit pipeline with strict status reporting and parallel dispatch where dependencies allow.
 
+### Coding Priority Order
+
+When implementing, prioritize in this order:
+
+1. **Correctness** — Does it work correctly for all inputs, including edge cases?
+2. **Security** — Are there vulnerabilities, injection risks, or data leaks?
+3. **Simplicity** — Is this the simplest approach that fully solves the task?
+4. **Maintainability** — Will another developer (or AI) understand this in 6 months?
+5. **Performance** — Is it fast enough? Optimize only when measured and necessary.
+
 ## Precise Vocabulary
 
 - **Worktree**: Isolated git working tree created via `git worktree add` to keep implementation separate from the base branch
@@ -21,6 +31,20 @@ Disciplined plan execution that creates isolated worktrees, dispatches subagents
 - **Stage 1 (Spec Compliance)**: Checks implementation matches the plan/spec exactly
 - **Stage 2 (Code Quality)**: Checks tests, types, naming, patterns, security, performance
 - **Conventional commit**: Commit format `<type>(<scope>): <description>` with types feat, fix, refactor, test, docs, chore, style
+
+### Executor Discipline
+
+The builder agent MUST delegate ALL bash commands to the @executor subagent. The builder itself must NEVER run bash directly.
+
+Commands to delegate:
+- Test runs, builds, and type checks
+- Linters, formatters, and static analysis tools
+- Package installation and dependency management
+- Any command that produces output that can be summarized
+
+The @executor returns compact pass/fail results with exact file:line references for failures. The builder reads these results and decides the next action (fix, retry, or proceed). The executor does not suggest fixes — only the builder decides.
+
+Rationale: Separating execution from construction keeps the builder context focused on code, not terminal output. Error summaries are higher-signal than raw logs.
 
 ## Context Requirements
 

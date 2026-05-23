@@ -11,15 +11,16 @@ After each builder task (per-task review), before shipper (final review), when u
 
 ## Core Concept
 
-Two-stage review process: first verify spec compliance (does the code do what it should?), then assess code quality (is the code well-written?). Issues are classified as Critical, Important, or Minor to prioritize fixes.
+Two-stage review process: first verify spec compliance (does the code do what it should?), then assess code quality (is the code well-written?). Issues are classified as P0, P1, P2, or P3 to prioritize fixes.
 
 ## Precise Vocabulary
 
 - **Spec Compliance**: Whether the implementation matches the agreed-upon specification line by line
 - **Code Quality**: Assessment of tests, types, edge cases, naming, patterns, security, and performance
-- **Critical**: Bug, security issue, or spec violation — must fix before proceeding
-- **Important**: Quality concern or maintainability issue — should fix before merging
-- **Minor**: Style preference or minor cleanup — can defer, log for later
+- **[P0] Blocking**: likely production breakage, data corruption, or exploitable security issue
+- **[P1] High**: serious user, operational, or security impact
+- **[P2] Medium**: meaningful but non-blocking risk
+- **[P3] Low**: valid low-impact improvement that can be deferred
 
 ## Context Requirements
 
@@ -60,16 +61,25 @@ Review the code itself:
 
 | Severity | Meaning | Action |
 |----------|---------|--------|
-| Critical | Bug, security issue, or spec violation | Must fix before proceeding |
-| Important | Quality concern, maintainability issue | Should fix before merging |
-| Minor | Style preference, minor cleanup | Can defer, log for later |
+| P0 | Blocking: production breakage, data corruption, security exploit | Must fix before proceeding |
+| P1 | High: serious user, operational, or security impact | Should fix before merging |
+| P2 | Medium: meaningful but non-blocking risk | Can defer, log for later |
+| P3 | Low: valid low-impact improvement | Can defer indefinitely |
+
+### Evidence and Impact Requirement
+
+Every finding must include:
+1. **Evidence** — the specific code, behavior, or pattern that triggers the finding (with file:line references)
+2. **Impact** — what could go wrong, how bad it would be, and under what conditions
+
+Findings without both evidence and impact should not be raised.
 
 ### Final Review (all tasks complete)
 
 1. Get git SHAs (base → head): `git log --oneline <base>..HEAD`
 2. Get diff: `git diff <base>..HEAD`
 3. Review complete diff against: spec, security, performance, maintainability
-4. Fix all Critical and Important issues before proceeding to shipper
+4. Fix all P0 and P1 issues before proceeding to shipper
 
 ### Receiving Feedback Rules
 
@@ -91,7 +101,7 @@ When receiving code review feedback (either from a human reviewer or when AGNES 
 ## Output
 
 - Spec compliance report marking each requirement as compliant or non-compliant
-- Code quality assessment with categorized issues (Critical/Important/Minor)
+- Code quality assessment with categorized issues (P0/P1/P2/P3)
 - Final verdict: review passed or failed with required actions
 - For per-task reviews: issues to fix before shipping
 - For final reviews: verification that the complete diff is clean and intentional
@@ -101,8 +111,17 @@ When receiving code review feedback (either from a human reviewer or when AGNES 
 Before reporting "review passed", verify:
 - Spec compliance report is complete
 - Issue classification is accurate
-- All Critical and Important issues are fixed or explicitly deferred with user approval
+- All P0 and P1 issues are fixed or explicitly deferred with user approval
 - Final diff is clean and intentional
+
+### Do Not Report
+
+The following do NOT warrant a finding:
+
+- Style-only preferences without real risk (tabs vs spaces, naming style preferences)
+- Hypothetical issues without a plausible failure path
+- Duplicate findings for the same root cause (merge them)
+- Low-value nits that do not materially improve correctness, security, or maintainability
 
 ## When NOT to Use
 
