@@ -61,6 +61,7 @@ export interface StruggleMetrics {
   repeatedErrors: Record<string, number>;
   shortIterations: number;
   lastPromiseTag: string | null;
+  shellType?: string;
 }
 
 export interface PlanIndexEntry {
@@ -341,6 +342,7 @@ export function buildPlanSummary(projectRoot?: string): string {
     const errCount = Object.keys(s.repeatedErrors).length;
     if (errCount > 0) parts.push(`repeated-errors:${errCount}`);
     if (s.lastPromiseTag) parts.push(`last-promise:${s.lastPromiseTag}`);
+    if (s.shellType) parts.push(`shell:${s.shellType}`);
     if (parts.length > 0) line += `\nStruggle: ${parts.join(', ')}`;
   }
 
@@ -651,6 +653,7 @@ export function updateStruggleMetrics(
     })(),
     shortIterations: events.durationMs < 30000 ? current.shortIterations + 1 : 0,
     lastPromiseTag: events.promiseTag ?? current.lastPromiseTag,
+    shellType: current.shellType,
   };
 }
 

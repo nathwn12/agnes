@@ -20,6 +20,8 @@ import { FlowController } from './flowcontrol.js';
 import type { JumpTarget } from './flowcontrol.js';
 import type { TaskDescriptor } from './schema.js';
 import type { ResultMessage, CompletionStatus } from './protocol.js';
+import { detectShell } from './shell.js';
+import type { ShellType } from './shell.js';
 import { runGates } from './verification.js';
 import type { Gate, GateResult } from './verification.js';
 
@@ -114,6 +116,7 @@ export interface AgnesRuntimeState {
   activePlanId: string | null;
   planContent: string | null;
   planEntry: PlanIndexEntry | null;
+  shellType?: ShellType;
   struggle?: StruggleMetrics;
   iteration?: number;
   maxIterations?: number;
@@ -382,6 +385,10 @@ export function buildExecutionContext(entry: PlanIndexEntry): string {
   if (entry.attempts !== undefined && entry.attempts > 0) {
     lines.push(`Current attempt: ${entry.attempts + 1}`);
   }
+
+  const shell = detectShell();
+  lines.push(`Shell: ${shell.shellType} (preferred syntax: ${shell.preferredSyntax})`);
+  lines.push(`Shell guidance: ${shell.guidance}`);
 
   if (entry.struggle) {
     const s = entry.struggle;
