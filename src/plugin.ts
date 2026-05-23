@@ -103,6 +103,12 @@ export const AgnesPlugin: Plugin = async () => {
       configObj.skills = { ...(configObj.skills as Record<string, unknown> || {}), paths };
     },
 
+    "chat.message": async (input) => {
+      if (input.model?.modelID && typeof input.model.modelID === 'string') {
+        _modelName = input.model.modelID;
+      }
+    },
+
     'experimental.chat.messages.transform': async (_input, output) => {
       const isDsV4 = _modelName ? isDeepSeekV4(_modelName) : false;
       const bootstrap = isDsV4 ? buildStructuredBootstrap() : getBootstrapContent();

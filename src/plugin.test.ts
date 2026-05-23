@@ -30,6 +30,14 @@ describe('isDeepSeekV4', () => {
     expect(isDeepSeekV4('')).toBe(false);
   });
 
+  test('opencode-go/deepseek-v4-pro returns true', () => {
+    expect(isDeepSeekV4('opencode-go/deepseek-v4-pro')).toBe(true);
+  });
+
+  test('opencode-go/deepseek-v4-flash returns true', () => {
+    expect(isDeepSeekV4('opencode-go/deepseek-v4-flash')).toBe(true);
+  });
+
   test('case insensitive matching for deepseek-v4', () => {
     expect(isDeepSeekV4('DEEPSEEK-V4-FLASH')).toBe(true);
   });
