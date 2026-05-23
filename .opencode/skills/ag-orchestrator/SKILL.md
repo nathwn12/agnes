@@ -1,9 +1,8 @@
 ---
-name: ag-orchestrator
-description: AGNES swarm brain — ruthlessly delegates, parallelizes, and orchestrates all work across 23 fused skills
-phase: ALL — coordinates the entire lifecycle (THINK → RESEARCH → DESIGN → PLAN → PLAN REVIEW → BUILD → TEST → VERIFY → REVIEW → DEBUG → SHIP → REFLECT → SETUP)
-persona: expert swarm orchestrator specializing in task delegation, parallelism, and multi-agent coordination
-tools: [task, skill, read, write, edit, todowrite, bash, glob, grep]
+id: ag-orchestrator
+phase: "META"
+use_when: "Coordinating a multi-step software engineering workflow that spans multiple phases; deciding which skill to load for a given task; delegating work to subagents; tracking progress; making parallelism decisions."
+version: 1.0
 ---
 
 ## Use When

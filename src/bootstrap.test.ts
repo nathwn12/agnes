@@ -3,7 +3,113 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-import { getBootstrapContent } from './bootstrap';
+import { getBootstrapContent, buildRuntimeBlock, buildOrchestratorBlock, buildPlanStateBlock, buildShellBlock, buildProtocolBlock, buildExecutionContextBlock } from './bootstrap.js';
+import type { OrchestratorRules } from './bootstrap.js';
+import type { PlanIndex } from './state.js';
+
+describe('structured block builders', () => {
+  const pkg = { version: '0.10.2', root: '/test/root', skillsDir: '/test/skills', cacheRoot: '/test/cache' };
+  const rules: OrchestratorRules = { delegate: true, parallelize: true, onePercent: true, verify: true, noSharedEdits: true, freshSubagents: true, scarcity: true };
+  const shell = { name: 'powershell', version: '7.4', antiPatterns: ['Get-Content', 'Set-Content'], preferredSyntax: 'cmdlets' };
+  const exec = { attempt: 2, struggleDetected: true, lastPromiseTag: 'DONE' };
+
+  test('buildRuntimeBlock produces correct structured type tag', () => {
+    const block = buildRuntimeBlock(pkg);
+    expect(block).toContain('<structured type="runtime">');
+    expect(block).toContain('</structured>');
+  });
+
+  test('buildRuntimeBlock contains expected fields', () => {
+    const block = buildRuntimeBlock(pkg);
+    expect(block).toContain('agnes_version:');
+    expect(block).toContain('package_root:');
+    expect(block).toContain('skills_dir:');
+    expect(block).toContain('cache_root:');
+  });
+
+  test('buildOrchestratorBlock produces correct type tag and rules', () => {
+    const block = buildOrchestratorBlock(rules);
+    expect(block).toContain('<structured type="orchestrator">');
+    expect(block).toContain('delegate_or_die: true');
+    expect(block).toContain('parallelize_by_default: true');
+    expect(block).toContain('one_percent_rule: true');
+    expect(block).toContain('verify_before_claiming: true');
+    expect(block).toContain('no_shared_file_edits: true');
+    expect(block).toContain('fresh_subagents_per_wave: true');
+    expect(block).toContain('scarcity_principle: true');
+  });
+
+  test('buildPlanStateBlock says no active plan when index empty', () => {
+    const emptyIndex: PlanIndex = {
+      agnesVersion: '0.10.2',
+      schemaVersion: 2,
+      projectDir: fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-bs-')),
+      projectName: 'test',
+      updatedAt: new Date().toISOString(),
+      activePlanId: null,
+      plans: [],
+    };
+    const block = buildPlanStateBlock(emptyIndex);
+    expect(block).toContain('No active plan');
+  });
+
+  test('buildPlanStateBlock produces correct type tag', () => {
+    const emptyIndex: PlanIndex = {
+      agnesVersion: '0.10.2',
+      schemaVersion: 2,
+      projectDir: fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-bs-')),
+      projectName: 'test',
+      updatedAt: new Date().toISOString(),
+      activePlanId: null,
+      plans: [],
+    };
+    const block = buildPlanStateBlock(emptyIndex);
+    expect(block).toContain('<structured type="plan_state">');
+  });
+
+  test('buildShellBlock includes anti_patterns list', () => {
+    const block = buildShellBlock(shell);
+    expect(block).toContain('anti_patterns:');
+    expect(block).toContain('Get-Content');
+    expect(block).toContain('Set-Content');
+  });
+
+  test('buildShellBlock produces correct type tag', () => {
+    const block = buildShellBlock(shell);
+    expect(block).toContain('<structured type="shell">');
+  });
+
+  test('buildProtocolBlock includes marker_prefix and types array', () => {
+    const block = buildProtocolBlock();
+    expect(block).toContain('marker_prefix:');
+    expect(block).toContain('agnes:message');
+    expect(block).toContain('types:');
+    expect(block).toContain('task');
+    expect(block).toContain('result');
+    expect(block).toContain('completion');
+  });
+
+  test('buildProtocolBlock produces correct type tag', () => {
+    const block = buildProtocolBlock();
+    expect(block).toContain('<structured type="protocol">');
+  });
+
+  test('buildExecutionContextBlock includes attempt info', () => {
+    const block = buildExecutionContextBlock(exec);
+    expect(block).toContain('attempt: 2');
+    expect(block).toContain('struggle_detected: true');
+    expect(block).toContain('last_promise_tag:');
+    expect(block).toContain('DONE');
+  });
+
+  test('block output can be parsed back via YAML/structured tag regex', () => {
+    const block = buildRuntimeBlock(pkg);
+    const match = block.match(/<structured type="(\w+)">\n([\s\S]*?)\n<\/structured>/);
+    expect(match).not.toBeNull();
+    expect(match![1]).toBe('runtime');
+    expect(match![2]).toContain('agnes_version:');
+  });
+});
 
 describe('getBootstrapContent', () => {
   test('returns content including the orchestrator skill instructions', () => {

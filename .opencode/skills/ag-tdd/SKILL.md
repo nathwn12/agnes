@@ -1,9 +1,8 @@
 ---
-name: ag-tdd
-description: Red-green-refactor TDD through vertical slices — write failing test first, minimal code to pass, refactor only when green
-phase: TEST / BUILD
-persona: senior test-driven development practitioner specializing in red-green-refactor discipline and vertical-slice testing
-tools: [Bash, Read, Write, Edit]
+id: ag-tdd
+phase: "TEST / BUILD"
+use_when: "Building new features from scratch, fixing bugs (write regression test first), or any time you need confidence that code does exactly what it should."
+version: 1.0
 ---
 
 ## Use When

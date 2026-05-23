@@ -3,6 +3,10 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { stringify as yamlStringify, parse as yamlParse } from 'yaml';
+import { PlanSchema } from './schema.js';
+import type { Plan, PlanTask } from './schema.js';
+
 import { parseAgnesMessage } from './protocol.js';
 import type { CompletionStatus } from './protocol.js';
 
@@ -103,6 +107,7 @@ function getPlanFilePath(root: string, entry: PlanIndexEntry): string {
 export interface ActivePlan {
   entry: PlanIndexEntry;
   content: string;
+  plan?: Plan;
 }
 
 let _cachedProjectRoot: string | null = null;
@@ -229,6 +234,80 @@ export function writePlanIndex(index: PlanIndex, projectRoot?: string): void {
   const tmp = filePath + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(index, null, 2), 'utf8');
   fs.renameSync(tmp, filePath);
+}
+
+export function writePlanFile(plan: Plan, plansDir: string): string {
+  const parsed = PlanSchema.parse(plan);
+  const filePath = path.join(plansDir, `${parsed.id}.yaml`);
+  const yaml = yamlStringify(JSON.parse(JSON.stringify(parsed)), null, { indent: 2 });
+  const tmpPath = filePath + '.tmp';
+  fs.writeFileSync(tmpPath, yaml, 'utf-8');
+  fs.renameSync(tmpPath, filePath);
+  return filePath;
+}
+
+export function readPlanFile(plansDir: string, planId: string): Plan | null {
+  const yamlPath = path.join(plansDir, `${planId}.yaml`);
+  if (fs.existsSync(yamlPath)) {
+    const raw = fs.readFileSync(yamlPath, 'utf-8');
+    return PlanSchema.parse(yamlParse(raw));
+  }
+  const mdPath = path.join(plansDir, `${planId}.md`);
+  if (fs.existsSync(mdPath)) {
+    return parseLegacyMdPlan(mdPath);
+  }
+  return null;
+}
+
+const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?/;
+
+export function parseLegacyMdPlan(filePath: string): Plan {
+  const raw = fs.readFileSync(filePath, 'utf-8');
+  const fm = raw.match(FRONTMATTER_RE);
+  let frontmatter: Record<string, unknown> = {};
+  let body = raw;
+  if (fm) {
+    frontmatter = yamlParse(fm[1]) as Record<string, unknown>;
+    body = raw.slice(fm[0].length);
+  }
+
+  const goalMatch = body.match(/^Goal:\s*(.+)$/m);
+  const checkMatch = body.match(/^Check:\s*(.+)$/m);
+  const summaryMatch = body.match(/^#\s+\S+\s+[—–-]\s+(.+)$/m);
+
+  const taskLines: string[] = [];
+  for (const line of body.split('\n')) {
+    if (/^- \[[ x\/]\]/.test(line)) {
+      taskLines.push(line);
+    }
+  }
+
+  const tasks: PlanTask[] = taskLines.map((t, i) => ({
+    id: `task-${String(i + 1).padStart(3, '0')}`,
+    summary: t.replace(/^- \[[ x\/]\]\s*/, '').trim(),
+    status: t.startsWith('- [x]') ? 'done' : t.startsWith('- [/]') ? 'blocked' : 'pending',
+    files: [],
+    depends_on: [],
+  }));
+
+  const planId = typeof frontmatter.id === 'string' ? frontmatter.id : path.basename(filePath, '.md');
+  const createdAt = typeof frontmatter.createdAt === 'string' ? frontmatter.createdAt : new Date().toISOString();
+  const updatedAt = typeof frontmatter.updatedAt === 'string' ? frontmatter.updatedAt : createdAt;
+
+  return {
+    schema: 'agnes/plan-v1',
+    id: planId,
+    version: 1,
+    createdAt,
+    updatedAt,
+    status: (typeof frontmatter.status === 'string' ? frontmatter.status : 'draft') as Plan['status'],
+    parent: typeof frontmatter.parent === 'string' ? frontmatter.parent : null,
+    goal: goalMatch ? goalMatch[1].trim() : (typeof frontmatter.goal === 'string' ? frontmatter.goal : ''),
+    check: checkMatch ? checkMatch[1].trim() : (typeof frontmatter.check === 'string' ? frontmatter.check : ''),
+    summary: typeof frontmatter.summary === 'string' ? frontmatter.summary : (summaryMatch ? summaryMatch[1].trim() : ''),
+    tasks,
+    notes: Array.isArray(frontmatter.notes) ? frontmatter.notes as string[] : [],
+  };
 }
 
 const DEFAULT_RETENTION: RetentionPolicy = { maxAgeDays: 7, terminalStatuses: ['done', 'abandoned'] };
@@ -374,7 +453,7 @@ export function getNextPlanId(projectRoot?: string): string {
   return `plan-${String(max + 1).padStart(3, '0')}`;
 }
 
-function writePlanFile(root: string, id: string, content: string): string {
+function writeLegacyPlanFile(root: string, id: string, content: string): string {
   const file = `${id}.md`;
   const filePath = path.join(root, AGNES_DIR, PLANS_DIR, file);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -428,7 +507,37 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
 - <first executable action>
 `;
 
-  const file = writePlanFile(root, id, content);
+  const file = writeLegacyPlanFile(root, id, content);
+
+  const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
+  const plan: Plan = {
+    schema: 'agnes/plan-v1',
+    id,
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    status: status as Plan['status'],
+    parent: input.parent ?? null,
+    goal: input.goal,
+    check: input.check,
+    summary: input.summary,
+    tasks: input.tasks.map((t, i) => {
+      const cleaned = t.replace(/^- \[[ x\/]\]\s*/, '').trim();
+      let taskStatus: PlanTask['status'];
+      if (t.startsWith('- [x]')) taskStatus = 'done';
+      else if (t.startsWith('- [/]')) taskStatus = 'blocked';
+      else taskStatus = 'pending';
+      return {
+        id: `task-${String(i + 1).padStart(3, '0')}`,
+        summary: cleaned,
+        status: taskStatus,
+        files: [],
+        depends_on: [],
+      };
+    }),
+    notes: input.notes ?? [],
+  };
+  writePlanFile(plan, plansDir);
 
   const entry: PlanIndexEntry = {
     id,
@@ -461,7 +570,7 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
   index.activePlanId = isActive ? id : null;
   writePlanIndex(index, root);
 
-  return { entry, content };
+  return { entry, content, plan };
 }
 
 export function createPlanIteration(input: {
@@ -503,7 +612,39 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
 - <first executable action>
 `;
 
-  const file = writePlanFile(root, id, content);
+  const file = writeLegacyPlanFile(root, id, content);
+
+  const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
+  const plan: Plan = {
+    schema: 'agnes/plan-v1',
+    id,
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    status: input.status as Plan['status'],
+    parent: input.parent,
+    goal: input.goal,
+    check: input.check,
+    summary: input.summary,
+    tasks: input.tasksMarkdown.split('\n')
+      .filter(line => /^- \[.?\]/.test(line))
+      .map((t, i) => {
+        const cleaned = t.replace(/^- \[[ x\/]\]\s*/, '').trim();
+        let taskStatus: PlanTask['status'];
+        if (t.startsWith('- [x]')) taskStatus = 'done';
+        else if (t.startsWith('- [/]')) taskStatus = 'blocked';
+        else taskStatus = 'pending';
+        return {
+          id: `task-${String(i + 1).padStart(3, '0')}`,
+          summary: cleaned,
+          status: taskStatus,
+          files: [],
+          depends_on: [],
+        };
+      }),
+    notes: input.notes ?? [],
+  };
+  writePlanFile(plan, plansDir);
 
   const index = readPlanIndex(root);
   if (!index) throw new Error('Cannot create plan iteration: no index found');
@@ -541,7 +682,7 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
   }
   writePlanIndex(index, root);
 
-  return { entry, content };
+  return { entry, content, plan };
 }
 
 export function updatePlanStatus(input: {
@@ -866,7 +1007,7 @@ export function createAutoPlan(params: { goal: string; source: 'gate' | 'user' |
   const summary = params.goal.length > 80 ? params.goal.substring(0, 80) + '...' : params.goal;
 
   const content = generatePlanTemplate(id, params.goal);
-  writePlanFile(root, id, content);
+  writeLegacyPlanFile(root, id, content);
 
   const entry: PlanIndexEntry = {
     id,

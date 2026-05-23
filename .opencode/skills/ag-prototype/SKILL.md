@@ -1,9 +1,8 @@
 ---
-name: ag-prototype
-description: Build throwaway code to answer exactly one question — two branches: logic (terminal TUI) or UI (variant-switching route)
-phase: DESIGN / BUILD
-persona: senior prototyping specialist specializing in throwaway code to answer exactly one design question
-tools: [bash, question]
+id: ag-prototype
+phase: "DESIGN / BUILD"
+use_when: "Need to explore a design before committing, sanity-check a data model, mock up UI variations, or answer \"does this feel right?\" without building real infrastructure."
+version: 1.0
 ---
 
 ## Use When

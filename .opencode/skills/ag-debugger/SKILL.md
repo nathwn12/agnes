@@ -1,9 +1,8 @@
 ---
-name: ag-debugger
-description: Collaborative debugging — works WITH the user through reproduce → hypothesise → instrument → narrow → document to find root cause
-phase: DEBUG (collaborative)
-persona: senior debugger specializing in collaborative root-cause investigation and hypothesis-driven debugging
-tools: [git, logging, explorer, hypothesis-testing]
+id: ag-debugger
+phase: "DEBUG"
+use_when: "User says \"this is broken, help me figure out why\", error reports without clear root cause, performance regressions needing investigation."
+version: 1.0
 ---
 
 ## Use When

@@ -1,9 +1,8 @@
 ---
-name: ag-brandkit
-description: Visual design and brand identity — generates design systems, brand guidelines, logo concepts, UI mockups, and image assets
-phase: DESIGN
-persona: senior visual designer specializing in brand identity systems, logo design, and design language creation
-tools: []
+id: ag-brandkit
+phase: "DESIGN"
+use_when: "Starting a new project with no design system, redesigning existing UI, needing visual assets for marketing or docs, before ag-planner if design direction affects architecture."
+version: 1.0
 ---
 
 ## Use When
@@ -98,8 +97,8 @@ Create visual assets:
 ## Output
 
 - `DESIGN.md` — Design system source of truth (always)
-- `docs/design/mockups/` — Generated mockup images
-- `docs/design/brand/` — Logo assets, brand guidelines
+- `.agnes/design/mockups/` — Generated mockup images
+- `.agnes/design/brand/` — Logo assets, brand guidelines
 - Color and font preview pages as HTML if needed
 
 ## Quality Criteria

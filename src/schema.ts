@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export type SkillPhase =
   | 'SETUP'
   | 'META'
@@ -168,3 +170,94 @@ export const SKILL_REGISTRY: Map<string, SkillDescriptor> = new Map([
     'DEBUG',
   )],
 ]);
+
+// ── Plan schemas ──────────────────────────────────────────────────────────────
+
+export const PlanStatusSchema = z.enum([
+  "pending", "draft", "reviewed", "ready", "in_progress", "done", "blocked", "abandoned"
+]);
+export type PlanStatus = z.infer<typeof PlanStatusSchema>;
+
+export const PlanTaskSchema = z.object({
+  id: z.string().regex(/^task-\d{3}$/),
+  summary: z.string().min(1).max(200),
+  status: PlanStatusSchema.default("pending"),
+  files: z.array(z.string()).default([]),
+  effort: z.string().regex(/^\d+m$/).optional(),
+  depends_on: z.array(z.string()).default([]),
+});
+export type PlanTask = z.infer<typeof PlanTaskSchema>;
+
+export const PlanSchema = z.object({
+  schema: z.literal("agnes/plan-v1"),
+  id: z.string().regex(/^plan-\d{3}$/),
+  version: z.number().int().positive().default(1),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  status: PlanStatusSchema.default("draft"),
+  parent: z.string().nullable().default(null),
+  goal: z.string().min(1).max(500),
+  check: z.string().min(1).max(500),
+  summary: z.string().min(1).max(200),
+  tasks: z.array(PlanTaskSchema).default([]),
+  notes: z.array(z.string()).default([]),
+});
+export type Plan = z.infer<typeof PlanSchema>;
+
+// ── Bootstrap block schemas ───────────────────────────────────────────────────
+
+export const BootstrapBlockTypeSchema = z.enum([
+  "runtime", "orchestrator", "plan_state", "shell", "execution", "protocol"
+]);
+
+export const BootstrapBlockSchema = z.object({
+  type: BootstrapBlockTypeSchema,
+}).passthrough();
+
+export const RuntimeBlockSchema = BootstrapBlockSchema.extend({
+  type: z.literal("runtime"),
+  agnes_version: z.string(),
+  package_root: z.string(),
+  skills_dir: z.string(),
+  cache_root: z.string(),
+});
+
+export const OrchestratorBlockSchema = BootstrapBlockSchema.extend({
+  type: z.literal("orchestrator"),
+  rules: z.record(z.string(), z.boolean()),
+});
+
+// ── Message schemas ───────────────────────────────────────────────────────────
+
+export const MessageTypeSchema = z.enum([
+  "task", "result", "error", "status", "completion"
+]);
+
+export const CompletionStatusSchema = z.enum([
+  "DONE", "DONE_WITH_CONCERNS", "NEEDS_CONTEXT", "BLOCKED"
+]);
+
+export const BaseMessageSchema = z.object({
+  type: MessageTypeSchema,
+  id: z.string().uuid(),
+  timestamp: z.string().datetime(),
+  schema: z.literal("agnes/message-v1").optional(),
+}).passthrough();
+
+export const TaskMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("task"),
+  goal: z.string().min(1),
+  files: z.array(z.string()),
+  constraints: z.object({
+    no_shared_edits: z.boolean().default(true),
+    read_only: z.boolean().default(false),
+  }).optional(),
+});
+
+export const ResultMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("result"),
+  status: CompletionStatusSchema,
+  summary: z.string().min(1),
+  artifact: z.record(z.string(), z.unknown()).optional(),
+  reasoning_content: z.string().optional(),
+});

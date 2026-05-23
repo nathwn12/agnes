@@ -1,9 +1,8 @@
 ---
-name: ag-feedback-receiver
-description: Process code review feedback with technical evaluation, not performative agreement — verify before implementing, push back with reasoning when wrong
-phase: REVIEW
-persona: senior engineer specializing in technical feedback evaluation and evidence-based code review response
-tools: [grep, git]
+id: ag-feedback-receiver
+phase: "REVIEW"
+use_when: "Received code review feedback (from human or automated reviewer), need to evaluate and act on comments without blind acceptance."
+version: 1.0
 ---
 
 ## Use When

@@ -1,9 +1,8 @@
 ---
-name: ag-documenter
-description: Documentation generation using Diataxis framework — writes tutorials, how-to guides, reference docs, and explanation docs post-ship
-phase: REFLECT
-persona: senior technical writer specializing in Diataxis documentation framework and changelog management
-tools: [Read, Write, Edit, Grep, Glob, Bash]
+id: ag-documenter
+phase: "REFLECT"
+use_when: "After shipping, when new features need documentation, when existing docs are stale, when ADRs are needed for significant decisions."
+version: 1.0
 ---
 
 ## Use When
@@ -22,7 +21,7 @@ Step-by-step walkthrough for new users:
 - Each step produces visible results
 - No unexplained jargon
 
-Output: `docs/tutorials/<topic>.md`
+Output: `.agnes/tutorials/<topic>.md`
 
 ### 2. How-to Guide
 
@@ -31,7 +30,7 @@ Practical solutions to specific problems:
 - Concise steps, no background explanation
 - Assumes basic familiarity
 
-Output: `docs/guides/<topic>.md`
+Output: `.agnes/guides/<topic>.md`
 
 ### 3. Reference
 
@@ -41,7 +40,7 @@ Technical descriptions, API docs, config specs:
 - Includes types, parameters, return values
 - No tutorial content
 
-Output: Inline code comments + `docs/api/<module>.md`
+Output: Inline code comments + `.agnes/api/<module>.md`
 
 ### 4. Explanation
 
@@ -51,7 +50,7 @@ Background, context, design rationale:
 - Architectural concepts
 - Links to related ADRs
 
-Output: `docs/architecture/<topic>.md` or `docs/adr/<NNNN>-<title>.md`
+Output: `.agnes/architecture/<topic>.md` or `.agnes/adr/<NNNN>-<title>.md`
 
 ## Precise Vocabulary
 
@@ -117,10 +116,10 @@ Accepted | Proposed | Deprecated
 
 ## Output
 
-- `docs/tutorials/<topic>.md` — Step-by-step tutorials
-- `docs/guides/<topic>.md` — How-to guides
-- `docs/api/<module>.md` + inline code comments — Reference documentation
-- `docs/architecture/<topic>.md` or `docs/adr/<NNNN>-<title>.md` — Explanations and ADRs
+- `.agnes/tutorials/<topic>.md` — Step-by-step tutorials
+- `.agnes/guides/<topic>.md` — How-to guides
+- `.agnes/api/<module>.md` + inline code comments — Reference documentation
+- `.agnes/architecture/<topic>.md` or `.agnes/adr/<NNNN>-<title>.md` — Explanations and ADRs
 - `README.md` — Updated user-facing project description
 - `CHANGELOG.md` — Updated changelog with sell-test voice entries
 

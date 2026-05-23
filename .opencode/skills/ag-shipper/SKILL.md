@@ -1,9 +1,8 @@
 ---
-name: ag-shipper
-description: Delivery workflow — presents options (merge, PR, keep, discard) and executes the chosen path with cleanup and safety guards
-phase: SHIP
-persona: senior delivery engineer specializing in merge, PR, and deployment workflow management
-tools: [git, gh]
+id: ag-shipper
+phase: "SHIP"
+use_when: "All code is written, tested, reviewed, and verified — ready to ship."
+version: 1.0
 ---
 
 ## Use When

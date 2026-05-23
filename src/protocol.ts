@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { TaskMessageSchema, ResultMessageSchema, BaseMessageSchema } from './schema.js';
 
 export type MessageType = 'task' | 'result' | 'error' | 'status' | 'completion';
 export type CompletionStatus = 'DONE' | 'DONE_WITH_CONCERNS' | 'NEEDS_CONTEXT' | 'BLOCKED';
@@ -148,6 +149,18 @@ export function parseAgnesMessage(text: string): AnyAgnesMessage | null {
 
   if (!parsed || typeof parsed !== 'object') return null;
   const obj = parsed as Record<string, unknown>;
+
+  // Strict path: validate against Zod schemas
+  if (obj.schema === 'agnes/message-v1') {
+    try {
+      if (obj.type === 'task') return TaskMessageSchema.parse(obj) as unknown as AnyAgnesMessage;
+      if (obj.type === 'result') return ResultMessageSchema.parse(obj) as unknown as AnyAgnesMessage;
+      return BaseMessageSchema.parse(obj) as unknown as AnyAgnesMessage;
+    } catch {
+      return null;
+    }
+  }
+
   if (typeof obj.type !== 'string' || !VALID_TYPES.has(obj.type)) return null;
 
   if (typeof obj.id !== 'string') return null;
@@ -191,11 +204,44 @@ export function isValidAgnesMessage(obj: unknown): obj is AnyAgnesMessage {
   return true;
 }
 
-export function serializeAgnesMessage(msg: AnyAgnesMessage): string {
-  const json = JSON.stringify(msg);
+export function serializeAgnesMessage(msg: object): string {
+  const m = msg as Record<string, unknown>;
+  const enhanced = {
+    ...m,
+    schema: 'agnes/message-v1',
+    id: m.id ?? randomUUID(),
+    timestamp: m.timestamp ?? new Date().toISOString(),
+  };
+  const json = JSON.stringify(enhanced);
   return `<agnes:message>${json}</agnes:message>`;
 }
 
 export function generateMessageId(): string {
   return randomUUID();
+}
+
+export function buildResultMessage(params: {
+  status: CompletionStatus;
+  summary: string;
+  reasoning?: string;
+}): string {
+  return serializeAgnesMessage({
+    type: 'result',
+    status: params.status,
+    summary: params.summary,
+    reasoning_content: params.reasoning,
+  });
+}
+
+export function buildTaskMessage(params: {
+  goal: string;
+  files?: string[];
+  constraints?: { no_shared_edits?: boolean; read_only?: boolean };
+}): string {
+  return serializeAgnesMessage({
+    type: 'task',
+    goal: params.goal,
+    files: params.files || [],
+    constraints: params.constraints || { no_shared_edits: true },
+  });
 }

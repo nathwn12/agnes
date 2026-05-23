@@ -1,9 +1,8 @@
 ---
-name: ag-init
-description: Initialize or update AGNES state files (.agnes/) and project AGENTS.md in a target project
-phase: init
-persona: senior project setup specialist specializing in AGNES state file initialization and project bootstrapping
-tools: [read, write, edit, glob, bash]
+id: ag-init
+phase: "SETUP"
+use_when: "You need to set up AGNES in a new project, or update an existing project's AGENTS.md and state files in .agnes/."
+version: 1.0
 ---
 
 ## Use When

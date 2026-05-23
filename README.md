@@ -1,7 +1,7 @@
 <h1 align="center">AGNES — OpenCode Native Plugin</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.10.2-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.11.0-blue" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
   <img src="https://img.shields.io/badge/skills-23-orange" alt="23 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
@@ -121,7 +121,7 @@ AGNES never writes code directly. Every task is delegated to a subagent or speci
 
 ## Architecture
 
-AGNES uses a typed message protocol for all internal communication:
+AGNES is organized into layered modules that handle protocol, state, runtime, and tool integration:
 
 | Layer | Module | Purpose |
 |-------|--------|---------|
@@ -129,8 +129,15 @@ AGNES uses a typed message protocol for all internal communication:
 | **Schema** | `src/schema.ts` | Self-describing skill contracts with JSON Schema validation |
 | **Middleware** | `src/middleware.ts` | Composable hook chain (before/after wave, before/after subagent) |
 | **Flow Control** | `src/flowcontrol.ts` | Ephemeral jump signals (retry, skip, blocked, next_wave, end) |
+| **Bootstrap** | `src/bootstrap.ts` | Agent injection — injects plan context, shell env, and DS V4 structured blocks into agent system prompt |
+| **Plugin** | `src/plugin.ts` | OpenCode entry point — plugin registration, auto-detects DeepSeek V4, injects interleaved reasoning config |
+| **Runtime** | `src/runtime.ts` | Core execution loop — wave cycle, subagent dispatch, retry with struggle detection, closed-loop orchestration |
+| **Shell** | `src/shell.ts` | Shell detection — identifies pwsh/bash/cmd and detects shell mismatch between host and workspace |
+| **State** | `src/state.ts` | Plan state machine — CRUD for plan-NNN.md, index.json, session tracking, retention pruning |
 | **Verification** | `src/verification.ts` | Structured gates with PASS/FAIL/SKIP status |
 | **Validation** | `src/validation.ts` | Allowlist-based message validation and injection protection |
+
+In v0.10+, AGNES adds a machine-optimized Structured Protocol: YAML plan files with JSON Schema validation (`.agnes/plans/plan-NNN.yaml`), typed `<agnes:message>` envelopes with DS V4 support, and Zod-based message validation. Bootstrap injection auto-detects DeepSeek V4 models to prevent the 400-on-turn-2 protocol bug.
 
 ---
 
@@ -140,10 +147,14 @@ AGNES tracks progress via `.agnes/` in any project:
 
 ```
 .agnes/
-├── index.json        Searchable plan index — read once, filter instantly
+├── index.json         Searchable plan index — read once, filter instantly
+├── sessions.json      Cross-session state tracking
+├── config.json        Per-project configuration overrides
+├── learnings/         Cross-session learnings memory
+├── specs/             Published specs and PRDs
 └── plans/
-    ├── plan-001.md       First immutable plan iteration
-    ├── plan-002.md       Second iteration (append-only, never edited)
+    ├── plan-001.md    First immutable plan iteration
+    ├── plan-002.md    Second iteration (append-only, never edited)
     └── ...
 ```
 
@@ -170,9 +181,10 @@ To override per-project, add a `retention` field to `index.json`:
 ## Development
 
 ```bash
-bun run bundle      # bundles to .opencode/plugins/agnes.js
-bun run typecheck   # type-safety gate
-bun test            # 330 tests across 11 suites
+bun run bundle        # bundles to .opencode/plugins/agnes.js
+bun run bundle:watch  # watch mode for development
+bun run typecheck     # type-safety gate
+bun test              # 371 tests across 12 suites
 ```
 
 ---

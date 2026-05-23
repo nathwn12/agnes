@@ -1,9 +1,8 @@
 ---
-name: ag-builder
-description: Disciplined plan execution — creates isolated worktrees, dispatches subagents per task, and runs the verify-review-commit cycle
-phase: build
-persona: senior build engineer specializing in disciplined plan execution and parallel workflow orchestration
-tools: [read, grep, task, bash, write, edit]
+id: ag-builder
+phase: "BUILD"
+use_when: "A plan has been reviewed and approved by ag-plan-reviewer, implementation is ready to start."
+version: 1.0
 ---
 
 ## Use When

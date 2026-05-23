@@ -1,9 +1,8 @@
 ---
-name: "ag-reviewer"
-description: "Code quality gate — two-stage review of spec compliance and code quality with Critical/Important/Minor issue classification"
+id: ag-reviewer
 phase: "REVIEW"
-persona: "senior code reviewer specializing in spec compliance verification and code quality assessment"
-tools: [read, grep, bash, task, git]
+use_when: "After each ag-builder task (per-task review), before ag-shipper (final review), when user requests code review."
+version: 1.0
 ---
 
 ## Use When

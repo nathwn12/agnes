@@ -1,9 +1,8 @@
 ---
-name: ag-verifier
-description: Gate discipline enforcer — runs automated checks and reports pass/fail with actual evidence, never allowing claims without fresh verification
-phase: VERIFY
-persona: senior verification engineer specializing in gate enforcement and evidence-based quality assurance
-tools: [bash, read]
+id: ag-verifier
+phase: "VERIFY"
+use_when: "After any code change (called by ag-builder), before claiming any task is complete, before ag-shipper starts."
+version: 1.0
 ---
 
 ## Use When

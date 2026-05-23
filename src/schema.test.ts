@@ -1,6 +1,101 @@
 import { describe, expect, test } from 'bun:test';
-import { typeMatches, validatePayload, SKILL_REGISTRY } from './schema.js';
+import { typeMatches, validatePayload, SKILL_REGISTRY, PlanSchema, PlanTaskSchema, PlanStatusSchema } from './schema.js';
 import type { SkillDescriptor } from './schema.js';
+
+describe('PlanSchema', () => {
+  const validPlan = {
+    schema: 'agnes/plan-v1',
+    id: 'plan-001',
+    version: 1,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    status: 'draft',
+    parent: null,
+    goal: 'Implement feature X',
+    check: 'All tests pass',
+    summary: 'Feature X implementation',
+    tasks: [],
+  };
+
+  test('valid plan passes validation', () => {
+    const result = PlanSchema.safeParse(validPlan);
+    expect(result.success).toBe(true);
+  });
+
+  test('invalid status values fail', () => {
+    const result = PlanSchema.safeParse({ ...validPlan, status: 'invalid_status' });
+    expect(result.success).toBe(false);
+  });
+
+  test('missing required field goal fails', () => {
+    const { goal, ...withoutGoal } = validPlan;
+    const result = PlanSchema.safeParse(withoutGoal);
+    expect(result.success).toBe(false);
+  });
+
+  test('missing required field id fails', () => {
+    const { id, ...withoutId } = validPlan;
+    const result = PlanSchema.safeParse(withoutId);
+    expect(result.success).toBe(false);
+  });
+
+  test('tasks with wrong ID pattern fail', () => {
+    const plan = {
+      ...validPlan,
+      tasks: [{ id: 'task-bad', summary: 'bad id task' }],
+    };
+    const result = PlanSchema.safeParse(plan);
+    expect(result.success).toBe(false);
+  });
+
+  test('tasks with valid ID pattern pass', () => {
+    const plan = {
+      ...validPlan,
+      tasks: [{ id: 'task-007', summary: 'Valid task' }],
+    };
+    const result = PlanSchema.safeParse(plan);
+    expect(result.success).toBe(true);
+  });
+
+  test('empty tasks array is valid', () => {
+    const plan = { ...validPlan, tasks: [] };
+    const result = PlanSchema.safeParse(plan);
+    expect(result.success).toBe(true);
+  });
+
+  test('plan with all fields round-trips through JSON', () => {
+    const plan = {
+      ...validPlan,
+      tasks: [
+        { id: 'task-001', summary: 'First task', status: 'pending', files: ['src/a.ts'], effort: '120m', depends_on: [] },
+        { id: 'task-002', summary: 'Second task', status: 'done', files: ['src/b.ts'], effort: '60m', depends_on: ['task-001'] },
+      ],
+      notes: ['Note 1', 'Note 2'],
+    };
+    const parsed = PlanSchema.parse(plan);
+    const json = JSON.parse(JSON.stringify(parsed));
+    const result = PlanSchema.safeParse(json);
+    expect(result.success).toBe(true);
+    expect(result.data!.tasks.length).toBe(2);
+    expect(result.data!.id).toBe('plan-001');
+  });
+
+  test('PlanStatusSchema only accepts valid status strings', () => {
+    const valid = PlanStatusSchema.safeParse('in_progress');
+    expect(valid.success).toBe(true);
+
+    const invalid = PlanStatusSchema.safeParse('unknown');
+    expect(invalid.success).toBe(false);
+  });
+
+  test('PlanTaskSchema validates effort format', () => {
+    const good = PlanTaskSchema.safeParse({ id: 'task-001', summary: 'task', effort: '30m' });
+    expect(good.success).toBe(true);
+
+    const bad = PlanTaskSchema.safeParse({ id: 'task-001', summary: 'task', effort: '2hours' });
+    expect(bad.success).toBe(false);
+  });
+});
 
 describe('typeMatches', () => {
   test('string type matches string value', () => {

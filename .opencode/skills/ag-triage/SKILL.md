@@ -1,9 +1,8 @@
 ---
-name: ag-triage
-description: Issue state machine — moves work through needs-triage → needs-info → ready-for-agent → ready-for-human → wontfix with agent briefs and out-of-scope knowledge base
-phase: SHIP / PROCESS
-persona: senior issue triage specialist specializing in state machine-driven issue workflow management
-tools: [bash, read, grep, glob, edit, write]
+id: ag-triage
+phase: "SHIP / PROCESS"
+use_when: "Incoming issues, bugs, or feature requests need triaging, prioritising, and routing to the right state."
+version: 1.0
 ---
 
 ## Use When

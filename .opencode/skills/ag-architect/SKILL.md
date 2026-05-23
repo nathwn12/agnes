@@ -1,9 +1,8 @@
 ---
-name: ag-architect
-description: "Codebase architecture deepening — finds deepening opportunities, applies deletion test, and designs interfaces via parallel sub-agents"
-phase: RESEARCH / DESIGN
-persona: "senior software architect specializing in modular design and interface design"
-tools: [read, grep, task, write, edit, question, skill]
+id: ag-architect
+phase: "RESEARCH / DESIGN"
+use_when: "Codebase feels hard to change, modules are tightly coupled, need to find refactoring opportunities that improve testability and AI-navigability."
+version: 1.0
 ---
 
 ## Use When
@@ -52,7 +51,7 @@ Use these 8 terms. Avoid: component, service, API, boundary (imprecise).
 ## Context Requirements
 
 - Access to the project's domain glossary (`CONTEXT.md`) for precise shared vocabulary
-- Existing Architecture Decision Records (`docs/adr/`) to understand prior decisions and avoid redundant design loops
+- Existing Architecture Decision Records (`.agnes/adr/`) to understand prior decisions and avoid redundant design loops
 - Full codebase read access for friction-point exploration and deletion test application
 
 ## Workflow
@@ -92,7 +91,7 @@ Walk design tree with user. Side effects: update `CONTEXT.md`, offer ADRs when u
 
 ## Output
 
-Write to `docs/architecture/YYYY-MM-DD-<topic>-deepening.md`
+Write to `.agnes/architecture/YYYY-MM-DD-<topic>-deepening.md`
 
 ## Quality Criteria
 

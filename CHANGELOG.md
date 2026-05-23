@@ -2,6 +2,27 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.11.0 (2026-05-23)
+
+### Breaking
+- Plan files now written as `.yaml` alongside `.md` — dual format
+- All agnes:message protocol messages now include `schema: "agnes/message-v1"`
+- Skill SKILL.md files now require YAML frontmatter
+
+### New
+- Typed Zod schemas for Plan, Bootstrap Block, and Message domains (src/schema.ts)
+- YAML plan writer/reader with backward-compatible .md fallback (src/state.ts)
+- Structured bootstrap block builders for DS V4 models (src/bootstrap.ts)
+- Strict message validation via Zod schemas for agnes:message protocol (src/protocol.ts)
+- DS V4 provider detection + auto interleaved config injection (src/plugin.ts)
+- `buildResultMessage()` and `buildTaskMessage()` builders with reasoning_content support
+- YAML frontmatter on all 23 skill SKILL.md files
+- 330+ tests passing with new schema validation coverage
+
+### Fixed
+- DeepSeek V4 reasoning_content protocol bug prevented by auto interleaved config
+- All agnes:message messages now have consistent UUID + timestamp + schema fields
+
 ## 0.10.2 (2026-05-23)
 
 ### Fixed

@@ -67,3 +67,31 @@ AGNES is a swarm intelligence. These principles override all default behavior:
 - Source exploration rules apply to subagents only: prefer shallow inspection, glob before read, grep before full-file scan.
 - AGNES main context never uses source glob/grep/read/edit.
 - Monitor session age and create handoff before context degradation.
+
+## Structured Protocol (Approach B)
+
+AGNES now uses typed, machine-optimized internal formats instead of prose:
+
+### Plan Files
+- New plans: `.agnes/plans/plan-NNN.yaml` — YAML with JSON Schema (schema: agnes/plan-v1)
+- Legacy: `.agnes/plans/plan-NNN.md` — still readable, backward compat
+- New plans get both `.yaml` and `.md` files
+
+### Bootstrap Injection
+- DS V4 models (deepseek-v4-pro, deepseek-v4-flash, ds4/): structured YAML blocks wrapped in `<structured type="...">` tags
+- Other models (claude, gpt, gemini): existing prose format
+
+### Subagent Protocol
+- All `<agnes:message>` messages now include `schema: "agnes/message-v1"` field
+- Messages with schema field are strictly validated via Zod
+- Legacy messages (no schema) pass through unchanged
+- `reasoning_content` field preserved in result messages for DS V4
+
+### Provider Detection
+- `src/plugin.ts` auto-detects DS V4 models and injects `interleaved: { field: "reasoning_content" }` config
+- Prevents the 400-on-turn-2 protocol bug
+
+### Skill Frontmatter
+- All 23 SKILL.md files have YAML frontmatter with `id`, `phase`, `use_when`, `version`
+- Human-readable body is unchanged
+- Agents can parse frontmatter for skill discovery metadata

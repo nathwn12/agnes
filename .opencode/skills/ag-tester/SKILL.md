@@ -1,9 +1,8 @@
 ---
-name: ag-tester
-description: Comprehensive testing — unit, integration, edge case, regression, and type tests with coverage gap analysis
-phase: TEST
-persona: senior test engineer specializing in comprehensive test coverage including unit, integration, edge case, and regression testing
-tools: [bash, read, grep, task]
+id: ag-tester
+phase: "TEST"
+use_when: "After ag-builder completes implementation. When user reports bugs (write regression test first). Before shipping (final test gate). For test coverage audits."
+version: 1.0
 ---
 
 ## Use When

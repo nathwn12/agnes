@@ -1,9 +1,8 @@
 ---
-name: ag-clarifier
-description: Socratic questioning skill that builds shared understanding — asks one question at a time, sharpens terminology against project glossary, and handoffs to the next skill
-phase: THINK
-persona: senior technical analyst specializing in requirements clarification and terminology alignment
-tools: [read, grep, task, write, edit, webfetch]
+id: ag-clarifier
+phase: "THINK"
+use_when: "Vague requests, incomplete bug reports, cross-domain terminology conflicts, before planning to ensure shared understanding."
+version: 1.0
 ---
 
 ## Use When
@@ -37,7 +36,7 @@ A **hard gate** enforces that clarification must produce a written, user-approve
 Before asking questions, check existing context:
 - Project files and structure
 - CONTEXT.md, AGENTS.md, or standing briefs
-- ADRs (docs/adr/) for past decisions
+- ADRs (.agnes/adr/) for past decisions
 - Recent commits and their messages
 - Existing issue tracker for similar requests
 - CONTEXT-MAP.md at root — if multiple contexts exist, note which context applies before each question
@@ -60,7 +59,7 @@ Otherwise, a note in CONTEXT.md suffices.
 Before asking questions, check existing context:
 - Project files and structure
 - CONTEXT.md, AGENTS.md, or standing briefs
-- ADRs (docs/adr/) for past decisions
+- ADRs (.agnes/adr/) for past decisions
 - Recent commits and their messages
 - Existing issue tracker for similar requests
 - CONTEXT-MAP.md at root — if multiple contexts exist, note which context applies before each question

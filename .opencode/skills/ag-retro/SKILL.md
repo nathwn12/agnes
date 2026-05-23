@@ -1,9 +1,8 @@
 ---
-name: ag-retro
-description: Engineering retrospective and learnings management — analyzes work patterns, captures wins and improvements, manages cross-session memory
-phase: reflect
-persona: senior engineering retrospectives specialist specializing in work pattern analysis and cross-session learning management
-tools: [git, grep, bash]
+id: ag-retro
+phase: "REFLECT"
+use_when: "End of sprint, feature shipped, or recurring issues noticed — reflect on work patterns and capture learnings."
+version: 1.0
 ---
 ## Use When
 
@@ -22,12 +21,12 @@ Systematic reflection on engineering work to capture learnings, identify improve
 - **Retrospective**: Structured reflection session analyzing completed work for patterns and improvements
 - **Learning**: Captured insight from past work, stored for future reference
 - **Velocity**: Rate of task or commit completion over a time period
-- **Cross-session memory**: Persistent knowledge that survives across AGNES sessions, housed in `docs/learnings/`
+- **Cross-session memory**: Persistent knowledge that survives across AGNES sessions, housed in `.agnes/learnings/`
 
 ## Context Requirements
 
 - Git repository with recent commit history (past 7 days minimum)
-- `docs/learnings/` directory exists for saving outputs
+- `.agnes/learnings/` directory exists for saving outputs
 - `AGENTS.md` for cross-session persistence export
 
 ## Workflow
@@ -67,11 +66,11 @@ Domain knowledge, project-specific gotchas:
 
 ### 5. Save Learnings
 
-Output retro document to `docs/learnings/YYYY-MM-DD-retro.md`.
+Output retro document to `.agnes/learnings/YYYY-MM-DD-retro.md`.
 
 ### 6. Manage Learnings
 
-- **Search existing learnings** before repeating a mistake: `grep -r "<topic>" docs/learnings/`
+- **Search existing learnings** before repeating a mistake: `grep -r "<topic>" .agnes/learnings/`
 - **Prune stale learnings**: read learnings older than 60 days; if superseded mark deprecated; if irrelevant archive or delete
 - **Export to AGENTS.md**: project-specific high-value learnings as bullet points; remove outdated before adding new
 
@@ -84,7 +83,7 @@ Output retro document to `docs/learnings/YYYY-MM-DD-retro.md`.
 
 ## Output
 
-Retro document at `docs/learnings/YYYY-MM-DD-retro.md` in the following format:
+Retro document at `.agnes/learnings/YYYY-MM-DD-retro.md` in the following format:
 
 ```markdown
 # Retro: YYYY-MM-DD

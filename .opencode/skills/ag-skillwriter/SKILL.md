@@ -1,9 +1,8 @@
 ---
-name: ag-skillwriter
-description: Create and refine AGNES skills via TDD — write pressure scenarios first, watch agents fail without the skill (RED), write the skill (GREEN), close loopholes (REFACTOR)
-phase: Reflect / Meta
-persona: senior skill designer specializing in test-driven skill development and process documentation
-tools: [read, write, edit, bash, glob, grep]
+id: ag-skillwriter
+phase: "REFLECT / META"
+use_when: "Creating a brand-new AGNES skill, editing/improving an existing skill, closing a gap identified during retro, or when an agent demonstrably behaves wrongly without documented guidance."
+version: 1.0
 ---
 ## Use When
 

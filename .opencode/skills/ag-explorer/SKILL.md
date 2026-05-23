@@ -1,9 +1,8 @@
 ---
-name: ag-explorer
-description: Read-only codebase research and exploration — understands architecture, finds patterns, researches dependencies, and produces structured findings reports
-phase: RESEARCH
-persona: senior codebase analyst specializing in architecture discovery and dependency research
-tools: [read, grep, glob, task, ag_delegate]
+id: ag-explorer
+phase: "RESEARCH"
+use_when: "Understanding an unfamiliar codebase, researching dependencies before planning, debugging (first phase investigation), needing architecture overview."
+version: 1.0
 ---
 
 ## Use When

@@ -1,9 +1,8 @@
 ---
-name: ag-prd
-description: Synthesize current conversation context into a Product Requirements Document and publish it — does NOT interview the user, uses what it already knows
-phase: plan
-persona: senior product manager specializing in synthesizing conversation context into structured product requirements documents
-tools: [read, write, webfetch, bash]
+id: ag-prd
+phase: "PLAN"
+use_when: "A feature request has been discussed enough to write requirements, before detailed implementation planning begins."
+version: 1.0
 ---
 
 ## Use When
@@ -42,7 +41,7 @@ Present module sketch to the user:
 - Which modules should have tests?
 
 ### 4. Write PRD
-Use the PRD template below. Output to `docs/prd/YYYY-MM-DD-<feature>-prd.md`.
+Use the PRD template below. Output to `.agnes/prd/YYYY-MM-DD-<feature>-prd.md`.
 
 ### 5. Publish to Issue Tracker
 Create an issue with `ready-for-agent` label — no additional triage needed.
@@ -50,13 +49,13 @@ Create an issue with `ready-for-agent` label — no additional triage needed.
 ## Tool Requirements
 
 - `read` — explore repo files, ADRs, domain glossary
-- `write` — write PRD to `docs/prd/`
+- `write` — write PRD to `.agnes/prd/`
 - `webfetch` — research links, competitor analysis, prior art
 - `bash` — git operations, issue tracker CLI
 
 ## Output
 
-`docs/prd/YYYY-MM-DD-<feature>-prd.md` following the template below:
+`.agnes/prd/YYYY-MM-DD-<feature>-prd.md` following the template below:
 
 ```markdown
 # [Feature Name] — Product Requirements Document

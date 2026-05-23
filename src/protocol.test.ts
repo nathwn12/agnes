@@ -4,12 +4,174 @@ import {
   serializeAgnesMessage,
   isValidAgnesMessage,
   generateMessageId,
+  buildResultMessage,
+  buildTaskMessage,
 } from './protocol.js';
 import type { CompletionMessage, ResultMessage, AnyAgnesMessage } from './protocol.js';
 
 function validTimestamp(): string {
   return new Date().toISOString();
 }
+
+describe('parseAgnesMessage (Zod strict path)', () => {
+  test('valid task message with schema field passes', () => {
+    const ts = validTimestamp();
+    const id = generateMessageId();
+    const msg = `<agnes:message>${JSON.stringify({
+      schema: 'agnes/message-v1',
+      type: 'task',
+      id,
+      timestamp: ts,
+      goal: 'Implement feature',
+      files: ['src/a.ts'],
+      constraints: { no_shared_edits: true, read_only: false },
+    })}</agnes:message>`;
+    const result = parseAgnesMessage(msg);
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe('task');
+  });
+
+  test('valid result message with reasoning_content passes', () => {
+    const ts = validTimestamp();
+    const id = generateMessageId();
+    const msg = `<agnes:message>${JSON.stringify({
+      schema: 'agnes/message-v1',
+      type: 'result',
+      id,
+      timestamp: ts,
+      status: 'DONE',
+      summary: 'Task completed successfully',
+      artifact: { output: 'test' },
+      reasoning_content: 'The agent analyzed the code and determined...',
+    })}</agnes:message>`;
+    const result = parseAgnesMessage(msg);
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe('result');
+    if (result && result.type === 'result') {
+      expect(result.artifact).toEqual({ output: 'test' });
+    }
+  });
+
+  test('missing required field "goal" in task with schema field fails', () => {
+    const ts = validTimestamp();
+    const id = generateMessageId();
+    const msg = `<agnes:message>${JSON.stringify({
+      schema: 'agnes/message-v1',
+      type: 'task',
+      id,
+      timestamp: ts,
+      files: [],
+    })}</agnes:message>`;
+    const result = parseAgnesMessage(msg);
+    expect(result).toBeNull();
+  });
+
+  test('missing required field "status" in result with schema field fails', () => {
+    const ts = validTimestamp();
+    const id = generateMessageId();
+    const msg = `<agnes:message>${JSON.stringify({
+      schema: 'agnes/message-v1',
+      type: 'result',
+      id,
+      timestamp: ts,
+      summary: 'incomplete',
+    })}</agnes:message>`;
+    const result = parseAgnesMessage(msg);
+    expect(result).toBeNull();
+  });
+
+  test('legacy messages (no schema field) pass through without Zod validation', () => {
+    const ts = validTimestamp();
+    const id = generateMessageId();
+    const msg = `<agnes:message>${JSON.stringify({
+      type: 'task',
+      id,
+      timestamp: ts,
+      skill: 'builder',
+      payload: { action: 'test' },
+    })}</agnes:message>`;
+    const result = parseAgnesMessage(msg);
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe('task');
+  });
+
+  test('invalid JSON returns null', () => {
+    expect(parseAgnesMessage('<agnes:message>{broken}</agnes:message>')).toBeNull();
+  });
+
+  test('invalid message type with schema field returns null', () => {
+    const ts = validTimestamp();
+    const id = generateMessageId();
+    const msg = `<agnes:message>${JSON.stringify({
+      schema: 'agnes/message-v1',
+      type: 'unknown_type',
+      id,
+      timestamp: ts,
+    })}</agnes:message>`;
+    const result = parseAgnesMessage(msg);
+    expect(result).toBeNull();
+  });
+
+  test('invalid completion status with schema field returns null', () => {
+    const ts = validTimestamp();
+    const id = generateMessageId();
+    const msg = `<agnes:message>${JSON.stringify({
+      schema: 'agnes/message-v1',
+      type: 'result',
+      id,
+      timestamp: ts,
+      status: 'INVALID_STATUS',
+      summary: 'test',
+    })}</agnes:message>`;
+    const result = parseAgnesMessage(msg);
+    expect(result).toBeNull();
+  });
+});
+
+describe('buildResultMessage', () => {
+  test('builds valid result message with reasoning', () => {
+    const result = buildResultMessage({
+      status: 'DONE',
+      summary: 'All good',
+      reasoning: 'The agent concluded correctly',
+    });
+    expect(result).toContain('<agnes:message>');
+    expect(result).toContain('"status":"DONE"');
+    expect(result).toContain('"reasoning_content":"The agent concluded correctly"');
+    expect(result).toContain('"schema":"agnes/message-v1"');
+  });
+
+  test('builds valid result message without reasoning', () => {
+    const result = buildResultMessage({
+      status: 'BLOCKED',
+      summary: 'Blocked by dependency',
+    });
+    expect(result).toContain('"status":"BLOCKED"');
+    expect(result).not.toContain('reasoning_content');
+  });
+});
+
+describe('buildTaskMessage', () => {
+  test('builds valid task message with files and constraints', () => {
+    const result = buildTaskMessage({
+      goal: 'Refactor module',
+      files: ['src/module.ts'],
+      constraints: { no_shared_edits: true, read_only: false },
+    });
+    expect(result).toContain('<agnes:message>');
+    expect(result).toContain('"goal":"Refactor module"');
+    expect(result).toContain('"files":["src/module.ts"]');
+    expect(result).toContain('"schema":"agnes/message-v1"');
+  });
+
+  test('builds valid task message with defaults', () => {
+    const result = buildTaskMessage({ goal: 'Simple task' });
+    const parsed = JSON.parse(result.replace(/<\/?agnes:message>/g, ''));
+    expect(parsed.goal).toBe('Simple task');
+    expect(parsed.files).toEqual([]);
+    expect(parsed.constraints).toEqual({ no_shared_edits: true });
+  });
+});
 
 describe('parseAgnesMessage', () => {
   test('parses valid completion JSON inside agnes:message tags', () => {
@@ -191,9 +353,10 @@ describe('serializeAgnesMessage', () => {
   });
 
   test('output can be round-tripped through parseAgnesMessage', () => {
+    const id = generateMessageId();
     const msg: CompletionMessage = {
       type: 'completion',
-      id: 'abc',
+      id,
       timestamp: validTimestamp(),
       status: 'DONE',
       summary: 'round trip test',
@@ -206,9 +369,10 @@ describe('serializeAgnesMessage', () => {
   });
 
   test('serializes DONE_WITH_CONCERNS status', () => {
+    const id = generateMessageId();
     const msg: CompletionMessage = {
       type: 'completion',
-      id: 'abc',
+      id,
       timestamp: validTimestamp(),
       status: 'DONE_WITH_CONCERNS',
       summary: 'mostly done',

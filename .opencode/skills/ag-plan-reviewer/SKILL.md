@@ -1,9 +1,8 @@
 ---
-name: ag-plan-reviewer
-description: Multi-lens plan quality gate — reviews plans through CEO, Engineering, Design, and DX modes before implementation begins
-phase: PLAN REVIEW
-persona: senior plan reviewer specializing in multi-lens quality assessment across CEO, Engineering, Design, and DX perspectives
-tools: [read, write, edit, question, bash]
+id: ag-plan-reviewer
+phase: "PLAN REVIEW"
+use_when: "After ag-planner produces a spec and implementation plan, before ag-builder begins any implementation work."
+version: 1.0
 ---
 
 ## Use When
