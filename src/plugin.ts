@@ -4,7 +4,6 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   getBootstrapContent,
-  getStaticBootstrapContent,
   buildBootstrap,
   getBootstrapPackageInfo,
 } from './bootstrap.js';
@@ -36,8 +35,8 @@ export function isDeepSeekV4(modelName: string): boolean {
 }
 
 function buildStructuredBootstrap(): string {
-  const staticContent = getStaticBootstrapContent();
-  if (!staticContent) return '';
+  const proseBootstrap = getBootstrapContent();
+  if (!proseBootstrap) return '';
 
   const pkg = getBootstrapPackageInfo();
   const rules: OrchestratorRules = {
@@ -79,7 +78,7 @@ function buildStructuredBootstrap(): string {
     },
   });
 
-  return `${staticContent}\n\n## Structured Protocol Blocks\n${structuredBlocks}\n`;
+  return proseBootstrap + '\n\n## Structured Protocol Blocks\n' + structuredBlocks + '\n';
 }
 
 export const AgnesPlugin: Plugin = async () => {

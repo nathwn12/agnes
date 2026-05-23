@@ -91,13 +91,21 @@ export function detectShell(): ShellEnvironment {
     ? 'powershell'
     : 'cmd';
 
+  let antiPatterns = ANTI_PATTERNS[shellType];
+  let guidance = GUIDANCE[shellType];
+
+  if ((shellType === 'pwsh' || shellType === 'powershell') && platform !== 'win32') {
+    antiPatterns = [];
+    guidance = `You are running on PowerShell 7+ on a Unix system. Use standard POSIX/bash commands. PowerShell cmdlets like Get-Content are available but standard Unix tools (cat, echo, tee) are preferred for cross-platform compatibility.`;
+  }
+
   _cachedShell = {
     shellType,
     preferredSyntax,
     isWindows,
     isPowerShell,
-    antiPatterns: ANTI_PATTERNS[shellType],
-    guidance: GUIDANCE[shellType],
+    antiPatterns,
+    guidance,
     source,
   };
 
