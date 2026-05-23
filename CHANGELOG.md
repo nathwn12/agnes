@@ -2,6 +2,29 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.9.1 (2026-05-23)
+
+### Added
+
+- **Shell detection system**: `src/shell.ts` detects shell type via `MSYSTEM` (Git Bash), `PSModulePath` (PowerShell), `ComSpec` (CMD), `SHELL` (WSL/Unix), with platform-aware fallback — cached once per process. (verified: 33 tests)
+- **Shell-mismatch verification gate**: `src/shell-mismatch.ts` scans subagent output for PowerShell anti-patterns (Remove-Item, Get-ChildItem, etc.) when running on Git Bash/WSL/Unix — non-blocking, advisory only. (verified: 33/33 shell tests pass)
+- **Shell context injection**: Bootstrap now includes `<SHELL_ENVIRONMENT>` block with shell type, preferred syntax, and per-shell anti-pattern guidance. (verified: `bun test`)
+- **StruggleMetrics shellType field**: `shellType?: string` on struggle metrics, carried forward across retries, displayed in plan summaries for debugging shell-related failures. (verified: `bun run typecheck`)
+
+### Changed
+
+- **Plugin startup**: `detectShell()` called during config handler to warm cache before first message transform. (verified: `src/plugin.ts`)
+- **Runtime execution context**: `buildExecutionContext()` now includes shell type, preferred syntax, and shell guidance in the context object. (verified: `src/runtime.ts`)
+- **Verification gates**: `getDefaultGates()` includes `shellMismatchGate` — ready for pipeline wiring. (verified: `src/verification.ts`)
+
+### Tests
+
+- **33 new tests, 125 new assertions**: Shell detection (all variants, caching, reset), anti-pattern scanning, structure validation — 330 total tests, 856 expect calls across 11 files. (verified: `bun test`)
+
+### Fixed
+
+- **Cleanup**: 4 minor code quality items from ag-reviewer — unknown shell guidance filled, anti-pattern list expanded (7 new commands), `_lastOutput` fallback to `process.env.AGNES_LAST_OUTPUT`, `unknown` shell type added to mismatch check. (verified: ag-reviewer PASS)
+
 ## 0.9.0 (2026-05-22)
 
 ### Fixed

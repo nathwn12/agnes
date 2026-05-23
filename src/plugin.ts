@@ -10,6 +10,7 @@ import {
 import { getPlanGate, buildExecutionContext } from './runtime.js';
 import { serializeAgnesMessage } from './protocol.js';
 import { SKILL_REGISTRY } from './schema.js';
+import { detectShell } from './shell.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const skillsDir = path.resolve(__dirname, '../skills');
@@ -17,6 +18,7 @@ const skillsDir = path.resolve(__dirname, '../skills');
 export const AgnesPlugin: Plugin = async () => {
   return {
     config: async (config: Record<string, unknown>) => {
+      detectShell();
       const configObj = config as { skills?: { paths?: string[] } };
       const paths = configObj.skills?.paths ? [...configObj.skills.paths] : [];
       if (!paths.includes(skillsDir)) {

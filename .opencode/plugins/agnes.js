@@ -6,7 +6,7 @@ import { fileURLToPath as fileURLToPath2 } from "url";
 
 // src/bootstrap.ts
 import * as fs2 from "fs";
-import * as os2 from "os";
+import * as os3 from "os";
 import * as path2 from "path";
 import { fileURLToPath } from "url";
 
@@ -281,6 +281,8 @@ Attempts: ${entry.attempts}`;
       parts.push(`repeated-errors:${errCount}`);
     if (s.lastPromiseTag)
       parts.push(`last-promise:${s.lastPromiseTag}`);
+    if (s.shellType)
+      parts.push(`shell:${s.shellType}`);
     if (parts.length > 0)
       line += `
 Struggle: ${parts.join(", ")}`;
@@ -296,12 +298,78 @@ function freshStruggleMetrics() {
   };
 }
 
+// src/shell.ts
+import * as os2 from "os";
+var ANTI_PATTERNS = {
+  "git-bash": ["Remove-Item", "Get-ChildItem", "New-Item", "Set-Content", "PowerShell", "powershell", "Get-Content", "Out-File", "Move-Item", "Copy-Item", "Write-Output", "Invoke-WebRequest", "ForEach-Object", "Where-Object", "Select-Object"],
+  powershell: [],
+  cmd: [],
+  wsl: ["Remove-Item", "Get-ChildItem"],
+  unix: [],
+  unknown: []
+};
+var GUIDANCE = {
+  "git-bash": "You are running on Git Bash (MSYS2/MinGW). Use POSIX/bash commands (ls, rm, mkdir, cat, echo). NEVER use PowerShell commands like Remove-Item, Get-ChildItem, or Set-Content.",
+  powershell: "You are running on Windows PowerShell. Use PowerShell cmdlets and syntax.",
+  cmd: "You are running on Windows Command Prompt (CMD). Use cmd.exe syntax.",
+  wsl: "You are running on WSL (Windows Subsystem for Linux). Use bash commands.",
+  unix: "You are running on a Unix/Linux/macOS shell. Use standard POSIX/bash commands.",
+  unknown: "Shell type could not be determined. Use standard POSIX/bash commands."
+};
+var _cachedShell = null;
+function detectShell() {
+  if (_cachedShell)
+    return _cachedShell;
+  const env = process.env;
+  const platform3 = os2.platform();
+  const isWindows = platform3 === "win32";
+  let shellType;
+  let source;
+  if (env.MSYSTEM) {
+    shellType = "git-bash";
+    source = "MSYSTEM";
+  } else if (env.PSModulePath && !env.MSYSTEM) {
+    shellType = isWindows ? "powershell" : "unknown";
+    source = "PSModulePath";
+  } else if (env.ComSpec?.toLowerCase().includes("cmd.exe") && !env.SHELL?.toLowerCase().includes("bash")) {
+    shellType = "cmd";
+    source = "ComSpec";
+  } else if (env.SHELL) {
+    const shellLower = env.SHELL.toLowerCase();
+    if (shellLower.includes("bash") || shellLower.includes("zsh") || shellLower.includes("sh")) {
+      shellType = isWindows ? "wsl" : "unix";
+      source = "SHELL";
+    } else {
+      shellType = "unknown";
+      source = "SHELL";
+    }
+  } else if (isWindows) {
+    shellType = "powershell";
+    source = "platform";
+  } else {
+    shellType = "unix";
+    source = "platform";
+  }
+  const isPowerShell = shellType === "powershell";
+  const preferredSyntax = shellType === "git-bash" || shellType === "wsl" || shellType === "unix" ? "bash" : shellType === "powershell" ? "powershell" : "cmd";
+  _cachedShell = {
+    shellType,
+    preferredSyntax,
+    isWindows,
+    isPowerShell,
+    antiPatterns: ANTI_PATTERNS[shellType],
+    guidance: GUIDANCE[shellType],
+    source
+  };
+  return _cachedShell;
+}
+
 // src/bootstrap.ts
 var __dirname2 = path2.dirname(fileURLToPath(import.meta.url));
 var packageRoot = path2.resolve(__dirname2, "../..");
 var packageJsonPath = path2.join(packageRoot, "package.json");
 var skillsDir = path2.resolve(__dirname2, "../skills");
-var opencodePackageCache = path2.join(os2.homedir(), ".cache", "opencode", "packages");
+var opencodePackageCache = path2.join(os3.homedir(), ".cache", "opencode", "packages");
 function extractFrontmatter(content) {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
   if (!match)
@@ -375,11 +443,17 @@ function getBootstrapContent() {
   if (!staticContent)
     return null;
   const planSummary = buildPlanSummary(process.cwd());
+  const shell = detectShell();
   return `${staticContent}
 
 <AGNES_PLAN_STATE>
 ${planSummary}
-</AGNES_PLAN_STATE>`;
+</AGNES_PLAN_STATE>
+
+<SHELL_ENVIRONMENT>
+${shell.guidance}
+Anti-pattern commands to avoid: ${shell.antiPatterns.join(", ")}
+</SHELL_ENVIRONMENT>`;
 }
 
 // src/runtime.ts
@@ -463,6 +537,9 @@ function buildExecutionContext(entry) {
   if (entry.attempts !== undefined && entry.attempts > 0) {
     lines.push(`Current attempt: ${entry.attempts + 1}`);
   }
+  const shell = detectShell();
+  lines.push(`Shell: ${shell.shellType} (preferred syntax: ${shell.preferredSyntax})`);
+  lines.push(`Shell guidance: ${shell.guidance}`);
   if (entry.struggle) {
     const s = entry.struggle;
     const warnings = [];
@@ -565,6 +642,7 @@ var skillsDir2 = path4.resolve(__dirname3, "../skills");
 var AgnesPlugin = async () => {
   return {
     config: async (config) => {
+      detectShell();
       const configObj = config;
       const paths = configObj.skills?.paths ? [...configObj.skills.paths] : [];
       if (!paths.includes(skillsDir2)) {

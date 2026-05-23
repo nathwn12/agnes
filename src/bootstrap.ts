@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPlanSummary } from './state.js';
+import { detectShell } from './shell.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, '../..');
@@ -99,9 +100,16 @@ export function getBootstrapContent(): string | null {
 
   const planSummary = buildPlanSummary(process.cwd());
 
+  const shell = detectShell();
+
   return `${staticContent}
 
 <AGNES_PLAN_STATE>
 ${planSummary}
-</AGNES_PLAN_STATE>`;
+</AGNES_PLAN_STATE>
+
+<SHELL_ENVIRONMENT>
+${shell.guidance}
+Anti-pattern commands to avoid: ${shell.antiPatterns.join(', ')}
+</SHELL_ENVIRONMENT>`;
 }

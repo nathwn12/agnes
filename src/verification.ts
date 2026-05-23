@@ -1,3 +1,6 @@
+import { shellMismatchGate } from './shell-mismatch.js';
+export { shellMismatchGate } from './shell-mismatch.js';
+
 export type GateStatus = 'PASS' | 'FAIL' | 'SKIP';
 
 export interface GateResult {
@@ -175,4 +178,8 @@ export const stateFileIntegrityGate: Gate = {
 /** True if all results have PASS or SKIP status, false otherwise. */
 export function allGatesPassed(results: GateResult[]): boolean {
   return results.every(r => r.status === 'PASS' || r.status === 'SKIP');
+}
+
+export function getDefaultGates(): Gate[] {
+  return [promiseComplianceGate, planExistsGate, stateFileIntegrityGate, shellMismatchGate];
 }
