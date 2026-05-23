@@ -21967,6 +21967,13 @@ function buildOrchestratorBlock(rules) {
     }
   }));
 }
+function buildNamedRolesBlock(rules) {
+  return wrapStructured("named_roles", $stringify({
+    type: "named_roles",
+    roles: rules.namedRoles,
+    answer_directly: rules.answerDirectly
+  }));
+}
 function buildPlanStateBlock(index) {
   const plan = getLatestActivePlan(index.projectDir);
   if (!plan) {
@@ -22092,6 +22099,7 @@ function buildBootstrap(context) {
   const blocks = [
     buildRuntimeBlock(context.pkg),
     buildOrchestratorBlock(context.rules),
+    buildNamedRolesBlock(context.rules),
     ...context.index ? [buildPlanStateBlock(context.index)] : [],
     buildShellBlock(context.shell),
     buildExecutionContextBlock(context.exec),
@@ -22275,7 +22283,15 @@ function buildStructuredBootstrap() {
     verify: true,
     noSharedEdits: true,
     freshSubagents: true,
-    scarcity: true
+    scarcity: true,
+    answerDirectly: true,
+    namedRoles: {
+      executor: "Runs commands, tests, builds. Returns compact pass/fail + file refs. Never suggests fixes.",
+      explorer: "Codebase research only. Glob \u2192 grep \u2192 selective read. Read-only. Never edits.",
+      planner: "Creates/refreshes plan-NNN.yaml from task requirements using planner skill.",
+      builder: "Implements one sub-task from plan. Delegates bash to executor and review to reviewer.",
+      reviewer: "Reviews diff against sub-task scope using reviewer skill. Writes findings."
+    }
   };
   let index = null;
   try {

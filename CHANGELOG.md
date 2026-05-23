@@ -2,6 +2,13 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.13.2 (2026-05-24)
+
+### Changed
+
+- **Release maintenance**: Bumped package metadata and user-facing version badges to `0.13.2`, then rebuilt the bundled plugin so the published artifact stays aligned.
+- **AGNES strengthening follow-up**: Incorporated the latest orchestration, protocol, and state-hygiene improvements from the prior release cycle at a high level, with no user-facing behavior changes in this bump.
+
 ## 0.13.0 (2026-05-24)
 
 ### Breaking
