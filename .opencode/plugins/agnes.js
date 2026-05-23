@@ -21891,7 +21891,8 @@ function getBootstrapContent() {
     return null;
   const planSummary = buildPlanSummary(process.cwd());
   const shell = detectShell();
-  return `${staticContent}
+  const skillRegistryText = buildSkillRegistryText();
+  let content = `${staticContent}
 
 <AGNES_PLAN_STATE>
 ${planSummary}
@@ -21901,6 +21902,13 @@ ${planSummary}
 ${shell.guidance}
 Anti-pattern commands to avoid: ${shell.antiPatterns.join(", ")}
 </SHELL_ENVIRONMENT>`;
+  if (skillRegistryText) {
+    content += `
+
+${skillRegistryText}
+`;
+  }
+  return content;
 }
 function wrapStructured(type, inner) {
   return `<structured type="${type}">
@@ -21975,6 +21983,73 @@ function buildProtocolBlock() {
     types: ["task", "result", "error", "status", "completion"]
   }));
 }
+var SKILL_SUGGEST_NEXT = {
+  "ag-clarifier": ["ag-explorer", "ag-planner"],
+  "ag-explorer": ["ag-architect", "ag-planner"],
+  "ag-architect": ["ag-planner"],
+  "ag-planner": ["ag-plan-reviewer"],
+  "ag-plan-reviewer": ["ag-tdd", "ag-builder"],
+  "ag-prd": ["ag-planner"],
+  "ag-prototype": ["ag-tdd", "ag-builder"],
+  "ag-builder": ["ag-tester", "ag-verifier"],
+  "ag-tdd": ["ag-verifier"],
+  "ag-tester": ["ag-reviewer"],
+  "ag-verifier": ["ag-reviewer", "ag-shipper"],
+  "ag-reviewer": ["ag-documenter", "ag-shipper"],
+  "ag-feedback-receiver": ["ag-builder", "ag-debugger"],
+  "ag-debugger": ["ag-verifier"],
+  "ag-griller": ["ag-debugger", "ag-verifier"],
+  "ag-shipper": ["ag-documenter", "ag-retro"],
+  "ag-triage": ["ag-planner", "ag-debugger"],
+  "ag-documenter": ["ag-retro"],
+  "ag-retro": [],
+  "ag-skillwriter": ["ag-tdd"],
+  "ag-brandkit": ["ag-prototype", "ag-builder"],
+  "ag-init": ["ag-clarifier", "ag-explorer"]
+};
+function readSkillRegistry() {
+  if (!fs2.existsSync(skillsDir))
+    return [];
+  const entries = fs2.readdirSync(skillsDir, { withFileTypes: true });
+  const skills = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory())
+      continue;
+    const sp = path2.join(skillsDir, entry.name, "SKILL.md");
+    if (!fs2.existsSync(sp))
+      continue;
+    try {
+      const raw = fs2.readFileSync(sp, "utf8");
+      const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+      if (!m)
+        continue;
+      const fm = $parse(m[1]);
+      if (typeof fm.id !== "string" || typeof fm.phase !== "string")
+        continue;
+      skills.push({ id: fm.id, phase: fm.phase.toUpperCase(), suggest_next: SKILL_SUGGEST_NEXT[fm.id] || [] });
+    } catch {}
+  }
+  return skills.sort((a, b) => a.id.localeCompare(b.id));
+}
+function buildSkillRegistryBlock() {
+  const skills = readSkillRegistry();
+  if (!skills.length)
+    return "";
+  return wrapStructured("skill_registry", $stringify({ type: "skill_registry", skills }));
+}
+function buildSkillRegistryText() {
+  const skills = readSkillRegistry();
+  if (!skills.length)
+    return "";
+  const lines = [`### Skill Registry (next-skill suggestions)
+`];
+  for (const s of skills) {
+    if (s.suggest_next.length)
+      lines.push(`- **${s.id}** (${s.phase}) \u2192 next: ${s.suggest_next.join(", ")}`);
+  }
+  return lines.join(`
+`);
+}
 function getBootstrapPackageInfo() {
   return {
     version: getPackageVersion(),
@@ -21990,9 +22065,10 @@ function buildBootstrap(context) {
     ...context.index ? [buildPlanStateBlock(context.index)] : [],
     buildShellBlock(context.shell),
     buildExecutionContextBlock(context.exec),
-    buildProtocolBlock()
+    buildProtocolBlock(),
+    buildSkillRegistryBlock()
   ];
-  return blocks.join(`
+  return blocks.filter(Boolean).join(`
 `);
 }
 

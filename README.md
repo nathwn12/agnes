@@ -1,7 +1,7 @@
 <h1 align="center">AGNES — OpenCode Native Plugin</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.11.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.12.0-blue" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
   <img src="https://img.shields.io/badge/skills-23-orange" alt="23 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
@@ -36,56 +36,61 @@ Restart OpenCode. AGNES injects its bootstrap and registers all 23 skills automa
 
 ## Pipeline
 
-Work flows left to right through 10 phases. When blocked, loops back.
+AGNES routes every task through a default chronological pipeline. The flow is linear by default — each phase feeds into the next. Side skills (Design, Debug, Process, Meta) fire on demand when their trigger conditions are met.
 
-```
-Setup → Clarify → Research → Architect → Design/Plan → Build → Verify/Review → Debug → Ship → Reflect
-```
+### Default Flow (chronological order)
 
-| Phase | Skills | Purpose |
-|-------|--------|---------|
-| **Setup** | ag-init | Bootstrap `.agnes/` and `AGENTS.md` in a project |
-| **Clarify** | ag-clarifier | Socratic questioning to resolve vague requests |
-| **Research** | ag-explorer | Read-only codebase exploration & dependency tracing |
-| **Architect** | ag-architect | Find deepening opportunities, Design It Twice pattern |
-| **Design/Plan** | ag-brandkit, ag-prototype, ag-prd, ag-planner, ag-plan-reviewer | Design before code. Plans before builds. |
-| **Build** | ag-builder, ag-tdd, ag-tester | Disciplined execution in isolated worktrees |
-| **Verify/Review** | ag-verifier, ag-reviewer, ag-feedback-receiver | Iron Law: no claims without fresh verification |
-| **Debug** | ag-debugger, ag-griller | Collaborative + adversarial systematic debugging |
-| **Ship** | ag-triage, ag-shipper | Issue state machine + merge/PR/discard |
-| **Reflect** | ag-documenter, ag-retro, ag-skillwriter | Docs, learnings, meta-skill creation |
+1. **SETUP** → `ag-init`
+2. **CLARIFY** → `ag-clarifier` ← **GATE:** spec must be approved
+3. **RESEARCH** → `ag-explorer` → `ag-architect` (optional deepening)
+4. **PLAN** → `ag-planner` → `ag-plan-reviewer` ← **GATE:** plan must be approved
+5. **BUILD** → `ag-tdd` (new features) or `ag-builder` (plan execution) → `ag-tester` (coverage)
+6. **VERIFY** → `ag-verifier` → `ag-reviewer` ← **GATE:** all checks must pass
+7. **SHIP** → `ag-shipper` (PR → merge)
+8. **REFLECT** → `ag-documenter` → `ag-retro`
+
+**Gates** block progression until they pass. AGNES will NOT skip a gate.
+
+### Side Branches (fire when trigger condition is met)
+
+| Branch | Entry Trigger | Skills Used |
+|--------|--------------|-------------|
+| **Design** | New UI project, need brand identity | ag-brandkit → ag-prototype → ag-prd |
+| **Debug** | Bug report, test failure, crash | ag-debugger → ag-griller (if ag-debugger fails) |
+| **Process** | Incoming issue needs triage | ag-triage |
+| **Meta** | AGNES is missing a capability | ag-skillwriter |
 
 ---
 
 ## Skills
 
-All 23 skills, their trigger conditions, and what they produce:
+All 23 skills with concrete trigger conditions and outputs. "When to Use" is written for both beginners (what you'll be feeling/experiencing) and advanced users (the precise boundary conditions).
 
-| Skill | Phase | When to Use | Output |
-|-------|-------|-------------|--------|
-| **ag-orchestrator** | META | Routing, delegation, parallelism | Delegation waves, goal/plan state |
-| **ag-init** | Setup | First run in a project, refresh state files | `.agnes/` + `AGENTS.md` |
-| **ag-clarifier** | Think | Vague requests, terminology conflicts | Written, user-approved spec |
-| **ag-explorer** | Research | Need to understand codebase, find patterns | Structured findings report |
-| **ag-architect** | Research / Design | Codebase feels hard to change | Interface designs, seam map |
-| **ag-brandkit** | Design | Visual design, brand identity, mockups | Design assets, brand guidelines |
-| **ag-prototype** | Design / Build | Answer one question with throwaway code | Runnable prototype + answer |
-| **ag-prd** | Plan | Requirements are clear enough for PRD | Published PRD with stories |
-| **ag-planner** | Plan | Spec is approved, need tasks | Bite-sized implementation checklist |
-| **ag-plan-reviewer** | Plan Review | Plan is written, needs quality gate | CEO/Eng/Design/DX review |
-| **ag-builder** | Build | Plan approved, time to execute | Verified, reviewed commits |
-| **ag-tdd** | Test / Build | Building features from scratch | Red-green-refactor vertical slices |
-| **ag-tester** | Test | Need comprehensive test coverage | Tests + coverage gap analysis |
-| **ag-verifier** | Verify | Need fresh verification before claiming | Pass/fail with evidence |
-| **ag-reviewer** | Review | Code is written, needs review | Spec compliance + quality issues |
-| **ag-feedback-receiver** | Review | Received review feedback | Processed, implemented changes |
-| **ag-debugger** | Debug | Need collaborative investigation | Root cause + regression test |
-| **ag-griller** | Debug | Complex multi-file bugs, 3-fail rule | Architecture finding or fix |
-| **ag-triage** | Process | Incoming issues need routing | State-machine triage |
-| **ag-shipper** | Ship | Code is ready to deliver | Merged PR or discarded branch |
-| **ag-documenter** | Reflect | Post-ship docs, changelogs | Diataxis docs, ADRs |
-| **ag-retro** | Reflect | Sprint end, pattern noticed | Learnings document |
-| **ag-skillwriter** | Meta | Gap in AGNES itself to fill | New or refined skill via TDD |
+| Skill | Phase | When to Use | What It Produces |
+|-------|-------|-------------|------------------|
+| **ag-orchestrator** | META | *Always active.* Coordinates all other skills, delegates work to subagents, manages parallel execution, tracks session state. | Delegation waves, goal/plan state, subagent results |
+| **ag-init** | SETUP | First time running AGNES in a project. Or existing state files are corrupted/missing. | `.agnes/` directory with `index.json` + `AGENTS.md` |
+| **ag-clarifier** | THINK | Request is vague ("make it better"), ambiguous ("fix the issue"), or has terminology conflicts between team members. Sharpens until executable. | Written, user-approved specification |
+| **ag-explorer** | RESEARCH | Need to understand unfamiliar code before making changes. Or need to find where a thing lives, how data flows, what conventions exist. | Structured findings report: file map, dependency chains, pattern analysis |
+| **ag-architect** | RESEARCH / DESIGN | Codebase feels hard to change — adding features requires touching 5 files, tests are brittle, module boundaries are blurry. Finds deepening opportunities. | Seam map, interface proposals, Design It Twice alternatives |
+| **ag-brandkit** | DESIGN | Starting a UI-heavy project. Need logo, color palette, typography, design system, or brand guidelines. Not for backend-only work. | Brand assets, color system, typography scale, component mockups |
+| **ag-prototype** | DESIGN / BUILD | Need to validate a design decision with throwaway code. Not sure if the state machine is right, or if that UX pattern works. | Runnable prototype + documented answer (discarded after) |
+| **ag-prd** | PLAN | Requirements are clear but need formal capture. Stakeholders need a documented PRD with stories, acceptance criteria, and priorities. | Published PRD with user stories, acceptance criteria, priority matrix |
+| **ag-planner** | PLAN | Spec or PRD is approved. Need to break it into actionable implementation steps with dependencies and ordering. | Bite-sized implementation checklist (plan-NNN.md) |
+| **ag-plan-reviewer** | PLAN REVIEW | Planner produced a plan. Need a quality gate before any implementation starts. Applies four lenses: CEO (business value), Eng (architecture), Design (UX), DX (developer experience). | Score per lens + verdict: Approve / Revise / Reject |
+| **ag-builder** | BUILD | Plan is approved and ready to execute. Has detailed tasks with clear boundaries. Dispatches subagent swarms in isolated worktrees. | Verified, reviewed commits |
+| **ag-tdd** | TEST / BUILD | Building features from scratch. Prefer test-first development. Each cycle: RED (write failing test) → GREEN (minimal code) → REFACTOR (clean up). | Red-green-refactor vertical slices through all layers |
+| **ag-tester** | TEST | Features are built, need comprehensive test coverage. Or coverage gaps are identified and need filling. Not for test-first workflows. | Unit/integration/edge case tests + coverage gap report |
+| **ag-verifier** | VERIFY | Before claiming any task is done. Runs type check, lint, full test suite, and build in sequence. Captures pass/fail with timing. Rejects claims without fresh evidence. | Pass/fail evidence log: type check → lint → test → build |
+| **ag-reviewer** | REVIEW | Code is written, tests pass, ready for review. Checks spec compliance, project conventions, API design, error handling, and test quality. | Spec compliance score + actionable findings list |
+| **ag-feedback-receiver** | REVIEW | Received PR/code review feedback from a human or external reviewer. Processes each comment, categorizes, produces fix plan, coordinates changes. | Categorized feedback + fix implementation plan |
+| **ag-debugger** | DEBUG | Bug report comes in. Or a test fails and root cause isn't obvious. Collaborative investigation: reproduce → isolate → regression test → fix. | Root cause analysis + regression test + fix |
+| **ag-griller** | DEBUG | ag-debugger tried 3 approaches and failed. Bug spans multiple modules. Or the failure is intermittent and hard to reproduce. Adversarial: generates and tests hypotheses systematically. | Architecture finding or fix + hypothesis log |
+| **ag-triage** | SHIP / PROCESS | Incoming issue, PR, or feature request needs routing. Validates completeness, assigns labels, sets priority, routes to appropriate skill. | State-machine triage: validated → labeled → assigned |
+| **ag-shipper** | SHIP | Code is reviewed, all gates pass, ready to deliver. Creates PR, runs final verification, merges or discards. Do NOT use before verification gates pass. | Merged PR or discarded branch + changelog entry |
+| **ag-documenter** | REFLECT | Post-ship. Code is landed, needs docs. Or changelog needs updating. Or architecture decisions need ADRs. Follows Diataxis: tutorials, how-to, reference, explanation. | Diataxis docs (tutorials, how-to, reference, explanation) + ADRs + changelog |
+| **ag-retro** | REFLECT | Sprint or milestone completed. Or a pattern keeps repeating (good or bad). Facilitates retrospective: what worked, what didn't, what to change. | Learnings document → stored in `.agnes/learnings/` |
+| **ag-skillwriter** | REFLECT / META | AGNES is missing a capability. Or an existing skill needs refinement. Creates a new skill or refines an existing one via TDD. | New/refined SKILL.md + tests |
 
 ---
 

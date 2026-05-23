@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-import { getBootstrapContent, buildRuntimeBlock, buildOrchestratorBlock, buildPlanStateBlock, buildShellBlock, buildProtocolBlock, buildExecutionContextBlock } from './bootstrap.js';
+import { getBootstrapContent, buildRuntimeBlock, buildOrchestratorBlock, buildPlanStateBlock, buildShellBlock, buildProtocolBlock, buildExecutionContextBlock, buildSkillRegistryBlock, buildSkillRegistryText } from './bootstrap.js';
 import type { OrchestratorRules } from './bootstrap.js';
 import type { PlanIndex } from './state.js';
 
@@ -155,5 +155,62 @@ describe('getBootstrapContent', () => {
     const lines = content!.split('\n');
     const frontMatterLines = lines.filter(l => l.trim() === '---');
     expect(frontMatterLines.length).toBe(0);
+  });
+});
+
+describe('buildSkillRegistryBlock', () => {
+  test('produces correct structured type tag', () => {
+    const block = buildSkillRegistryBlock();
+    expect(block).toContain('<structured type="skill_registry">');
+    expect(block).toContain('</structured>');
+  });
+
+  test('contains known skills (ag-planner, ag-tdd, ag-builder, ag-verifier, ag-debugger)', () => {
+    const block = buildSkillRegistryBlock();
+    expect(block).toContain('ag-planner');
+    expect(block).toContain('ag-tdd');
+    expect(block).toContain('ag-builder');
+    expect(block).toContain('ag-verifier');
+    expect(block).toContain('ag-debugger');
+  });
+
+  test('includes suggest_next with known downstream skills', () => {
+    const block = buildSkillRegistryBlock();
+    expect(block).toContain('ag-plan-reviewer');
+    expect(block).toContain('ag-verifier');
+  });
+
+  test('yields valid YAML structure inside the tag', () => {
+    const block = buildSkillRegistryBlock();
+    const match = block.match(/<structured type="skill_registry">\n([\s\S]*?)\n<\/structured>/);
+    expect(match).not.toBeNull();
+    expect(match![1]).toContain('type: skill_registry');
+    expect(match![1]).toContain('skills:');
+  });
+});
+
+describe('buildSkillRegistryText', () => {
+  test('returns markdown with skill names', () => {
+    const text = buildSkillRegistryText();
+    expect(text).toContain('ag-planner');
+    expect(text).toContain('ag-tdd');
+    expect(text).toContain('ag-builder');
+  });
+
+  test('includes suggest_next arrows for skills with downstream suggestions', () => {
+    const text = buildSkillRegistryText();
+    expect(text).toContain('→ next:');
+    expect(text).toContain('ag-plan-reviewer');
+  });
+
+  test('does NOT contain structured tags', () => {
+    const text = buildSkillRegistryText();
+    expect(text).not.toContain('<structured');
+    expect(text).not.toContain('</structured>');
+  });
+
+  test('starts with a skill registry header', () => {
+    const text = buildSkillRegistryText();
+    expect(text).toMatch(/^### Skill Registry/);
   });
 });

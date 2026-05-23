@@ -2,6 +2,21 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.12.0 (2026-05-23)
+
+### New
+
+- **Code-embedded skill routing**: `buildSkillRegistryBlock()` and `buildSkillRegistryText()` in bootstrap.ts scan `.opencode/skills/` at startup, parse YAML frontmatter from all 23 SKILL.md files, and inject a compact structured registry with `suggest_next` phase-transition data. DS V4 models get structured YAML blocks; prose models get compact text. No per-turn token penalty. (verified: 381 tests pass)
+- **Proactive skill suggestion**: AGENTS.md rule + structured `suggest_next` data forces AGNES to suggest the next appropriate skill at every phase boundary. Non-negotiable gates: plan-reviewer after planner, verifier after build, debugger on bugs. (verified: 9 new registry tests)
+
+### Fixed
+
+- **Bootstrap bloat (self-review finding)**: Reverted 85-line prose Skill Registry table + transition protocol from per-turn bootstrap. Replaced with ~20 lines of code-built structured YAML. Saved ~65 lines per turn. (verified: orchestrator SKILL.md clean revert)
+
+### Changed
+
+- **README**: Pipeline section rewritten as clean numbered list (1–8) with explicit gates — no broken ASCII art. Skills table descriptions rewritten for dual audience (beginner scenarios + advanced boundary conditions), "Output" column replaced with concrete "What It Produces".
+
 ## 0.11.0 (2026-05-23)
 
 ### Breaking

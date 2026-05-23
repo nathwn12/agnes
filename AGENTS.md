@@ -67,6 +67,7 @@ AGNES is a swarm intelligence. These principles override all default behavior:
 - Source exploration rules apply to subagents only: prefer shallow inspection, glob before read, grep before full-file scan.
 - AGNES main context never uses source glob/grep/read/edit.
 - Monitor session age and create handoff before context degradation.
+- **Proactive skill routing**: After completing any skill, suggest the next from its `suggest_next` list (see structured protocol blocks). Format: "Should we fire up **ag-[skill]** next?"
 
 ## Structured Protocol (Approach B)
 
