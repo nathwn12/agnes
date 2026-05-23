@@ -2,6 +2,12 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.10.2 (2026-05-23)
+
+### Fixed
+
+- **TUI signal leakage**: Machine-readable completion signals (`<agnes:message>` / `<promise>`) now render invisibly via HTML comment wrappers — cleaned up terminal output without disrupting AGNES's internal verification protocol. (verified: 330 tests pass)
+
 ## 0.10.1 (2026-05-23)
 
 ### Changed

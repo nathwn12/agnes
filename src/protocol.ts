@@ -133,7 +133,9 @@ const REQUIRED_FIELDS: Record<string, Record<string, string>> = {
 };
 
 export function parseAgnesMessage(text: string): AnyAgnesMessage | null {
-  const cleaned = stripCodeFences(text);
+  // Strip HTML comments — <agnes:message> wrappers should be invisible to users
+  const noComments = text.replace(/<!--[\s\S]*?-->/g, '');
+  const cleaned = stripCodeFences(noComments);
   const jsonCandidate = findJsonInText(cleaned);
   if (!jsonCandidate) return null;
 

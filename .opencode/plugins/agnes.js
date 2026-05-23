@@ -686,10 +686,10 @@ ${execContext}
       fullBootstrap += `
 
 ## Completion Protocol
-When all tasks are complete, output this EXACT JSON (NOT markdown):
-${serializeAgnesMessage({ type: "completion", id: randomUUID(), timestamp: new Date().toISOString(), status: "DONE", summary: "all tasks completed successfully" })}
-For partial results, use:
-${serializeAgnesMessage({ type: "result", taskId: "task-000", id: randomUUID(), timestamp: new Date().toISOString(), status: "DONE", content: "...", artifact: {} })}
+When all tasks are complete, place this HTML comment at the very end of your response (invisible to users, parsed by AGNES):
+<!-- ${serializeAgnesMessage({ type: "completion", id: randomUUID(), timestamp: new Date().toISOString(), status: "DONE", summary: "all tasks completed successfully" })} -->
+For partial results:
+<!-- ${serializeAgnesMessage({ type: "result", taskId: "task-000", id: randomUUID(), timestamp: new Date().toISOString(), status: "DONE", content: "...", artifact: {} })} -->
 `;
       const { sessionID, messageID } = firstUser.parts[0];
       firstUser.parts.unshift({

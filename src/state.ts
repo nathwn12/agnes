@@ -588,19 +588,20 @@ export function updatePlanStatus(input: {
 const PROMISE_TAG_PATTERN = /<promise>\s*(\S+)\s*<\/promise>/i;
 
 export function detectPromiseTag(output: string, expected?: string): boolean {
+  const cleaned = output.replace(/<!--[\s\S]*?-->/g, '');
   // Check JSON protocol first
-  const msg = parseAgnesMessage(output);
+  const msg = parseAgnesMessage(cleaned);
   if (msg?.type === 'completion') return msg.status === (expected ?? 'DONE');
   // When expected is provided, also check legacy regex
   if (expected) {
-    const match = output.match(PROMISE_TAG_PATTERN);
+    const match = cleaned.match(PROMISE_TAG_PATTERN);
     if (match) {
       return match[1] === expected;
     }
     return false;
   }
   // Fall back to legacy regex
-  return PROMISE_TAG_PATTERN.test(output);
+  return PROMISE_TAG_PATTERN.test(cleaned);
 }
 
 /**
@@ -609,11 +610,12 @@ export function detectPromiseTag(output: string, expected?: string): boolean {
  * @deprecated Use parseAgnesMessage for new code
  */
 export function extractPromiseTag(text: string): CompletionStatus | null {
-  const msg = parseAgnesMessage(text);
+  const cleaned = text.replace(/<!--[\s\S]*?-->/g, '');
+  const msg = parseAgnesMessage(cleaned);
   if (msg?.type === 'completion') return msg.status;
   if (msg?.type === 'result') return msg.status;
   // Fall back to legacy <promise> tag regex
-  const match = text.match(PROMISE_TAG_PATTERN);
+  const match = cleaned.match(PROMISE_TAG_PATTERN);
   if (match) {
     const tag = match[1].trim();
     const statuses: CompletionStatus[] = ['DONE', 'DONE_WITH_CONCERNS', 'NEEDS_CONTEXT', 'BLOCKED'];
