@@ -1,6 +1,6 @@
 import * as os from 'node:os';
 
-export type ShellType = 'git-bash' | 'powershell' | 'cmd' | 'wsl' | 'unix' | 'unknown';
+export type ShellType = 'git-bash' | 'pwsh' | 'powershell' | 'cmd' | 'wsl' | 'unix' | 'unknown';
 
 export interface ShellEnvironment {
   shellType: ShellType;
@@ -14,7 +14,8 @@ export interface ShellEnvironment {
 
 const ANTI_PATTERNS: Record<ShellType, string[]> = {
   'git-bash': ['Remove-Item', 'Get-ChildItem', 'New-Item', 'Set-Content', 'PowerShell', 'powershell', 'Get-Content', 'Out-File', 'Move-Item', 'Copy-Item', 'Write-Output', 'Invoke-WebRequest', 'ForEach-Object', 'Where-Object', 'Select-Object'],
-  'powershell': [],
+  'pwsh': ['Get-Content', 'Set-Content', 'Out-File', 'Add-Content', 'Get-ChildItem', 'Select-String', 'Remove-Item'],
+  'powershell': ['Get-Content', 'Set-Content', 'Out-File', 'Add-Content', 'Get-ChildItem', 'Select-String', 'Remove-Item'],
   'cmd': [],
   'wsl': ['Remove-Item', 'Get-ChildItem'],
   'unix': [],
@@ -23,7 +24,8 @@ const ANTI_PATTERNS: Record<ShellType, string[]> = {
 
 const GUIDANCE: Record<ShellType, string> = {
   'git-bash': 'You are running on Git Bash (MSYS2/MinGW). Use POSIX/bash commands (ls, rm, mkdir, cat, echo). NEVER use PowerShell commands like Remove-Item, Get-ChildItem, or Set-Content.',
-  'powershell': 'You are running on Windows PowerShell. Use PowerShell cmdlets and syntax.',
+  'pwsh': 'You are running on PowerShell 7+ (pwsh). Use PowerShell cmdlets and syntax.',
+  'powershell': 'You are running on Windows PowerShell 5.1 (powershell.exe). Use PowerShell cmdlets and syntax.',
   'cmd': 'You are running on Windows Command Prompt (CMD). Use cmd.exe syntax.',
   'wsl': 'You are running on WSL (Windows Subsystem for Linux). Use bash commands.',
   'unix': 'You are running on a Unix/Linux/macOS shell. Use standard POSIX/bash commands.',
@@ -50,8 +52,13 @@ export function detectShell(): ShellEnvironment {
     shellType = 'git-bash';
     source = 'MSYSTEM';
   } else if (env.PSModulePath && !env.MSYSTEM) {
-    shellType = isWindows ? 'powershell' : 'unknown';
-    source = 'PSModulePath';
+    if (env.PSEdition === 'Core') {
+      shellType = 'pwsh';
+      source = 'PSEdition';
+    } else {
+      shellType = isWindows ? 'powershell' : 'unknown';
+      source = 'PSModulePath';
+    }
   } else if (env.ComSpec?.toLowerCase().includes('cmd.exe') && !env.SHELL?.toLowerCase().includes('bash')) {
     shellType = 'cmd';
     source = 'ComSpec';
@@ -65,17 +72,22 @@ export function detectShell(): ShellEnvironment {
       source = 'SHELL';
     }
   } else if (isWindows) {
-    shellType = 'powershell';
-    source = 'platform';
+    if (env.PSEdition === 'Core') {
+      shellType = 'pwsh';
+      source = 'platform+PSEdition';
+    } else {
+      shellType = 'powershell';
+      source = 'platform';
+    }
   } else {
     shellType = 'unix';
     source = 'platform';
   }
 
-  const isPowerShell = shellType === 'powershell';
+  const isPowerShell = shellType === 'pwsh' || shellType === 'powershell';
   const preferredSyntax = shellType === 'git-bash' || shellType === 'wsl' || shellType === 'unix'
     ? 'bash'
-    : shellType === 'powershell'
+    : shellType === 'pwsh' || shellType === 'powershell'
     ? 'powershell'
     : 'cmd';
 

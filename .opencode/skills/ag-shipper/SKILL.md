@@ -12,7 +12,7 @@ All code is written, tested, reviewed, and verified — ready to ship.
 
 ## Core Concept
 
-The delivery workflow presents four options (merge, PR, keep, discard) to the user after mandatory test verification, then executes the chosen path with cleanup and safety guards. The shipper never skips verification, never force-pushes unprompted, and always requires typed confirmation for destructive operations.
+Assess change magnitude first, then route to the right delivery path. **Major changes → PR. Minor fixes → push direct** (with version bump, docs update, conventional commit). Always get user approval before executing. Never skip verification.
 
 ## Precise Vocabulary
 
@@ -20,6 +20,8 @@ The delivery workflow presents four options (merge, PR, keep, discard) to the us
 - **Detached HEAD**: HEAD points directly to a commit rather than a branch reference
 - **Base branch**: the target branch for merging, typically `main` or `master`
 - **Feature branch**: the branch containing the work to be shipped
+- **Major change**: new feature, breaking change, architecture change, large refactor, API change
+- **Minor fix**: bug fix, docs update, dependency bump, version bump, config change, small refactor
 
 ## Context Requirements
 
@@ -31,7 +33,7 @@ The delivery workflow presents four options (merge, PR, keep, discard) to the us
 
 ### 1. Verify Tests Pass
 
-**Mandatory before offering any options.** Run the test suite. If tests fail, do NOT offer ship options — go back to fix.
+**Mandatory before shipping anything.** Run the test suite. If tests fail, do NOT ship — go back to fix.
 
 ### 2. Detect Environment
 
@@ -44,39 +46,67 @@ Determine current environment:
 
 Default: `main` or `master`. Check which exists.
 
-### 4. Present Options
+### 4. Shelf-Check
 
-Offer these 4 options to the user:
+Before shipping, inspect the working tree:
 
-| # | Option | When to Use |
-|---|--------|-------------|
-| 1 | Merge back to base branch locally | Feature complete, single developer |
-| 2 | Push and create a Pull Request | Team project, needs review |
-| 3 | Keep the branch as-is | Work in progress, not ready to ship |
-| 4 | Discard this work | Wrong approach, experiment failed |
+1. **`.gitignore` exists?** — Check `Test-Path .gitignore`. If missing, warn the user. Do not block, but flag it.
+2. **Tracked vs untracked files** — Run `git status --porcelain`. Classify every entry:
+   - `M ` / ` M` — modified tracked files (intended changes)
+   - `A ` — added tracked files (intended)
+   - `D ` — deleted tracked files (verify intentional)
+   - `?? ` — untracked files (should these be tracked? ignored?)
+   - `!` — ignored files (fine, skip)
+3. **Exclusion check** — Scan untracked files for potential secrets/credentials/build artifacts that should be in `.gitignore`. Flag suspicious patterns: `.env`, `*.log`, `node_modules/`, `dist/`, credentials, keys, local config overrides.
+4. **Report** — Present a compact summary to the user. Ask: *"These changes look correct to ship? Any files to exclude or add to .gitignore first?"*
+5. **Act** — If user flags exclusions, update `.gitignore` before proceeding.
 
-### 5. Execute Choice
+### 5. Assess Change Magnitude
 
-**Option 1 — Merge locally:**
-1. `git checkout <base-branch> && git pull`
-2. `git merge <feature-branch>`
-3. Run tests again
-4. Clean up worktree if applicable
-5. Delete feature branch
+Analyze the diff to classify the change:
 
-**Option 2 — Push and create PR:**
-1. `git push -u origin <feature-branch>`
-2. `gh pr create --base <base-branch> --title "<title>" --body "<structured body>"`
-3. Return the PR URL to the user
+**Major** (→ PR route): new feature, breaking API change, architecture rewrite, large refactor (>500 lines), dependency changes, schema changes
+**Minor** (→ Push direct route): bug fix, small refactor, docs, config, version bump, dependency bump, test additions, formatting
 
-**Option 3 — Keep branch:**
-1. Note the branch name for future reference
-2. No further action
+Default to **Minor** when uncertain. Present your assessment to the user with a brief rationale. Let them override.
 
-**Option 4 — Discard:**
-1. Require typed confirmation: user must type "discard" verbatim
-2. `git branch -D <feature-branch>` (local only)
-3. Clean up worktree if applicable
+### 6. Execute Delivery
+
+#### Route A: Minor Fix — Push Direct
+
+1. **Ask user approval** — present the plan: version bump, docs update, commit, push
+2. **Version bump** — update package.json (or equivalent) using semver:
+   - `fix` type commit → patch bump (0.0.x)
+   - `feat` type commit → minor bump (0.x.0)
+   - breaking change → major bump (x.0.0)
+3. **Update related docs** — in this order:
+   - README.md (if feature/fix changed public API, setup, or usage)
+   - CHANGELOG.md (always — append under `## [new-version] - YYYY-MM-DD`)
+   - Any other docs that reference the changed code
+4. **Stage and commit** with conventional commit message:
+   ```
+   <type>(<scope>): <description>
+
+   [optional body]
+   ```
+5. **Push** to the current branch
+
+#### Route B: Major Change — Pull Request
+
+1. **Ask user approval** — present the plan: push branch, create PR
+2. `git push -u origin <feature-branch>`
+3. `gh pr create --base <base-branch> --title "<title>" --body "<structured body>"`
+4. Return the PR URL to the user
+
+#### Route C: Keep / Discard
+
+Also offer these on request if the user doesn't want either route:
+
+| Keep | Discard |
+|------|---------|
+| Note the branch name for future reference | Require typed "discard" confirmation |
+| No further action | `git branch -D <feature-branch>` (local only) |
+| | Clean up worktree if applicable |
 
 ## Tool Requirements
 
@@ -85,16 +115,14 @@ Offer these 4 options to the user:
 
 ## Output
 
-Depends on the chosen option:
-
-| Option | Output |
-|--------|--------|
-| Merge locally | Merged local branch, deleted feature branch |
-| Push and create PR | Published PR URL |
-| Keep branch | Branch preserved as-is, branch name noted |
+| Route | Output |
+|-------|--------|
+| Minor — Push direct | Version bumped, docs updated, commit pushed with conventional message |
+| Major — PR | Published PR URL |
+| Keep | Branch preserved, name noted |
 | Discard | Branch deleted locally |
 
-### PR Body Template
+## PR Body Template
 
 ```markdown
 ## Description
@@ -117,12 +145,16 @@ Closes #[issue]
 
 ## Quality Criteria
 
+- Always assess magnitude before choosing route
+- Default Minor when uncertain — let user override up
+- Never skip version bump on push-direct (check package.json exists first; if not, skip gracefully)
+- Always update CHANGELOG before push-direct
 - Never force-push without explicit user request
-- Never delete branches without confirmation
-- Require typed "discard" confirmation for destructive operations
-- Only clean up worktrees that AGNES created (track in session state)
-- Verify tests pass BEFORE offering ship options
-- If base branch has diverged significantly, alert the user before merging
+- Never delete branches without typed confirmation
+- Require typed "discard" for destructive operations
+- Only clean up worktrees AGNES created (track in session state)
+- Verify tests pass BEFORE shipping
+- If base branch has diverged significantly, alert the user
 
 ## When NOT to Use
 
