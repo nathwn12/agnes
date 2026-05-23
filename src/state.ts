@@ -124,6 +124,7 @@ export function findProjectRoot(startDir?: string): string | null {
   let found: string | null = null;
   for (let i = 0; i < 20; i++) {
     if (isBlockedPath(dir)) break;
+    if (dir === os.homedir()) break;
     if (fs.existsSync(path.join(dir, AGNES_DIR, 'index.json'))) {
       found = dir;
       break;

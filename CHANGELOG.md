@@ -2,6 +2,22 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.10.1 (2026-05-23)
+
+### Changed
+
+- **Bootstrap size reduction**: Removed redundant `## Registered Skill Schemas` injection from plugin.ts — saves ~140–500 tokens per session by eliminating 7 generic JSON stubs that duplicated OpenCode's native skill discovery. (verified: 330 tests pass)
+- **Path resolution fix**: bootstrap.ts now uses package-root-relative paths via a `resolvePackageRoot()` walk-up function — resolves correctly in both test (`src/`) and bundle (`.opencode/plugins/`) contexts. (verified: bootstrap.test.ts)
+
+### Fixed
+
+- **Home-directory boundary**: `findProjectRoot()` in state.ts now stops at `os.homedir()` — prevents detecting a user's home-directory `.agnes/` as a valid project root. (verified: 107 state tests pass)
+- **Test expectations**: shell.test.ts anti-pattern expectations corrected for PowerShell on Windows — PowerShell now correctly returns its anti-pattern list instead of an empty array. (verified: 33 shell tests pass)
+
+### Tests
+
+- **10 pre-existing failures resolved**: 5 bootstrap (path resolution), 2 shell (anti-pattern expectations), 3 state (home-dir boundary). Total: 330 tests, 0 failures, 867 expect calls across 11 files. (verified: `bun test`)
+
 ## 0.9.1 (2026-05-23)
 
 ### Added

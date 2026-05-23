@@ -6,9 +6,27 @@ import { buildPlanSummary } from './state.js';
 import { detectShell } from './shell.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const packageRoot = path.resolve(__dirname, '../..');
+
+function resolvePackageRoot(fromDir: string): string {
+  let current = fromDir;
+  for (let i = 0; i < 5; i++) {
+    const pj = path.join(current, 'package.json');
+    if (fs.existsSync(pj)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pj, 'utf8')) as { name?: string };
+        if (pkg.name === 'agnes') return current;
+      } catch {}
+    }
+    const parent = path.resolve(current, '..');
+    if (parent === current) break;
+    current = parent;
+  }
+  return path.resolve(fromDir, '..');
+}
+
+const packageRoot = resolvePackageRoot(__dirname);
 const packageJsonPath = path.join(packageRoot, 'package.json');
-const skillsDir = path.resolve(__dirname, '../skills');
+const skillsDir = path.join(packageRoot, '.opencode', 'skills');
 const opencodePackageCache = path.join(os.homedir(), '.cache', 'opencode', 'packages');
 
 function extractFrontmatter(content: string): { content: string } {

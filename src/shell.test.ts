@@ -57,7 +57,7 @@ describe('detectShell - PowerShell', () => {
     expect(r.isWindows).toBe(true);
     expect(r.isPowerShell).toBe(true);
     expect(r.source).toBe('PSModulePath');
-    expect(r.antiPatterns).toEqual([]);
+    expect(r.antiPatterns).toEqual(['Get-Content', 'Set-Content', 'Out-File', 'Add-Content', 'Get-ChildItem', 'Select-String', 'Remove-Item']);
   });
 
   test('PSModulePath on non-Windows returns unknown', () => {
@@ -263,10 +263,10 @@ describe('anti-patterns per shell type', () => {
     ]);
   });
 
-  test('powershell has empty anti-patterns', () => {
+  test('powershell has anti-patterns on Windows', () => {
     process.env.PSModulePath = 'C:\\Modules';
     const r = detectShell();
-    expect(r.antiPatterns).toEqual([]);
+    expect(r.antiPatterns).toEqual(['Get-Content', 'Set-Content', 'Out-File', 'Add-Content', 'Get-ChildItem', 'Select-String', 'Remove-Item']);
   });
 
   test('cmd has empty anti-patterns', () => {

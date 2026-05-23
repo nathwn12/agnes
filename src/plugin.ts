@@ -9,7 +9,7 @@ import {
 } from './state.js';
 import { getPlanGate, buildExecutionContext } from './runtime.js';
 import { serializeAgnesMessage } from './protocol.js';
-import { SKILL_REGISTRY } from './schema.js';
+
 import { detectShell } from './shell.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -64,16 +64,6 @@ export const AgnesPlugin: Plugin = async () => {
 
       fullBootstrap += `\n\n## Completion Protocol\nWhen all tasks are complete, output this EXACT JSON (NOT markdown):\n${serializeAgnesMessage({type:'completion',id:randomUUID(),timestamp:new Date().toISOString(),status:'DONE',summary:'all tasks completed successfully'})}\nFor partial results, use:\n${serializeAgnesMessage({type:'result',taskId:'task-000',id:randomUUID(),timestamp:new Date().toISOString(),status:'DONE',content:'...',artifact:{}})}\n`;
 
-      if (SKILL_REGISTRY.size > 0) {
-        const schemaLines: string[] = ['\n## Registered Skill Schemas'];
-        for (const [name, desc] of SKILL_REGISTRY) {
-          schemaLines.push(`- **${name}**: ${desc.description}`);
-          schemaLines.push(`  Input schema: ${JSON.stringify(desc.inputSchema)}`);
-          schemaLines.push(`  Output schema: ${JSON.stringify(desc.outputSchema)}`);
-          schemaLines.push(`  Response format: ${desc.responseFormat}`);
-        }
-        fullBootstrap += '\n' + schemaLines.join('\n') + '\n';
-      }
 
       const { sessionID, messageID } = firstUser.parts[0];
       firstUser.parts.unshift({

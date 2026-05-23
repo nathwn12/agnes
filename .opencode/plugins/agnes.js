@@ -68,6 +68,8 @@ function findProjectRoot(startDir) {
   for (let i = 0;i < 20; i++) {
     if (isBlockedPath(dir))
       break;
+    if (dir === os.homedir())
+      break;
     if (fs.existsSync(path.join(dir, AGNES_DIR, "index.json"))) {
       found = dir;
       break;
@@ -378,9 +380,27 @@ function detectShell() {
 
 // src/bootstrap.ts
 var __dirname2 = path2.dirname(fileURLToPath(import.meta.url));
-var packageRoot = path2.resolve(__dirname2, "../..");
+function resolvePackageRoot(fromDir) {
+  let current = fromDir;
+  for (let i = 0;i < 5; i++) {
+    const pj = path2.join(current, "package.json");
+    if (fs2.existsSync(pj)) {
+      try {
+        const pkg = JSON.parse(fs2.readFileSync(pj, "utf8"));
+        if (pkg.name === "agnes")
+          return current;
+      } catch {}
+    }
+    const parent = path2.resolve(current, "..");
+    if (parent === current)
+      break;
+    current = parent;
+  }
+  return path2.resolve(fromDir, "..");
+}
+var packageRoot = resolvePackageRoot(__dirname2);
 var packageJsonPath = path2.join(packageRoot, "package.json");
-var skillsDir = path2.resolve(__dirname2, "../skills");
+var skillsDir = path2.join(packageRoot, ".opencode", "skills");
 var opencodePackageCache = path2.join(os3.homedir(), ".cache", "opencode", "packages");
 function extractFrontmatter(content) {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
@@ -616,38 +636,6 @@ var STOPWORDS = new Set([
   "that"
 ]);
 
-// src/schema.ts
-function createDefaultSkillEntry(name, description, phase) {
-  return {
-    name,
-    description,
-    phase,
-    inputSchema: {
-      type: "object",
-      properties: {
-        payload: { type: "object", description: `Payload for ${name}` }
-      },
-      required: ["payload"]
-    },
-    outputSchema: {
-      type: "object",
-      properties: {
-        result: { type: "object", description: `Result from ${name}` }
-      }
-    },
-    responseFormat: "content_and_artifact"
-  };
-}
-var SKILL_REGISTRY = new Map([
-  ["ag-orchestrator", createDefaultSkillEntry("ag-orchestrator", "AGNES swarm brain \u2014 delegates, parallelizes, and orchestrates work across all fused skills", "META")],
-  ["ag-planner", createDefaultSkillEntry("ag-planner", "Writing specs and implementation plans with structured design documents", "PLAN")],
-  ["ag-builder", createDefaultSkillEntry("ag-builder", "Disciplined plan execution with worktree isolation and verify-review-commit cycle", "BUILD")],
-  ["ag-tdd", createDefaultSkillEntry("ag-tdd", "Red-green-refactor TDD through vertical slices with failing test first", "TEST")],
-  ["ag-reviewer", createDefaultSkillEntry("ag-reviewer", "Code quality gate with spec compliance and quality issue classification", "REVIEW")],
-  ["ag-verifier", createDefaultSkillEntry("ag-verifier", "Gate discipline enforcer running automated checks with evidence-based pass/fail", "VERIFY")],
-  ["ag-debugger", createDefaultSkillEntry("ag-debugger", "Collaborative debugging through reproduce-hypothesise-instrument-narrow-document", "DEBUG")]
-]);
-
 // src/plugin.ts
 var __dirname3 = path4.dirname(fileURLToPath2(import.meta.url));
 var skillsDir2 = path4.resolve(__dirname3, "../skills");
@@ -703,20 +691,6 @@ ${serializeAgnesMessage({ type: "completion", id: randomUUID(), timestamp: new D
 For partial results, use:
 ${serializeAgnesMessage({ type: "result", taskId: "task-000", id: randomUUID(), timestamp: new Date().toISOString(), status: "DONE", content: "...", artifact: {} })}
 `;
-      if (SKILL_REGISTRY.size > 0) {
-        const schemaLines = [`
-## Registered Skill Schemas`];
-        for (const [name, desc] of SKILL_REGISTRY) {
-          schemaLines.push(`- **${name}**: ${desc.description}`);
-          schemaLines.push(`  Input schema: ${JSON.stringify(desc.inputSchema)}`);
-          schemaLines.push(`  Output schema: ${JSON.stringify(desc.outputSchema)}`);
-          schemaLines.push(`  Response format: ${desc.responseFormat}`);
-        }
-        fullBootstrap += `
-` + schemaLines.join(`
-`) + `
-`;
-      }
       const { sessionID, messageID } = firstUser.parts[0];
       firstUser.parts.unshift({
         id: randomUUID(),
