@@ -1,5 +1,7 @@
 ---
 id: retro
+name: retro
+description: 'End of sprint, feature shipped, or recurring issues noticed — reflect on work patterns and capture learnings.'
 phase: "REFLECT"
 use_when: "End of sprint, feature shipped, or recurring issues noticed — reflect on work patterns and capture learnings."
 version: 1.0

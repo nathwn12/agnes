@@ -1,5 +1,7 @@
 ---
 id: explorer
+name: explorer
+description: 'Understanding an unfamiliar codebase, researching dependencies before planning, debugging (first phase investigation), needing architecture overview.'
 phase: "RESEARCH"
 use_when: "Understanding an unfamiliar codebase, researching dependencies before planning, debugging (first phase investigation), needing architecture overview."
 version: 1.0

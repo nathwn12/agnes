@@ -1,5 +1,7 @@
 ---
 id: prototype
+name: prototype
+description: 'Need to explore a design before committing, sanity-check a data model, mock up UI variations, or answer "does this feel right?" without building real infrastructure.'
 phase: "DESIGN / BUILD"
 use_when: "Need to explore a design before committing, sanity-check a data model, mock up UI variations, or answer \"does this feel right?\" without building real infrastructure."
 version: 1.0

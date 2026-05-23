@@ -1,5 +1,7 @@
 ---
 id: documenter
+name: documenter
+description: 'After shipping, when new features need documentation, when existing docs are stale, when ADRs are needed for significant decisions.'
 phase: "REFLECT"
 use_when: "After shipping, when new features need documentation, when existing docs are stale, when ADRs are needed for significant decisions."
 version: 1.0

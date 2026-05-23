@@ -1,5 +1,7 @@
 ---
 id: orchestrator
+name: orchestrator
+description: 'Coordinating a multi-step software engineering workflow that spans multiple phases; deciding which skill to load for a given task; delegating work to subagents; tracking progress; making parallelism decisions.'
 phase: "META"
 use_when: "Coordinating a multi-step software engineering workflow that spans multiple phases; deciding which skill to load for a given task; delegating work to subagents; tracking progress; making parallelism decisions."
 version: 1.0
@@ -10,7 +12,7 @@ version: 1.0
 - Coordinating a multi-step software engineering workflow that spans multiple phases
 - Deciding which skill to load for a given task
 - Delegating work to subagents rather than doing it directly
-- Tracking progress across a session with plan-NNN.md and index.json
+- Tracking progress across a session with plan-NNN.yaml and index.json
 - Making parallelism decisions — when to fan out tasks vs sequence them
 - Entering a session boundary decision (clear, compact, or handoff)
 
@@ -61,7 +63,7 @@ These are structural constraints. Violations are bugs.
 In main conversation context, the only permitted actions are:
 - talk to user
 - read/write `.agnes/index.json`
-- create new immutable `.agnes/plans/plan-NNN.md`
+- create new immutable `.agnes/plans/plan-NNN.yaml`
 - deploy subagents
 - read subagent results
 - run read-only verification commands
@@ -156,7 +158,7 @@ These roles replace generic subagent dispatch. Every wave dispatches the appropr
 Every wave has two strictly separated tracks:
 
 **TRACK A (main context — ~2 lines output max)**
-→ Re-read plan (latest plan-NNN.md)
+→ Re-read plan (latest plan-NNN.yaml)
 → Read index.json for cross-project context
 → Check session age
 → Report status to user + deploy subagents
@@ -205,19 +207,19 @@ State files in `.agnes/`:
 ├── index.json        
 ├── config.json       
 └── plans/
-    ├── plan-001.md      
-    └── plan-002.md      
+    ├── plan-001.yaml  
+    └── plan-002.yaml  
 ```
 
 | File | Purpose |
 |------|---------|
 | `index.json` | Searchable master index by project/status. Read once, filter instantly. |
-| `plans/plan-NNN.md` | One plan iteration. Immutable after creation — new state = new file. |
+| `plans/plan-NNN.yaml` | One plan iteration. Immutable after creation — new state = new file. |
 
 | Action | When |
 |--------|------|
-| **Start** | Check index.json for existing plans. No active plan? Create plan-001.md + update index.json. |
-| **Iterate** | State change detected → read index.json → create plan-(N+1).md with parent=activePlanId → update index.json (set old plan status, set activePlanId to new, update counts). |
+| **Start** | Check index.json for existing plans. No active plan? Create plan-001.yaml + update index.json. |
+| **Iterate** | State change detected → read index.json → create plan-(N+1).yaml with parent=activePlanId → update index.json (set old plan status, set activePlanId to new, update counts). |
 | **Handoff** | Blocked or stopping → create new plan iteration with blocked status. |
 | **Clear** | Plan done → set status to done in index.json, clear activePlanId. |
 
@@ -229,9 +231,9 @@ Task starts
 ┌───────────────────────────────────┐
 │ 1. Check .agnes/index.json        │
 │ 2. Any active plan?               │
-│    ├── YES → read plan-NNN.md     │
+│    ├── YES → read plan-NNN.yaml   │
 │    │         continue work        │
-│    └── NO  → create plan-001.md   │
+│    └── NO  → create plan-001.yaml │
 │              update index.json    │
 │ 3. Delegate work via subagents    │
 │ 4. Verify subagent results        │
@@ -242,7 +244,7 @@ Task starts
 │ 6. Condition met?                 │
 │    ├── YES → set plan done        │
 │    └── NO  → new iteration?       │
-│        ├── YES → plan-NNN+1.md    │
+│        ├── YES → plan-NNN+1.yaml  │
 │        └── NO  → continue step 3  │
 └───────────────────────────────────┘
 ```
@@ -254,7 +256,7 @@ AGNES main context is restricted to STATE + COMMUNICATION only. These tools serv
 **Main context (AGNES):**
 - `task` — spawn subagents for all discrete work; never work directly
 - `skill` — discover, load, and invoke domain skills
-- `read` / `write` — manage state files (plan-NNN.md, index.json) only
+- `read` / `write` — manage state files (plan-NNN.yaml, index.json) only
 - `todowrite` — track multi-step task progress within a session
 - `bash` — run read-only verification commands (never assume, always verify)
 
@@ -358,9 +360,9 @@ Task starts
 ┌─────────────────────────────────────┐
 │ 1. Check .agnes/index.json          │
 │ 2. Any active plan?                 │
-│    ├── YES → read plan-NNN.md       │
+│    ├── YES → read plan-NNN.yaml     │
 │    │         continue work          │
-│    └── NO  → create plan-001.md     │
+│    └── NO  → create plan-001.yaml   │
 │              update index.json      │
 │ 3. Delegate work via subagents      │
 │ 4. Verify subagent results          │
@@ -372,7 +374,7 @@ Task starts
 │    ├── YES → set plan done          │
 │    │         clear activePlanId     │
 │    └── NO  → plan iteration?        │
-│        ├── YES → plan-NNN+1.md      │
+│        ├── YES → plan-NNN+1.yaml    │
 │        └── NO  → continue step 3    │
 └─────────────────────────────────────┘
 Goal met → done → clear

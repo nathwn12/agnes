@@ -1,5 +1,7 @@
 ---
 id: builder
+name: builder
+description: 'A plan has been reviewed and approved by plan-reviewer, implementation is ready to start.'
 phase: "BUILD"
 use_when: "A plan has been reviewed and approved by plan-reviewer, implementation is ready to start."
 version: 1.0

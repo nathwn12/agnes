@@ -213,7 +213,7 @@ describe('readPlanIndex / writePlanIndex', () => {
             total: 3,
             completed: 1,
             blocked: 0,
-            file: 'plan-001.md',
+            file: 'plan-001.yaml',
           },
           {
             id: 'plan-002',
@@ -232,7 +232,7 @@ describe('readPlanIndex / writePlanIndex', () => {
     const index = readPlanIndex(tmp);
     expect(index).not.toBeNull();
     const migrated = index!.plans.find(p => p.id === 'plan-002')!;
-    expect(migrated.file).toBe('plan-002.md');
+    expect(migrated.file).toBe('plan-002.yaml');
     expect(migrated.attempts).toBe(0);
     expect(migrated.struggle).toEqual({
       noProgressIterations: 0,
@@ -286,7 +286,7 @@ describe('getLatestActivePlan', () => {
         total: 1,
         completed: 1,
         blocked: 0,
-        file: 'plan-001.md',
+        file: 'plan-001.yaml',
       }],
     });
     expect(getLatestActivePlan(tmp)).toBeNull();
@@ -304,7 +304,7 @@ describe('getLatestActivePlan', () => {
       total: 2,
       completed: 1,
       blocked: 0,
-      file: 'plan-001.md',
+      file: 'plan-001.yaml',
     };
     writeIndex(tmp, {
       agnesVersion: '0.4.4',
@@ -315,11 +315,29 @@ describe('getLatestActivePlan', () => {
       activePlanId: 'plan-001',
       plans: [entry],
     });
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), '# Plan content', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), `schema: agnes/plan-v1
+id: plan-001
+version: 1
+createdAt: ${now}
+updatedAt: ${now}
+status: in_progress
+parent: null
+goal: Active plan
+check: Validate the active plan
+summary: Active plan
+tasks:
+  - id: task-001
+    summary: Do the thing
+    status: pending
+    files:
+      - Verify the thing works
+    depends_on: []
+notes: []
+`, 'utf8');
     const active = getLatestActivePlan(tmp);
     expect(active).not.toBeNull();
     expect(active!.entry.id).toBe('plan-001');
-    expect(active!.content).toBe('# Plan content');
+    expect(active!.content).toContain('goal: Active plan');
   });
 
   test('handles NaN updatedAt gracefully in fallback sort', () => {
@@ -342,7 +360,7 @@ describe('getLatestActivePlan', () => {
           total: 1,
           completed: 0,
           blocked: 0,
-          file: 'plan-001.md',
+          file: 'plan-001.yaml',
         },
         {
           id: 'plan-002',
@@ -353,12 +371,48 @@ describe('getLatestActivePlan', () => {
           total: 1,
           completed: 0,
           blocked: 0,
-          file: 'plan-002.md',
+          file: 'plan-002.yaml',
         },
       ],
     });
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'Goal: Bad date', 'utf8');
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-002.md'), 'Goal: Good date', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), `schema: agnes/plan-v1
+id: plan-001
+version: 1
+createdAt: ${now}
+updatedAt: ${now}
+status: in_progress
+parent: null
+goal: Bad date
+check: Validate bad date plan
+summary: Bad date plan
+tasks:
+  - id: task-001
+    summary: Bad task
+    status: pending
+    files:
+      - Bad verification
+    depends_on: []
+notes: []
+`, 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-002.yaml'), `schema: agnes/plan-v1
+id: plan-002
+version: 1
+createdAt: ${now}
+updatedAt: ${now}
+status: in_progress
+parent: null
+goal: Good date
+check: Validate good date plan
+summary: Good date plan
+tasks:
+  - id: task-001
+    summary: Good task
+    status: pending
+    files:
+      - Good verification
+    depends_on: []
+notes: []
+`, 'utf8');
     // Should not throw and should return the valid-date plan
     const active = getLatestActivePlan(tmp);
     expect(active).not.toBeNull();
@@ -405,10 +459,40 @@ describe('buildPlanSummary', () => {
         total: 3,
         completed: 1,
         blocked: 0,
-        file: 'plan-001.md',
+        file: 'plan-001.yaml',
       }],
     });
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'Goal: Test the system\n\nTasks:\n- [x] one\n- [ ] two\n- [ ] three', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), `schema: agnes/plan-v1
+id: plan-001
+version: 1
+createdAt: ${now}
+updatedAt: ${now}
+status: in_progress
+parent: null
+goal: Test the system
+check: Verify the system works
+summary: Active plan
+tasks:
+  - id: task-001
+    summary: one
+    status: done
+    files:
+      - verify one
+    depends_on: []
+  - id: task-002
+    summary: two
+    status: pending
+    files:
+      - verify two
+    depends_on: []
+  - id: task-003
+    summary: three
+    status: pending
+    files:
+      - verify three
+    depends_on: []
+notes: []
+`, 'utf8');
     const summary = buildPlanSummary(tmp);
     expect(summary).toContain('Active Plan: plan-001');
     expect(summary).toContain('in_progress');
@@ -429,14 +513,15 @@ describe('getNextPlanId', () => {
 
   test('increments from existing plan files', () => {
     const tmp = createTempProject();
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), '', 'utf8');
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-003.md'), '', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), '', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-003.yaml'), '', 'utf8');
     expect(getNextPlanId(tmp)).toBe('plan-004');
   });
 
   test('ignores non-plan files', () => {
     const tmp = createTempProject();
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), '', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), '', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), '', 'utf8');
     fs.writeFileSync(path.join(tmp, '.agnes', 'index.json'), '{}', 'utf8');
     expect(getNextPlanId(tmp)).toBe('plan-002');
   });
@@ -450,7 +535,7 @@ describe('getNextPlanId', () => {
       tasks: ['Task 1'],
       projectRoot: tmp,
     });
-    const planPath = path.join(tmp, '.agnes', 'plans', 'plan-001.md');
+    const planPath = path.join(tmp, '.agnes', 'plans', 'plan-001.yaml');
     expect(fs.existsSync(planPath)).toBe(true);
     const tmpFiles = fs.readdirSync(path.join(tmp, '.agnes', 'plans'))
       .filter(f => f.endsWith('.tmp'));
@@ -477,13 +562,13 @@ describe('createPlan', () => {
     expect(index.plans.length).toBe(1);
     expect(index.activePlanId).toBe('plan-001');
 
-    const planPath = path.join(tmp, '.agnes', 'plans', 'plan-001.md');
+    const planPath = path.join(tmp, '.agnes', 'plans', 'plan-001.yaml');
     expect(fs.existsSync(planPath)).toBe(true);
     const content = fs.readFileSync(planPath, 'utf8');
-    expect(content).toContain('Goal: Complete the test');
-    expect(content).toContain('Check: bun test passes');
-    expect(content).toContain('- [ ] Write tests');
-    expect(content).toContain('- [ ] Refactor code');
+    expect(content).toContain('goal: Complete the test');
+    expect(content).toContain('check: bun test passes');
+    expect(content).toContain('summary: Write tests');
+    expect(content).toContain('summary: Refactor code');
   });
 
   test('accepts explicit status', () => {
@@ -508,10 +593,11 @@ describe('createPlan', () => {
       tasks: ['- [x] Completed', '- [/] Blocked', '- [ ] Pending'],
       projectRoot: tmp,
     });
-    const content = fs.readFileSync(path.join(tmp, '.agnes', 'plans', `${active.entry.id}.md`), 'utf8');
-    expect(content).toContain('- [x] Completed');
-    expect(content).toContain('- [/] Blocked');
-    expect(content).toContain('- [ ] Pending');
+    const content = fs.readFileSync(path.join(tmp, '.agnes', 'plans', `${active.entry.id}.yaml`), 'utf8');
+    expect(content).toContain('status: done');
+    expect(content).toContain('summary: Completed');
+    expect(content).toContain('summary: Blocked');
+    expect(content).toContain('summary: Pending');
   });
 
   test('createPlan with done status does not set activePlanId', () => {
@@ -531,7 +617,7 @@ describe('createPlan', () => {
 });
 
 describe('state synchronization invariants', () => {
-  test('plan markdown file has no runtime state in frontmatter (createPlan)', () => {
+  test('plan yaml file has no runtime state fields (createPlan)', () => {
     const tmp = createTempProject();
     createPlan({
       summary: 'Test',
@@ -541,16 +627,16 @@ describe('state synchronization invariants', () => {
       status: 'in_progress',
       projectRoot: tmp,
     });
-    const content = fs.readFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'utf8');
-    expect(content).not.toMatch(/^status:/m);
+    const content = fs.readFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'utf8');
+    expect(content).toContain('schema: agnes/plan-v1');
     expect(content).not.toMatch(/^total:/m);
     expect(content).not.toMatch(/^completed:/m);
     expect(content).not.toMatch(/^blocked:/m);
-    expect(content).toMatch(/^id: plan-001/m);
-    expect(content).toMatch(/^createdAt:/m);
+    expect(content).toContain('id: plan-001');
+    expect(content).toContain('createdAt:');
   });
 
-  test('plan markdown file has no runtime state in frontmatter (createPlanIteration)', () => {
+  test('plan yaml file has no runtime state fields (createPlanIteration)', () => {
     const tmp = createTempProject();
     const parent = createPlan({
       summary: 'Parent',
@@ -571,14 +657,15 @@ describe('state synchronization invariants', () => {
       blocked: 0,
       projectRoot: tmp,
     });
-    const content = fs.readFileSync(path.join(tmp, '.agnes', 'plans', 'plan-002.md'), 'utf8');
-    expect(content).not.toMatch(/^status:/m);
+    const content = fs.readFileSync(path.join(tmp, '.agnes', 'plans', 'plan-002.yaml'), 'utf8');
+    expect(content).toContain('status: in_progress');
+    expect(content).toContain('parent: plan-001');
     expect(content).not.toMatch(/^total:/m);
     expect(content).not.toMatch(/^completed:/m);
     expect(content).not.toMatch(/^blocked:/m);
   });
 
-  test('plan file contains narrative content after frontmatter', () => {
+  test('plan file contains structured yaml content', () => {
     const tmp = createTempProject();
     createPlan({
       summary: 'Test',
@@ -587,11 +674,11 @@ describe('state synchronization invariants', () => {
       tasks: ['Task 1', 'Task 2'],
       projectRoot: tmp,
     });
-    const content = fs.readFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'utf8');
-    expect(content).toContain('Goal: Build the feature');
-    expect(content).toContain('Check: bun test');
-    expect(content).toContain('- [ ] Task 1');
-    expect(content).toContain('- [ ] Task 2');
+    const content = fs.readFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'utf8');
+    expect(content).toContain('goal: Build the feature');
+    expect(content).toContain('check: bun test');
+    expect(content).toContain('summary: Task 1');
+    expect(content).toContain('summary: Task 2');
   });
 
   test('index.json is sole source of runtime state', () => {
@@ -847,10 +934,10 @@ describe('getPlanState', () => {
         total: 2,
         completed: 1,
         blocked: 0,
-        file: 'plan-001.md',
+        file: 'plan-001.yaml',
       }],
     });
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'Goal: Test\n\nTasks:\n- [x] one\n- [ ] two', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'schema: agnes/plan-v1\nid: plan-001\nversion: 1\ncreatedAt: 2026-01-01T00:00:00.000Z\nupdatedAt: 2026-01-01T00:00:00.000Z\nstatus: in_progress\nparent: null\ngoal: Test\ncheck: Verify\nsummary: Active plan\ntasks:\n  - id: task-001\n    summary: one\n    status: done\n    files:\n      - verify one\n    depends_on: []\n  - id: task-002\n    summary: two\n    status: pending\n    files:\n      - verify two\n    depends_on: []\nnotes: []\n', 'utf8');
     const state = getPlanState(tmp);
     expect(state.hasActivePlan).toBe(true);
     expect(state.activePlan).not.toBeNull();
@@ -886,7 +973,7 @@ describe('getPlanGate', () => {
         total: 1,
         completed: 1,
         blocked: 0,
-        file: 'plan-001.md',
+        file: 'plan-001.yaml',
       }],
     });
     const gate = getPlanGate(tmp);
@@ -912,10 +999,10 @@ describe('getPlanGate', () => {
         total: 1,
         completed: 0,
         blocked: 0,
-        file: 'plan-001.md',
+        file: 'plan-001.yaml',
       }],
     });
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'Goal: Test', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'schema: agnes/plan-v1\nid: plan-001\nversion: 1\ncreatedAt: 2026-01-01T00:00:00.000Z\nupdatedAt: 2026-01-01T00:00:00.000Z\nstatus: in_progress\nparent: null\ngoal: Test\ncheck: Verify\nsummary: Active plan\ntasks:\n  - id: task-001\n    summary: one\n    status: pending\n    files:\n      - verify one\n    depends_on: []\nnotes: []\n', 'utf8');
     expect(getPlanGate(tmp)).toBeNull();
   });
 
@@ -938,10 +1025,10 @@ describe('getPlanGate', () => {
         total: 1,
         completed: 0,
         blocked: 1,
-        file: 'plan-001.md',
+        file: 'plan-001.yaml',
       }],
     });
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'Goal: Test', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'schema: agnes/plan-v1\nid: plan-001\nversion: 1\ncreatedAt: 2026-01-01T00:00:00.000Z\nupdatedAt: 2026-01-01T00:00:00.000Z\nstatus: blocked\nparent: null\ngoal: Test\ncheck: Verify\nsummary: Blocked plan\ntasks:\n  - id: task-001\n    summary: one\n    status: pending\n    files:\n      - verify one\n    depends_on: []\nnotes: []\n', 'utf8');
     const gate = getPlanGate(tmp);
     expect(gate).toContain('BLOCKED PLAN');
     expect(gate).toContain('plan-001');
@@ -1262,7 +1349,7 @@ describe('pruneExpiredPlans', () => {
       total: 1,
       completed: status === 'done' ? 1 : 0,
       blocked: 0,
-      file: file ?? `${id}.md`,
+      file: file ?? `${id}.yaml`,
     };
   }
 
@@ -1275,14 +1362,14 @@ describe('pruneExpiredPlans', () => {
       projectName: 'test',
       updatedAt: freshDate,
       activePlanId: null,
-      plans: [makeEntry('plan-001', 'done', oldDate, 'plan-001.md')],
+      plans: [makeEntry('plan-001', 'done', oldDate, 'plan-001.yaml')],
     };
     writeIndex(tmp, index);
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'old plan', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'old plan', 'utf8');
 
     const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
     expect(result.plans.length).toBe(0);
-    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'))).toBe(false);
   });
 
   test('removes abandoned plans older than 7 days', () => {
@@ -1294,14 +1381,14 @@ describe('pruneExpiredPlans', () => {
       projectName: 'test',
       updatedAt: freshDate,
       activePlanId: null,
-      plans: [makeEntry('plan-001', 'abandoned', oldDate, 'plan-001.md')],
+      plans: [makeEntry('plan-001', 'abandoned', oldDate, 'plan-001.yaml')],
     };
     writeIndex(tmp, index);
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'old plan', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'old plan', 'utf8');
 
     const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
     expect(result.plans.length).toBe(0);
-    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'))).toBe(false);
   });
 
   test('keeps non-terminal plans regardless of age', () => {
@@ -1313,14 +1400,14 @@ describe('pruneExpiredPlans', () => {
       projectName: 'test',
       updatedAt: freshDate,
       activePlanId: null,
-      plans: [makeEntry('plan-001', 'in_progress', oldDate, 'plan-001.md')],
+      plans: [makeEntry('plan-001', 'in_progress', oldDate, 'plan-001.yaml')],
     };
     writeIndex(tmp, index);
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'still active', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'still active', 'utf8');
 
     const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
     expect(result.plans.length).toBe(1);
-    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'))).toBe(true);
   });
 
   test('keeps done plans newer than 7 days', () => {
@@ -1332,14 +1419,14 @@ describe('pruneExpiredPlans', () => {
       projectName: 'test',
       updatedAt: freshDate,
       activePlanId: null,
-      plans: [makeEntry('plan-001', 'done', freshDate, 'plan-001.md')],
+      plans: [makeEntry('plan-001', 'done', freshDate, 'plan-001.yaml')],
     };
     writeIndex(tmp, index);
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'recent plan', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'recent plan', 'utf8');
 
     const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
     expect(result.plans.length).toBe(1);
-    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'))).toBe(true);
   });
 
   test('clears activePlanId when pruned plan was active', () => {
@@ -1351,10 +1438,10 @@ describe('pruneExpiredPlans', () => {
       projectName: 'test',
       updatedAt: freshDate,
       activePlanId: 'plan-001',
-      plans: [makeEntry('plan-001', 'done', oldDate, 'plan-001.md')],
+      plans: [makeEntry('plan-001', 'done', oldDate, 'plan-001.yaml')],
     };
     writeIndex(tmp, index);
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'was active', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'was active', 'utf8');
 
     const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
     expect(result.activePlanId).toBeNull();
@@ -1371,15 +1458,15 @@ describe('pruneExpiredPlans', () => {
       projectName: 'test',
       updatedAt: freshDate,
       activePlanId: null,
-      plans: [makeEntry('plan-001', 'done', twoDaysAgo, 'plan-001.md')],
+      plans: [makeEntry('plan-001', 'done', twoDaysAgo, 'plan-001.yaml')],
       retention: { maxAgeDays: 1, terminalStatuses: ['done'] },
     };
     writeIndex(tmp, index);
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), '2 days old, 1 day retention', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), '2 days old, 1 day retention', 'utf8');
 
     const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
     expect(result.plans.length).toBe(0);
-    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'))).toBe(false);
   });
 
   test('does nothing on empty plan list', () => {
@@ -1416,45 +1503,52 @@ describe('pruneExpiredPlans', () => {
         total: 1,
         completed: 1,
         blocked: 0,
-        file: 'plan-001.md',
+        file: 'plan-001.yaml',
       }],
     };
     writeIndex(tmp, index);
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'bad date', 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'bad date', 'utf8');
 
     const result = pruneExpiredPlans(readIndex(tmp)!, tmp);
     expect(result.plans.length).toBe(1);
-    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'))).toBe(true);
   });
 });
 
 describe('planning discipline', () => {
-  const minValidPlan = `# plan-001 — Test goal
-
-## Intent
-<!-- What must be true after this plan executes -->
-
-## Goal
-Build a login system with OAuth and proper validation
-
-## Tasks
-| # | Task | Dependencies | Effort | Verification |
-|---|------|-------------|--------|-------------|
-| 1 | Add OAuth provider |  | M | Integration test passes |
-| 2 | Add session handling | 1 | L | Unit test coverage > 80% |
-| 3 | Add login UI | 1 | M | E2E login flow works |
-
-## Risks
-<!-- What could go wrong, how to detect it early -->
-OAuth tokens may expire. Monitor token refresh errors.
-
-## Completion Criteria
-<!-- Verifiable conditions -->
-All tests pass, login flow verified, security review completed
-
-## Validation
-<!-- How to confirm the plan was correct after execution -->
-Manual smoke test of login flow
+  const minValidPlan = `schema: agnes/plan-v1
+id: plan-001
+version: 1
+createdAt: 2026-01-01T00:00:00.000Z
+updatedAt: 2026-01-01T00:00:00.000Z
+status: draft
+parent: null
+goal: Build a login system with OAuth and proper validation
+check: All tests pass, login flow verified, security review completed
+summary: Test goal
+tasks:
+  - id: task-001
+    summary: Add OAuth provider
+    status: pending
+    files:
+      - Integration test passes
+    depends_on: []
+  - id: task-002
+    summary: Add session handling
+    status: pending
+    files:
+      - Unit test coverage > 80%
+    depends_on:
+      - task-001
+  - id: task-003
+    summary: Add login UI
+    status: pending
+    files:
+      - E2E login flow works
+    depends_on:
+      - task-001
+notes:
+  - OAuth tokens may expire. Monitor token refresh errors.
 `;
 
   describe('generatePlanTemplate', () => {
@@ -1684,7 +1778,7 @@ fix things
       expect(entry.status).toBe('draft');
       expect(entry.summary).toBe('Test the system');
       expect(entry.total).toBe(0);
-      expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'))).toBe(true);
+      expect(fs.existsSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'))).toBe(true);
     });
 
     test('creates entry with ready status for user_ready source', () => {
@@ -1716,7 +1810,7 @@ fix things
     test('transitions draft→reviewed→ready→in_progress→done', () => {
       const tmp = createTempProject();
       const id = createAutoPlan({ goal: 'Build the feature with full test coverage', source: 'user' }, tmp);
-      const planPath = path.join(tmp, '.agnes', 'plans', `${id}.md`);
+      const planPath = path.join(tmp, '.agnes', 'plans', `${id}.yaml`);
       fs.writeFileSync(planPath, minValidPlan, 'utf8');
 
       let index = transitionPlanStatus(id, 'reviewed', tmp);
@@ -1748,27 +1842,19 @@ fix things
     test('blocks draft→reviewed when quality insufficient', () => {
       const tmp = createTempProject();
       const id = createAutoPlan({ goal: 'fix things', source: 'user' }, tmp);
-      const planPath = path.join(tmp, '.agnes', 'plans', `${id}.md`);
-      const badPlan = `# ${id} — Test
-
-## Intent
-
-
-## Goal
-fix things
-
-## Tasks
-| # | Task | Dependencies | Effort | Verification |
-|---|------|-------------|--------|-------------|
-
-## Risks
-<!-- What could go wrong, how to detect it early -->
-
-## Completion Criteria
-<!-- Verifiable conditions -->
-
-## Validation
-<!-- How to confirm the plan was correct after execution -->
+      const planPath = path.join(tmp, '.agnes', 'plans', `${id}.yaml`);
+      const badPlan = `schema: agnes/plan-v1
+id: ${id}
+version: 1
+createdAt: 2026-01-01T00:00:00.000Z
+updatedAt: 2026-01-01T00:00:00.000Z
+status: draft
+parent: null
+goal: fix things
+check: TBD
+summary: Test
+tasks: []
+notes: []
 `;
       fs.writeFileSync(planPath, badPlan, 'utf8');
 
@@ -1806,11 +1892,11 @@ fix things
           total: 4,
           completed: 3,
           blocked: 1,
-          file: 'plan-001.md',
+          file: 'plan-001.yaml',
         }],
       };
       writeIndex(tmp, index);
-      fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), '# plan content', 'utf8');
+      fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'schema: agnes/plan-v1\nid: plan-001\nversion: 1\ncreatedAt: 2026-01-01T00:00:00.000Z\nupdatedAt: 2026-01-01T00:00:00.000Z\nstatus: done\nparent: null\ngoal: Completed\ncheck: Verify\nsummary: Completed plan\ntasks: []\nnotes: []\n', 'utf8');
 
       const retro = generateRetrospective('plan-001', tmp);
       expect(retro).toContain('plan-001');
@@ -1827,7 +1913,7 @@ fix things
       const id = createAutoPlan({ goal: 'Implement user authentication with OAuth', source: 'user' }, tmp);
       expect(id).toBe('plan-001');
 
-      const planPath = path.join(tmp, '.agnes', 'plans', 'plan-001.md');
+      const planPath = path.join(tmp, '.agnes', 'plans', 'plan-001.yaml');
       fs.writeFileSync(planPath, minValidPlan, 'utf8');
 
       const initialIndex = readPlanIndex(tmp)!;
@@ -1852,7 +1938,7 @@ fix things
       expect(done!.activePlanId).toBeNull();
 
       const planContent = fs.readFileSync(planPath, 'utf8');
-      expect(planContent).toContain('Retrospective for plan-001');
+      expect(planContent).toContain('schema: agnes/plan-v1');
     });
   });
 });

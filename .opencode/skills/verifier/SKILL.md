@@ -1,5 +1,7 @@
 ---
 id: verifier
+name: verifier
+description: 'After any code change (called by builder), before claiming any task is complete, before shipper starts.'
 phase: "VERIFY"
 use_when: "After any code change (called by builder), before claiming any task is complete, before shipper starts."
 version: 1.0

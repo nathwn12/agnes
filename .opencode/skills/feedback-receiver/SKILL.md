@@ -1,5 +1,7 @@
 ---
 id: feedback-receiver
+name: feedback-receiver
+description: 'Received code review feedback (from human or automated reviewer), need to evaluate and act on comments without blind acceptance.'
 phase: "REVIEW"
 use_when: "Received code review feedback (from human or automated reviewer), need to evaluate and act on comments without blind acceptance."
 version: 1.0

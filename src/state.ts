@@ -108,6 +108,26 @@ function getPlanMirrorPath(root: string, planId: string): string {
   return path.join(root, AGNES_DIR, PLANS_DIR, `${planId}.md`);
 }
 
+function serializePlan(plan: Plan): string {
+  const parsed = PlanSchema.parse(plan);
+  return yamlStringify(JSON.parse(JSON.stringify(parsed)), null, { indent: 2 });
+}
+
+function readPlanArtifact(plansDir: string, planId: string): { content: string; plan: Plan } | null {
+  const yamlPath = path.join(plansDir, `${planId}.yaml`);
+  if (fs.existsSync(yamlPath)) {
+    const content = fs.readFileSync(yamlPath, 'utf8');
+    return { content, plan: PlanSchema.parse(yamlParse(content)) };
+  }
+
+  const mdPath = path.join(plansDir, `${planId}.md`);
+  if (fs.existsSync(mdPath)) {
+    return { content: fs.readFileSync(mdPath, 'utf8'), plan: parseLegacyMdPlan(mdPath) };
+  }
+
+  return null;
+}
+
 export interface ActivePlan {
   entry: PlanIndexEntry;
   content: string;
@@ -260,16 +280,7 @@ export function writePlanFile(plan: Plan, plansDir: string): string {
 }
 
 export function readPlanFile(plansDir: string, planId: string): Plan | null {
-  const yamlPath = path.join(plansDir, `${planId}.yaml`);
-  if (fs.existsSync(yamlPath)) {
-    const raw = fs.readFileSync(yamlPath, 'utf-8');
-    return PlanSchema.parse(yamlParse(raw));
-  }
-  const mdPath = path.join(plansDir, `${planId}.md`);
-  if (fs.existsSync(mdPath)) {
-    return parseLegacyMdPlan(mdPath);
-  }
-  return null;
+  return readPlanArtifact(plansDir, planId)?.plan ?? null;
 }
 
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?/;
@@ -342,7 +353,6 @@ export function pruneExpiredPlans(index: PlanIndex, projectRoot?: string): PlanI
       if (!isNaN(updatedMs) && updatedMs <= cutoffMs) {
         try {
           fs.rmSync(getPlanFilePath(root, entry), { force: true });
-          fs.rmSync(getPlanMirrorPath(root, entry.id), { force: true });
         } catch {
           // File may already be gone
         }
@@ -399,15 +409,8 @@ export function getLatestActivePlan(projectRoot?: string): ActivePlan | null {
 
   if (!target) return null;
 
-  const planPath = fs.existsSync(getPlanMirrorPath(root, target.id))
-    ? getPlanMirrorPath(root, target.id)
-    : getPlanFilePath(root, target);
-  try {
-    const content = fs.readFileSync(planPath, 'utf8');
-    return { entry: target, content };
-  } catch {
-    return null;
-  }
+  const artifact = readPlanArtifact(path.join(root, AGNES_DIR, PLANS_DIR), target.id);
+  return artifact ? { entry: target, ...artifact } : null;
 }
 
 export function buildPlanSummary(projectRoot?: string): string {
@@ -422,8 +425,7 @@ export function buildPlanSummary(projectRoot?: string): string {
 
   const { entry } = active;
 
-  const goalMatch = active.content.match(/^Goal:\s*(.+)$/m);
-  const goal = goalMatch ? goalMatch[1] : '';
+  const goal = active.plan?.goal ?? (active.content.match(/^Goal:\s*(.+)$/m)?.[1] ?? '');
 
   let line = `Active Plan: ${entry.id} (${entry.status}) \u2014 ${entry.completed}/${entry.total} tasks done\nGoal: ${goal}\nLatest update: ${entry.updatedAt}`;
 
@@ -456,7 +458,7 @@ export function getNextPlanId(projectRoot?: string): string {
   try {
     const files = fs.readdirSync(cache);
     for (const f of files) {
-      const match = f.match(/^plan-(\d+)\.(?:md|yaml)$/);
+      const match = f.match(/^plan-(\d+)\.yaml$/);
       if (match) {
         const num = parseInt(match[1], 10);
         if (num > max) max = num;
@@ -467,16 +469,6 @@ export function getNextPlanId(projectRoot?: string): string {
   }
 
   return `plan-${String(max + 1).padStart(3, '0')}`;
-}
-
-function writeLegacyPlanFile(root: string, id: string, content: string): string {
-  const file = `${id}.md`;
-  const filePath = path.join(root, AGNES_DIR, PLANS_DIR, file);
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmp = `${filePath}.tmp`;
-  fs.writeFileSync(tmp, content, 'utf8');
-  fs.renameSync(tmp, filePath);
-  return file;
 }
 
 export function createPlan(input: {
@@ -500,30 +492,6 @@ export function createPlan(input: {
   const total = input.tasks.length;
   const completed = 0;
   const blocked = 0;
-
-  const tasksMd = input.tasks.map(t => {
-    if (/^- \[[ x\/]\]/.test(t)) return t;
-    return `- [ ] ${t.replace(/^- /, '')}`;
-  }).join('\n');
-
-  let content = `---
-id: ${id}
-createdAt: ${now}
-updatedAt: ${now}
-${input.parent ? `parent: ${input.parent}\n` : ''}---
-
-Goal: ${input.goal}
-
-Check: ${input.check}
-
-Tasks:
-${tasksMd}
-
-${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n}`).join('\n')}\n\n` : ''}Next:
-- <first executable action>
-`;
-
-  writeLegacyPlanFile(root, id, content);
 
   const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
   const plan: Plan = {
@@ -553,6 +521,7 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
     }),
     notes: input.notes ?? [],
   };
+  const content = serializePlan(plan);
   writePlanFile(plan, plansDir);
 
   const entry: PlanIndexEntry = {
@@ -610,26 +579,6 @@ export function createPlanIteration(input: {
   const id = getNextPlanId(root);
   const total = (input.tasksMarkdown.match(/^- \[.?\]/gm) || []).length;
 
-  let content = `---
-id: ${id}
-createdAt: ${now}
-updatedAt: ${now}
-parent: ${input.parent}
----
-
-Goal: ${input.goal}
-
-Check: ${input.check}
-
-Tasks:
-${input.tasksMarkdown}
-
-${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n}`).join('\n')}\n\n` : ''}Next:
-- <first executable action>
-`;
-
-  writeLegacyPlanFile(root, id, content);
-
   const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
   const plan: Plan = {
     schema: 'agnes/plan-v1',
@@ -660,6 +609,7 @@ ${input.notes && input.notes.length > 0 ? `Notes:\n${input.notes.map(n => `- ${n
       }),
     notes: input.notes ?? [],
   };
+  const content = serializePlan(plan);
   writePlanFile(plan, plansDir);
 
   const index = readPlanIndex(root);
@@ -920,14 +870,34 @@ function parseTaskRows(content: string): { num: string; deps: string; verificati
   return rows;
 }
 
+function parseQualityInput(content: string): { goal: string; criteria: string; risks: string; tasks: { num: string; deps: string; verification: string }[] } {
+  try {
+    const parsed = PlanSchema.parse(yamlParse(content));
+    return {
+      goal: parsed.goal,
+      criteria: parsed.check,
+      risks: parsed.notes.join('\n'),
+      tasks: parsed.tasks.map((task, i) => ({
+        num: String(i + 1),
+        deps: task.depends_on.join(', '),
+        verification: task.files.join(', ') || task.summary,
+      })),
+    };
+  } catch {
+    return {
+      goal: extractSection(content, 'Goal'),
+      criteria: extractSection(content, 'Completion Criteria'),
+      risks: extractSection(content, 'Risks'),
+      tasks: parseTaskRows(content),
+    };
+  }
+}
+
 export function assessPlanQuality(content: string): PlanQualityReport {
   const flags: string[] = [];
   let score = 0;
 
-  const goal = extractSection(content, 'Goal');
-  const criteria = extractSection(content, 'Completion Criteria');
-  const risks = extractSection(content, 'Risks');
-  const tasks = parseTaskRows(content);
+  const { goal, criteria, risks, tasks } = parseQualityInput(content);
 
   if (goal.length > 10) {
     score += 5;
@@ -1022,8 +992,22 @@ export function createAutoPlan(params: { goal: string; source: 'gate' | 'user' |
   const status: PlanStatus = params.source === 'user_ready' ? 'ready' : 'draft';
   const summary = params.goal.length > 80 ? params.goal.substring(0, 80) + '...' : params.goal;
 
-  const content = generatePlanTemplate(id, params.goal);
-  writeLegacyPlanFile(root, id, content);
+  const plan: Plan = {
+    schema: 'agnes/plan-v1',
+    id,
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    status,
+    parent: null,
+    goal: params.goal,
+    check: 'TBD',
+    summary,
+    tasks: [],
+    notes: [],
+  };
+  const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
+  writePlanFile(plan, plansDir);
 
   const entry: PlanIndexEntry = {
     id,
@@ -1068,9 +1052,11 @@ export function transitionPlanStatus(planId: string, newStatus: string, projectR
 
   const transitionsRequiringQuality = new Set(['reviewed', 'ready']);
   if (transitionsRequiringQuality.has(newStatus)) {
-    const planPath = fs.existsSync(getPlanMirrorPath(root, planId))
-      ? getPlanMirrorPath(root, planId)
-      : getPlanFilePath(root, entry);
+    const planPath = fs.existsSync(getPlanFilePath(root, entry))
+      ? getPlanFilePath(root, entry)
+      : fs.existsSync(getPlanMirrorPath(root, planId))
+        ? getPlanMirrorPath(root, planId)
+        : getPlanFilePath(root, entry);
     let content: string;
     try {
       content = fs.readFileSync(planPath, 'utf8');

@@ -1,5 +1,7 @@
 ---
 id: plan-reviewer
+name: plan-reviewer
+description: 'After planner produces a spec and implementation plan, before builder begins any implementation work.'
 phase: "PLAN REVIEW"
 use_when: "After planner produces a spec and implementation plan, before builder begins any implementation work."
 version: 1.0

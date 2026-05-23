@@ -1,5 +1,7 @@
 ---
 id: skillwriter
+name: skillwriter
+description: 'Creating a brand-new AGNES skill, editing/improving an existing skill, closing a gap identified during retro, or when an agent demonstrably behaves wrongly without documented guidance.'
 phase: "REFLECT / META"
 use_when: "Creating a brand-new AGNES skill, editing/improving an existing skill, closing a gap identified during retro, or when an agent demonstrably behaves wrongly without documented guidance."
 version: 1.0

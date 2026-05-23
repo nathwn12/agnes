@@ -21481,8 +21481,17 @@ function getPlanFilePath(root, entry) {
   const filename = entry.file || `${entry.id}.yaml`;
   return path.join(root, AGNES_DIR, PLANS_DIR, filename);
 }
-function getPlanMirrorPath(root, planId) {
-  return path.join(root, AGNES_DIR, PLANS_DIR, `${planId}.md`);
+function readPlanArtifact(plansDir, planId) {
+  const yamlPath = path.join(plansDir, `${planId}.yaml`);
+  if (fs.existsSync(yamlPath)) {
+    const content = fs.readFileSync(yamlPath, "utf8");
+    return { content, plan: PlanSchema.parse($parse(content)) };
+  }
+  const mdPath = path.join(plansDir, `${planId}.md`);
+  if (fs.existsSync(mdPath)) {
+    return { content: fs.readFileSync(mdPath, "utf8"), plan: parseLegacyMdPlan(mdPath) };
+  }
+  return null;
 }
 var _cachedProjectRoot = null;
 function findProjectRoot(startDir) {
@@ -21613,6 +21622,51 @@ function writePlanIndex(index, projectRoot) {
   fs.writeFileSync(tmp, JSON.stringify(index, null, 2), "utf8");
   fs.renameSync(tmp, filePath);
 }
+var FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?/;
+function parseLegacyMdPlan(filePath) {
+  const raw = fs.readFileSync(filePath, "utf-8");
+  const fm = raw.match(FRONTMATTER_RE);
+  let frontmatter = {};
+  let body = raw;
+  if (fm) {
+    frontmatter = $parse(fm[1]);
+    body = raw.slice(fm[0].length);
+  }
+  const goalMatch = body.match(/^Goal:\s*(.+)$/m);
+  const checkMatch = body.match(/^Check:\s*(.+)$/m);
+  const summaryMatch = body.match(/^#\s+\S+\s+[\u2014\u2013-]\s+(.+)$/m);
+  const taskLines = [];
+  for (const line of body.split(`
+`)) {
+    if (/^- \[[ x\/]\]/.test(line)) {
+      taskLines.push(line);
+    }
+  }
+  const tasks = taskLines.map((t, i) => ({
+    id: `task-${String(i + 1).padStart(3, "0")}`,
+    summary: t.replace(/^- \[[ x\/]\]\s*/, "").trim(),
+    status: t.startsWith("- [x]") ? "done" : t.startsWith("- [/]") ? "blocked" : "pending",
+    files: [],
+    depends_on: []
+  }));
+  const planId = typeof frontmatter.id === "string" ? frontmatter.id : path.basename(filePath, ".md");
+  const createdAt = typeof frontmatter.createdAt === "string" ? frontmatter.createdAt : new Date().toISOString();
+  const updatedAt = typeof frontmatter.updatedAt === "string" ? frontmatter.updatedAt : createdAt;
+  return {
+    schema: "agnes/plan-v1",
+    id: planId,
+    version: 1,
+    createdAt,
+    updatedAt,
+    status: typeof frontmatter.status === "string" ? frontmatter.status : "draft",
+    parent: typeof frontmatter.parent === "string" ? frontmatter.parent : null,
+    goal: goalMatch ? goalMatch[1].trim() : typeof frontmatter.goal === "string" ? frontmatter.goal : "",
+    check: checkMatch ? checkMatch[1].trim() : typeof frontmatter.check === "string" ? frontmatter.check : "",
+    summary: typeof frontmatter.summary === "string" ? frontmatter.summary : summaryMatch ? summaryMatch[1].trim() : "",
+    tasks,
+    notes: Array.isArray(frontmatter.notes) ? frontmatter.notes : []
+  };
+}
 var DEFAULT_RETENTION = { maxAgeDays: 7, terminalStatuses: ["done", "abandoned"] };
 function pruneExpiredPlans(index, projectRoot) {
   const root = projectRoot ?? findProjectRoot();
@@ -21629,7 +21683,6 @@ function pruneExpiredPlans(index, projectRoot) {
       if (!isNaN(updatedMs) && updatedMs <= cutoffMs) {
         try {
           fs.rmSync(getPlanFilePath(root, entry), { force: true });
-          fs.rmSync(getPlanMirrorPath(root, entry.id), { force: true });
         } catch {}
         changed = true;
         continue;
@@ -21681,13 +21734,8 @@ function getLatestActivePlan(projectRoot) {
   }
   if (!target)
     return null;
-  const planPath = fs.existsSync(getPlanMirrorPath(root, target.id)) ? getPlanMirrorPath(root, target.id) : getPlanFilePath(root, target);
-  try {
-    const content = fs.readFileSync(planPath, "utf8");
-    return { entry: target, content };
-  } catch {
-    return null;
-  }
+  const artifact = readPlanArtifact(path.join(root, AGNES_DIR, PLANS_DIR), target.id);
+  return artifact ? { entry: target, ...artifact } : null;
 }
 function buildPlanSummary(projectRoot) {
   const root = projectRoot ?? findProjectRoot();
@@ -21700,8 +21748,7 @@ function buildPlanSummary(projectRoot) {
   if (!active)
     return "No active plan. Create one before delegating work.";
   const { entry } = active;
-  const goalMatch = active.content.match(/^Goal:\s*(.+)$/m);
-  const goal = goalMatch ? goalMatch[1] : "";
+  const goal = active.plan?.goal ?? (active.content.match(/^Goal:\s*(.+)$/m)?.[1] ?? "");
   let line = `Active Plan: ${entry.id} (${entry.status}) \u2014 ${entry.completed}/${entry.total} tasks done
 Goal: ${goal}
 Latest update: ${entry.updatedAt}`;

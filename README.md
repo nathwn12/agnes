@@ -1,7 +1,7 @@
 <h1 align="center">AGNES — OpenCode Native Plugin</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.13.2-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.13.3-blue" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
   <img src="https://img.shields.io/badge/skills-23-orange" alt="23 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
@@ -76,7 +76,7 @@ All 23 skills with concrete trigger conditions and outputs. "When to Use" is wri
 | **brandkit** | DESIGN | Starting a UI-heavy project. Need logo, color palette, typography, design system, or brand guidelines. Not for backend-only work. | Brand assets, color system, typography scale, component mockups |
 | **prototype** | DESIGN / BUILD | Need to validate a design decision with throwaway code. Not sure if the state machine is right, or if that UX pattern works. | Runnable prototype + documented answer (discarded after) |
 | **prd** | PLAN | Requirements are clear but need formal capture. Stakeholders need a documented PRD with stories, acceptance criteria, and priorities. | Published PRD with user stories, acceptance criteria, priority matrix |
-| **planner** | PLAN | Spec or PRD is approved. Need to break it into actionable implementation steps with dependencies and ordering. | Bite-sized implementation checklist (plan-NNN.md) |
+| **planner** | PLAN | Spec or PRD is approved. Need to break it into actionable implementation steps with dependencies and ordering. | Bite-sized implementation checklist (plan-NNN.yaml) |
 | **plan-reviewer** | PLAN REVIEW | Planner produced a plan. Need a quality gate before any implementation starts. Applies four lenses: CEO (business value), Eng (architecture), Design (UX), DX (developer experience). | Score per lens + verdict: Approve / Revise / Reject |
 | **builder** | BUILD | Plan is approved and ready to execute. Has detailed tasks with clear boundaries. Dispatches subagent swarms in isolated worktrees. | Verified, reviewed commits |
 | **tdd** | TEST / BUILD | Building features from scratch. Prefer test-first development. Each cycle: RED (write failing test) → GREEN (minimal code) → REFACTOR (clean up). | Red-green-refactor vertical slices through all layers |
@@ -138,7 +138,7 @@ AGNES is organized into layered modules that handle protocol, state, runtime, an
 | **Plugin** | `src/plugin.ts` | OpenCode entry point — plugin registration, auto-detects DeepSeek V4, injects interleaved reasoning config |
 | **Runtime** | `src/runtime.ts` | Core execution loop — wave cycle, subagent dispatch, retry with struggle detection, closed-loop orchestration |
 | **Shell** | `src/shell.ts` | Shell detection — identifies pwsh/bash/cmd and detects shell mismatch between host and workspace |
-| **State** | `src/state.ts` | Plan state machine — CRUD for plan-NNN.md, index.json, session tracking, retention pruning |
+| **State** | `src/state.ts` | Plan state machine — CRUD for plan-NNN.yaml, index.json, session tracking, retention pruning |
 | **Verification** | `src/verification.ts` | Structured gates with PASS/FAIL/SKIP status |
 | **Validation** | `src/validation.ts` | Allowlist-based message validation and injection protection |
 
@@ -158,11 +158,10 @@ AGNES tracks progress via `.agnes/` in any project:
 ├── specs/             Published specs and PRDs
 └── plans/
     ├── plan-001.yaml  Canonical immutable plan iteration
-    ├── plan-001.md    Human-readable mirror
     └── ...
 ```
 
-Plan files are immutable — every state change creates a new `plan-NNN.yaml` and mirrored `plan-NNN.md`.
+Plan files are immutable — every state change creates a new `plan-NNN.yaml`.
 Search by project/status through `index.json` without re-reading old plan files.
 
 ### Retention policy

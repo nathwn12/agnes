@@ -2,6 +2,12 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.13.3 (2026-05-24)
+
+### Changed
+
+- **Release maintenance**: Bumped package metadata and README version badge to `0.13.3`.
+
 ## 0.13.2 (2026-05-24)
 
 ### Changed

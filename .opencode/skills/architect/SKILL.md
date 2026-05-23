@@ -1,5 +1,7 @@
 ---
 id: architect
+name: architect
+description: 'Codebase feels hard to change, modules are tightly coupled, need to find refactoring opportunities that improve testability and AI-navigability.'
 phase: "RESEARCH / DESIGN"
 use_when: "Codebase feels hard to change, modules are tightly coupled, need to find refactoring opportunities that improve testability and AI-navigability."
 version: 1.0

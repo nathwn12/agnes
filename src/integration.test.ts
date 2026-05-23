@@ -26,30 +26,48 @@ function makeCleanIndex(tmp: string): PlanIndex {
   };
 }
 
-const highQualityPlan = `# plan-001 — Add dark mode toggle to settings page
-
-## Intent
-Users can toggle dark mode on the settings page and the preference persists across sessions
-
-## Goal
-Add dark mode toggle to settings page
-
-## Tasks
-| # | Task | Dependencies | Effort | Verification |
-|---|------|-------------|--------|-------------|
-| 1 | Add dark mode CSS variables |  | M | Build compiles without errors |
-| 2 | Create toggle component | 1 | M | Unit test renders and toggles |
-| 3 | Persist preference in localStorage | 2 | S | Preference survives page reload |
-| 4 | Apply theme class to document | 1, 2, 3 | S | Visual regression tests pass |
-
-## Risks
-CSS variables may conflict with existing styles. Verify in all viewports.
-
-## Completion Criteria
-All tests pass, dark mode toggle works in Chrome/Firefox/Safari, preference survives reload
-
-## Validation
-Manual smoke test: toggle dark mode, reload page, verify preference persists
+const highQualityPlan = `schema: agnes/plan-v1
+id: plan-001
+version: 1
+createdAt: 2026-01-01T00:00:00.000Z
+updatedAt: 2026-01-01T00:00:00.000Z
+status: draft
+parent: null
+goal: Add dark mode toggle to settings page
+check: All tests pass, dark mode toggle works in Chrome/Firefox/Safari, preference survives reload
+summary: Add dark mode toggle to settings page
+tasks:
+  - id: task-001
+    summary: Add dark mode CSS variables
+    status: pending
+    files:
+      - Build compiles without errors
+    depends_on: []
+  - id: task-002
+    summary: Create toggle component
+    status: pending
+    files:
+      - Unit test renders and toggles
+    depends_on:
+      - task-001
+  - id: task-003
+    summary: Persist preference in localStorage
+    status: pending
+    files:
+      - Preference survives page reload
+    depends_on:
+      - task-002
+  - id: task-004
+    summary: Apply theme class to document
+    status: pending
+    files:
+      - Visual regression tests pass
+    depends_on:
+      - task-001
+      - task-002
+      - task-003
+notes:
+  - CSS variables may conflict with existing styles. Verify in all viewports.
 `;
 
 describe('planning discipline integration', () => {
@@ -77,13 +95,9 @@ describe('planning discipline integration', () => {
     expect(entry).toBeDefined();
     expect(entry!.status).toBe('draft');
 
-    const planContent = fs.readFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'utf8');
-    expect(planContent).toContain('## Intent');
-    expect(planContent).toContain('## Goal');
-    expect(planContent).toContain('## Tasks');
-    expect(planContent).toContain('## Risks');
-    expect(planContent).toContain('## Completion Criteria');
-    expect(planContent).toContain('## Validation');
+    const planContent = fs.readFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'utf8');
+    expect(planContent).toContain('goal: Implement login validation');
+    expect(planContent).toContain('tasks:');
   });
 
   test('Quality check blocks poor plans', () => {
@@ -91,7 +105,7 @@ describe('planning discipline integration', () => {
     writeIndex(tmp, makeCleanIndex(tmp));
 
     createAutoPlan({ goal: 'Implement login validation', source: 'gate' }, tmp);
-    const planContent = fs.readFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), 'utf8');
+    const planContent = fs.readFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'utf8');
 
     const quality = assessPlanQuality(planContent);
     expect(quality.score).toBeLessThan(60);
@@ -112,7 +126,7 @@ describe('planning discipline integration', () => {
     let result = transitionPlanStatus(id, 'reviewed', tmp);
     expect(result).toBeNull();
 
-    const planPath = path.join(tmp, '.agnes', 'plans', 'plan-001.md');
+    const planPath = path.join(tmp, '.agnes', 'plans', 'plan-001.yaml');
     fs.writeFileSync(planPath, highQualityPlan, 'utf8');
 
     result = transitionPlanStatus(id, 'reviewed', tmp);
@@ -133,8 +147,8 @@ describe('planning discipline integration', () => {
     expect(result!.plans.find(p => p.id === id)!.status).toBe('done');
     expect(result!.activePlanId).toBeNull();
 
-    const planContent = fs.readFileSync(planPath, 'utf8');
-    expect(planContent).toContain('Retrospective for plan-001');
+      const planContent = fs.readFileSync(planPath, 'utf8');
+      expect(planContent).toContain('schema: agnes/plan-v1');
   });
 
   test('Invalid transitions are rejected', () => {
@@ -142,7 +156,7 @@ describe('planning discipline integration', () => {
     writeIndex(tmp, makeCleanIndex(tmp));
 
     const id = createAutoPlan({ goal: 'Test transitions', source: 'user' }, tmp);
-    const planPath = path.join(tmp, '.agnes', 'plans', 'plan-001.md');
+    const planPath = path.join(tmp, '.agnes', 'plans', 'plan-001.yaml');
     fs.writeFileSync(planPath, highQualityPlan, 'utf8');
 
     expect(transitionPlanStatus(id, 'ready', tmp)).toBeNull();
@@ -190,13 +204,13 @@ describe('planning discipline integration', () => {
         total: 1,
         completed: 0,
         blocked: 0,
-        file: 'plan-001.md',
+        file: 'plan-001.yaml',
       }],
     };
     writeIndex(tmp, index);
 
     const planContent = 'Plan to fix the login bug';
-    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.md'), planContent, 'utf8');
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), planContent, 'utf8');
 
     const result = processMessage('fix the login', index, planContent) as Extract<ProcessMessageResult, { type: 'proceed' }>;
     expect(result.type).toBe('proceed');

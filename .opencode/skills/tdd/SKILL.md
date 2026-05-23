@@ -1,5 +1,7 @@
 ---
 id: tdd
+name: tdd
+description: 'Building new features from scratch, fixing bugs (write regression test first), or any time you need confidence that code does exactly what it should.'
 phase: "TEST / BUILD"
 use_when: "Building new features from scratch, fixing bugs (write regression test first), or any time you need confidence that code does exactly what it should."
 version: 1.0

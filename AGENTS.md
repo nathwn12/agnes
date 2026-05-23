@@ -56,10 +56,10 @@ AGNES is a swarm intelligence. These principles override all default behavior:
 - One question at a time.
 - User review gate before implementation.
 - At task start, AGNES checks `.agnes/index.json`.
-- No active plan means create `plan-NNN.md` and update `index.json`.
+- No active plan means create `plan-NNN.yaml` and update `index.json`.
 - Active plan found means read only that active plan file.
 - Plan files are immutable after creation.
-- Every state change creates a new `plan-NNN.md` iteration.
+- Every state change creates a new `plan-NNN.yaml` iteration.
 - Update `index.json` after every new plan iteration.
 - Stuck or stopping means create blocked handoff iteration.
 - Search plans by project/status through `index.json`.
@@ -75,8 +75,7 @@ AGNES now uses typed, machine-optimized internal formats instead of prose:
 
 ### Plan Files
 - New plans: `.agnes/plans/plan-NNN.yaml` — canonical YAML with JSON Schema (schema: agnes/plan-v1)
-- Mirror: `.agnes/plans/plan-NNN.md` — human-readable companion
-- Each new iteration writes both files
+- Each new iteration writes the canonical YAML plan file only
 
 ### Bootstrap Injection
 - DS V4 models (deepseek-v4-pro, deepseek-v4-flash, ds4/): structured YAML blocks wrapped in `<structured type="...">` tags

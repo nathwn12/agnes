@@ -177,7 +177,7 @@ describe('buildExecutionContext', () => {
       total: 1,
       completed: 0,
       blocked: 0,
-      file: 'plan-001.md',
+      file: 'plan-001.yaml',
       attempts: 2,
       struggle: freshStruggleMetrics(),
     });
@@ -195,7 +195,7 @@ describe('buildExecutionContext', () => {
       total: 1,
       completed: 0,
       blocked: 0,
-      file: 'plan-001.md',
+      file: 'plan-001.yaml',
       attempts: 3,
       struggle: {
         noProgressIterations: 3,
@@ -218,7 +218,7 @@ describe('buildExecutionContext', () => {
       total: 1,
       completed: 0,
       blocked: 0,
-      file: 'plan-001.md',
+      file: 'plan-001.yaml',
       attempts: 0,
       struggle: {
         noProgressIterations: 0,
@@ -403,7 +403,7 @@ describe('processMessage', () => {
     updatedAt: '2026-01-01T00:00:00.000Z',
     activePlanId: 'plan-001',
     plans: [
-      { id: 'plan-001', status: 'in_progress', createdAt: '', updatedAt: '', summary: 'Test', total: 1, completed: 0, blocked: 0, file: 'plan-001.md' },
+      { id: 'plan-001', status: 'in_progress', createdAt: '', updatedAt: '', summary: 'Test', total: 1, completed: 0, blocked: 0, file: 'plan-001.yaml' },
     ],
   };
 

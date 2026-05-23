@@ -1,5 +1,7 @@
 ---
 id: clarifier
+name: clarifier
+description: 'Vague requests, incomplete bug reports, cross-domain terminology conflicts, before planning to ensure shared understanding.'
 phase: "THINK"
 use_when: "Vague requests, incomplete bug reports, cross-domain terminology conflicts, before planning to ensure shared understanding."
 version: 1.0

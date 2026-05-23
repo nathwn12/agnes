@@ -1,5 +1,7 @@
 ---
 id: planner
+name: planner
+description: 'Requirements are clear, before any implementation begins, needs architecture decisions documented.'
 phase: "PLAN"
 use_when: "Requirements are clear, before any implementation begins, needs architecture decisions documented."
 version: 1.0

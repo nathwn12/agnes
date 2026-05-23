@@ -1,5 +1,7 @@
 ---
 id: tester
+name: tester
+description: 'After builder completes implementation. When user reports bugs (write regression test first). Before shipping (final test gate). For test coverage audits.'
 phase: "TEST"
 use_when: "After builder completes implementation. When user reports bugs (write regression test first). Before shipping (final test gate). For test coverage audits."
 version: 1.0

@@ -1,5 +1,7 @@
 ---
 id: reviewer
+name: reviewer
+description: 'After each builder task (per-task review), before shipper (final review), when user requests code review.'
 phase: "REVIEW"
 use_when: "After each builder task (per-task review), before shipper (final review), when user requests code review."
 version: 1.0

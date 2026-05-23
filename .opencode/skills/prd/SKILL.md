@@ -1,5 +1,7 @@
 ---
 id: prd
+name: prd
+description: 'A feature request has been discussed enough to write requirements, before detailed implementation planning begins.'
 phase: "PLAN"
 use_when: "A feature request has been discussed enough to write requirements, before detailed implementation planning begins."
 version: 1.0

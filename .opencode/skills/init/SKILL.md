@@ -1,5 +1,7 @@
 ---
 id: init
+name: init
+description: 'You need to set up AGNES in a new project, or update an existing project''s AGENTS.md and state files in .agnes/.'
 phase: "SETUP"
 use_when: "You need to set up AGNES in a new project, or update an existing project's AGENTS.md and state files in .agnes/."
 version: 1.0
@@ -11,14 +13,14 @@ You need to set up AGNES in a new project, or update an existing project's AGENT
 
 ## Core Concept
 
-Initialises a project to work with AGNES. Creates `.agnes/index.json`, `.agnes/config.json`, `.agnes/sessions.json`, `.agnes/learnings/`, `.agnes/specs/`, and a YAML-first `plan-NNN.yaml` with a `.md` mirror, then writes or updates `AGENTS.md` in the project root.
+Initialises a project to work with AGNES. Creates `.agnes/index.json`, `.agnes/config.json`, `.agnes/sessions.json`, `.agnes/learnings/`, `.agnes/specs/`, and a canonical `plan-NNN.yaml`, then writes or updates `AGENTS.md` in the project root.
 
 The project AGENTS.md is minimal by design — everything in it pays a token cost every turn. Always-on swarm ethos and state rules only; everything else lives in skills.
 
 ## Precise Vocabulary
 
 - **Project root** — the first ancestor directory containing `package.json`, `.git`, or `.opencode`
-- **State files** — `.agnes/index.json`, `.agnes/config.json`, `.agnes/sessions.json`, `.agnes/learnings/`, `.agnes/specs/`, and YAML-first `plan-NNN.yaml` iterations with `.md` mirrors
+- **State files** — `.agnes/index.json`, `.agnes/config.json`, `.agnes/sessions.json`, `.agnes/learnings/`, `.agnes/specs/`, and canonical `plan-NNN.yaml` iterations
 - **AGENTS.md** — project root config file consumed by the agent every turn
 - **Handoff** — saved session state for another agent or future continuation
 
@@ -82,7 +84,7 @@ Create the directory for spec documents and planning references. Do not overwrit
 
 #### `.agnes/plans/plan-001.yaml`
 
-Primary plan file. The `.md` mirror stays in sync with the YAML source:
+Primary plan file:
 
 ```yaml
 schema: agnes/plan-v1
@@ -95,32 +97,9 @@ parent: null
 total: 1
 completed: 0
 blocked: 0
-mirror: plan-001.md
 ```
 
-#### `.agnes/plans/plan-001.md`
-
-Mirror plan file — keep it aligned with the YAML source:
-
-```markdown
-Goal: <describe what you want to accomplish>
-
-Check: <how to verify completion>
-
-Tasks:
-- [ ] First task
-
-Files:
-- path: <unknown>
-  owner: none
-  mode: unknown
-Notes:
-
-Next:
-- clarify goal or delegate first implementation wave
-```
-
-Preserve existing files: if `index.json` already exists with real content (has plans), leave it unchanged. If `plan-001.yaml` or its `.md` mirror already exists with real content (in `.agnes/plans/`), leave it unchanged.
+Preserve existing files: if `index.json` already exists with real content (has plans), leave it unchanged. If `plan-001.yaml` already exists with real content (in `.agnes/plans/`), leave it unchanged.
 
 ### 3. Create or update `AGENTS.md`
 
@@ -152,9 +131,9 @@ This project uses AGNES, a swarm orchestrator that routes tasks across fused ski
 - One question at a time.
 - User review gate before implementation.
 - At task start, check `.agnes/index.json` for existing active plans.
-- No active plan? Create `plan-NNN.yaml` and its `.md` mirror, then update `index.json` — the plan IS the goal.
-- Plan sources are immutable after creation; the `.md` mirror stays aligned.
-- Every state change creates a new `plan-NNN.yaml` iteration and mirrored `.md` file.
+- No active plan? Create `plan-NNN.yaml`, then update `index.json` — the plan IS the goal.
+- Plan sources are immutable after creation.
+- Every state change creates a new `plan-NNN.yaml` iteration.
 - Update `index.json` after every new plan iteration.
 - Stuck or stopping? Create a blocked plan iteration.
 - Search plans by project/status through `index.json`.
@@ -168,7 +147,7 @@ This project uses AGNES, a swarm orchestrator that routes tasks across fused ski
 
 1. Confirm `.agnes/index.json` exists and is valid JSON
 2. Confirm `.agnes/config.json`, `.agnes/sessions.json`, `.agnes/learnings/`, and `.agnes/specs/` exist
-3. Confirm `.agnes/plans/plan-001.yaml` exists and has a `.md` mirror
+3. Confirm `.agnes/plans/plan-001.yaml` exists
 4. Confirm `AGENTS.md` contains the AGNES block
 5. Report the project is initialised
 
@@ -194,14 +173,13 @@ This project uses AGNES, a swarm orchestrator that routes tasks across fused ski
     ├── learnings/                Durable learnings and notes
     ├── specs/                    Spec documents and references
     └── plans/
-        ├── plan-001.yaml         First immutable plan source
-        └── plan-001.md           Mirror of the YAML plan
+    ├── plan-001.yaml         First immutable plan source
 ```
 
 ## Quality Criteria
 
 1. `.agnes/index.json` exists and is valid JSON
-2. `.agnes/plans/plan-001.yaml` exists and has a matching `.md` mirror
+2. `.agnes/plans/plan-001.yaml` exists
 3. `AGENTS.md` contains the AGNES identity block at the top
 4. Existing state files with real content are unchanged
 

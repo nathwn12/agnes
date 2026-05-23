@@ -1,5 +1,7 @@
 ---
 id: shipper
+name: shipper
+description: 'All code is written, tested, reviewed, and verified — ready to ship.'
 phase: "SHIP"
 use_when: "All code is written, tested, reviewed, and verified — ready to ship."
 version: 1.0

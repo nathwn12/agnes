@@ -1,5 +1,7 @@
 ---
 id: triage
+name: triage
+description: 'Incoming issues, bugs, or feature requests need triaging, prioritising, and routing to the right state.'
 phase: "SHIP / PROCESS"
 use_when: "Incoming issues, bugs, or feature requests need triaging, prioritising, and routing to the right state."
 version: 1.0

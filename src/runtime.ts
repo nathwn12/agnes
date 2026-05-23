@@ -310,13 +310,23 @@ function autoBlockPlan(projectRoot: string | undefined, attempts: number, strugg
     const active = getLatestActivePlan(root);
     if (!active) return;
 
+    const plan = active.plan;
+    const goal = plan?.goal ?? active.content.match(/^Goal:\s*(.+)$/m)?.[1] ?? 'Unknown goal';
+    const check = plan?.check ?? active.content.match(/^Check:\s*(.+)$/m)?.[1] ?? 'unknown check';
+    const tasksMarkdown = plan
+      ? plan.tasks.map(task => {
+          const status = task.status === 'done' ? 'x' : task.status === 'blocked' ? '/' : ' ';
+          return `- [${status}] ${task.summary}`;
+        }).join('\n') || '- [ ] Unknown'
+      : (active.content.match(/Tasks:\n([\s\S]*?)(?:\n\n|$)/)?.[1]?.trim()) ?? '- [ ] Unknown';
+
     if (active.entry.blocked >= MAX_BLOCK_CHAIN) {
       createPlanIteration({
         parent: active.entry.id,
         summary: 'Cascade abandon: blocked chain exceeded limit',
-        goal: active.content.match(/^Goal:\s*(.+)$/m)?.[1] ?? 'Unknown goal',
-        check: active.content.match(/^Check:\s*(.+)$/m)?.[1] ?? 'unknown check',
-        tasksMarkdown: (active.content.match(/Tasks:\n([\s\S]*?)(?:\n\n|$)/)?.[1]?.trim()) ?? '- [ ] Unknown',
+        goal,
+        check,
+        tasksMarkdown,
         status: 'abandoned',
         completed: active.entry.completed,
         blocked: active.entry.blocked,
@@ -326,14 +336,6 @@ function autoBlockPlan(projectRoot: string | undefined, attempts: number, strugg
       });
       return;
     }
-
-    const goalMatch = active.content.match(/^Goal:\s*(.+)$/m);
-    const checkMatch = active.content.match(/^Check:\s*(.+)$/m);
-    const goal = goalMatch ? goalMatch[1] : 'Unknown goal';
-    const check = checkMatch ? checkMatch[1] : 'unknown check';
-
-    const tasksMatch = active.content.match(/Tasks:\n([\s\S]*?)(?:\n\n|$)/);
-    const tasksMarkdown = tasksMatch ? tasksMatch[1].trim() : '- [ ] Unknown';
 
     createPlanIteration({
       parent: active.entry.id,

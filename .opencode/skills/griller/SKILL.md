@@ -1,5 +1,7 @@
 ---
 id: griller
+name: griller
+description: 'debugger has narrowed but not resolved, complex multi-file bugs with no clear hypothesis, recurring issues that were "fixed" before.'
 phase: "DEBUG"
 use_when: "debugger has narrowed but not resolved, complex multi-file bugs with no clear hypothesis, recurring issues that were \"fixed\" before."
 version: 1.0

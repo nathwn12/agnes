@@ -1,5 +1,7 @@
 ---
 id: debugger
+name: debugger
+description: 'User says "this is broken, help me figure out why", error reports without clear root cause, performance regressions needing investigation.'
 phase: "DEBUG"
 use_when: "User says \"this is broken, help me figure out why\", error reports without clear root cause, performance regressions needing investigation."
 version: 1.0
