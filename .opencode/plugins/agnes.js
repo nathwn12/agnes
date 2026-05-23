@@ -22250,7 +22250,15 @@ var AgnesPlugin = async () => {
           }
         }
       } catch {}
+      const modelLabel = _modelName ? `- Current model: \`${_modelName}\`` : "";
       let fullBootstrap = bootstrap + (planGate || "");
+      if (modelLabel) {
+        fullBootstrap += `
+
+## Active Model
+${modelLabel}
+`;
+      }
       if (execContext) {
         fullBootstrap += `
 

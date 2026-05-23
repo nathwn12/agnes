@@ -138,7 +138,13 @@ export const AgnesPlugin: Plugin = async () => {
         // non-fatal
       }
 
+      const modelLabel = _modelName ? `- Current model: \`${_modelName}\`` : '';
+
       let fullBootstrap = bootstrap + (planGate || '');
+
+      if (modelLabel) {
+        fullBootstrap += `\n\n## Active Model\n${modelLabel}\n`;
+      }
 
       if (execContext) {
         fullBootstrap += `\n\n## Execution Context\n${execContext}\n`;
