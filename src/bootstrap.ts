@@ -10,7 +10,7 @@ import { parse as yamlParse, stringify as yamlDump } from 'yaml';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function resolvePackageRoot(fromDir: string): string {
+function findPackageRoot(fromDir: string): string | null {
   let current = fromDir;
   for (let i = 0; i < 5; i++) {
     const pj = path.join(current, 'package.json');
@@ -24,10 +24,10 @@ function resolvePackageRoot(fromDir: string): string {
     if (parent === current) break;
     current = parent;
   }
-  return path.resolve(fromDir, '..');
+  return null;
 }
 
-const packageRoot = resolvePackageRoot(__dirname);
+const packageRoot = findPackageRoot(path.resolve(__dirname, '..', '..')) ?? findPackageRoot(__dirname) ?? path.resolve(__dirname, '..', '..');
 const packageJsonPath = path.join(packageRoot, 'package.json');
 const skillsDir = path.join(packageRoot, '.opencode', 'skills');
 const opencodePackageCache = path.join(os.homedir(), '.cache', 'opencode', 'packages');

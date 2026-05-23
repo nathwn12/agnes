@@ -12,6 +12,16 @@ All notable changes to AGNES are documented here.
 
 - **Release metadata**: `package.json` version updated to `0.13.0` and the README badge now matches.
 
+## 0.13.1 (2026-05-24)
+
+### Changed
+
+- **`resolvePackageRoot` → `findPackageRoot`**: Renamed in `src/bootstrap.ts` to signal failure contract (`null` return instead of garbage path). Refactored fallback chain to three strategies: plugin-relative path → walk-up → raw path, improving resilience when `__dirname` is outside the agnes package. (verified: 379 tests pass)
+
+### Fixed
+
+- **Package root resolution**: When AGNES ran with `__dirname` outside the agnes package tree, `resolvePackageRoot()` returned `path.resolve(fromDir, '..')` as a garbage fallback — an absolute path to a non-agnes directory. This broke skills directory lookup and cache path resolution. Now `findPackageRoot()` returns `null` on failure and chains through three distinct strategies before falling back. (verified: both local project and cache paths resolve correctly)
+
 ## 0.12.0 (2026-05-23)
 
 ### New

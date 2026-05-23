@@ -21317,15 +21317,6 @@ function createDefaultSkillEntry(name, description, phase) {
     responseFormat: "content_and_artifact"
   };
 }
-var SKILL_REGISTRY = new Map([
-  ["orchestrator", createDefaultSkillEntry("orchestrator", "AGNES swarm brain \u2014 delegates, parallelizes, and orchestrates work across all fused skills", "META")],
-  ["planner", createDefaultSkillEntry("planner", "Writing specs and implementation plans with structured design documents", "PLAN")],
-  ["builder", createDefaultSkillEntry("builder", "Disciplined plan execution with worktree isolation and verify-review-commit cycle", "BUILD")],
-  ["tdd", createDefaultSkillEntry("tdd", "Red-green-refactor TDD through vertical slices with failing test first", "TEST")],
-  ["reviewer", createDefaultSkillEntry("reviewer", "Code quality gate with spec compliance and quality issue classification", "REVIEW")],
-  ["verifier", createDefaultSkillEntry("verifier", "Gate discipline enforcer running automated checks with evidence-based pass/fail", "VERIFY")],
-  ["debugger", createDefaultSkillEntry("debugger", "Collaborative debugging through reproduce-hypothesise-instrument-narrow-document", "DEBUG")]
-]);
 var SKILL_NAME_ALIASES = new Map([
   ["ag-orchestrator", "orchestrator"],
   ["ag-planner", "planner"],
@@ -21335,11 +21326,23 @@ var SKILL_NAME_ALIASES = new Map([
   ["ag-verifier", "verifier"],
   ["ag-debugger", "debugger"]
 ]);
+function resolveSkillName(name) {
+  return SKILL_NAME_ALIASES.get(name) ?? name;
+}
+var CANONICAL_SKILLS = [
+  ["orchestrator", createDefaultSkillEntry("orchestrator", "AGNES swarm brain \u2014 delegates, parallelizes, and orchestrates work across all fused skills", "META")],
+  ["planner", createDefaultSkillEntry("planner", "Writing specs and implementation plans with structured design documents", "PLAN")],
+  ["builder", createDefaultSkillEntry("builder", "Disciplined plan execution with worktree isolation and verify-review-commit cycle", "BUILD")],
+  ["tdd", createDefaultSkillEntry("tdd", "Red-green-refactor TDD through vertical slices with failing test first", "TEST")],
+  ["reviewer", createDefaultSkillEntry("reviewer", "Code quality gate with spec compliance and quality issue classification", "REVIEW")],
+  ["verifier", createDefaultSkillEntry("verifier", "Gate discipline enforcer running automated checks with evidence-based pass/fail", "VERIFY")],
+  ["debugger", createDefaultSkillEntry("debugger", "Collaborative debugging through reproduce-hypothesise-instrument-narrow-document", "DEBUG")]
+];
+var SKILL_REGISTRY = new Map(CANONICAL_SKILLS);
 for (const [legacyName, canonicalName] of SKILL_NAME_ALIASES) {
   const entry = SKILL_REGISTRY.get(canonicalName);
-  if (entry) {
+  if (entry)
     SKILL_REGISTRY.set(legacyName, entry);
-  }
 }
 var PlanStatusSchema = exports_external.enum([
   "pending",
@@ -21475,8 +21478,11 @@ function isBlockedPath(dir) {
   return resolved.startsWith(root);
 }
 function getPlanFilePath(root, entry) {
-  const filename = entry.file || `${entry.id}.md`;
+  const filename = entry.file || `${entry.id}.yaml`;
   return path.join(root, AGNES_DIR, PLANS_DIR, filename);
+}
+function getPlanMirrorPath(root, planId) {
+  return path.join(root, AGNES_DIR, PLANS_DIR, `${planId}.md`);
 }
 var _cachedProjectRoot = null;
 function findProjectRoot(startDir) {
@@ -21550,10 +21556,17 @@ function validatePlanIndex(raw) {
   }
   return true;
 }
-function migratePlanEntry(entry) {
+function migratePlanEntry(root, entry) {
   let changed = false;
+  const yamlFile = `${entry.id}.yaml`;
+  const mdFile = `${entry.id}.md`;
+  const yamlPath = path.join(root, AGNES_DIR, PLANS_DIR, yamlFile);
+  const mdPath = path.join(root, AGNES_DIR, PLANS_DIR, mdFile);
   if (!entry.file) {
-    entry.file = `${entry.id}.md`;
+    entry.file = fs.existsSync(yamlPath) ? yamlFile : fs.existsSync(mdPath) ? mdFile : yamlFile;
+    changed = true;
+  } else if (entry.file.endsWith(".md") && fs.existsSync(yamlPath)) {
+    entry.file = yamlFile;
     changed = true;
   }
   if (typeof entry.attempts !== "number") {
@@ -21578,7 +21591,7 @@ function readPlanIndex(projectRoot) {
       return null;
     let migrated = false;
     for (const entry of parsed.plans) {
-      if (migratePlanEntry(entry))
+      if (migratePlanEntry(root, entry))
         migrated = true;
     }
     if (migrated)
@@ -21616,6 +21629,7 @@ function pruneExpiredPlans(index, projectRoot) {
       if (!isNaN(updatedMs) && updatedMs <= cutoffMs) {
         try {
           fs.rmSync(getPlanFilePath(root, entry), { force: true });
+          fs.rmSync(getPlanMirrorPath(root, entry.id), { force: true });
         } catch {}
         changed = true;
         continue;
@@ -21667,7 +21681,7 @@ function getLatestActivePlan(projectRoot) {
   }
   if (!target)
     return null;
-  const planPath = getPlanFilePath(root, target);
+  const planPath = fs.existsSync(getPlanMirrorPath(root, target.id)) ? getPlanMirrorPath(root, target.id) : getPlanFilePath(root, target);
   try {
     const content = fs.readFileSync(planPath, "utf8");
     return { entry: target, content };
@@ -21810,7 +21824,7 @@ function detectShell() {
 
 // src/bootstrap.ts
 var __dirname2 = path2.dirname(fileURLToPath(import.meta.url));
-function resolvePackageRoot(fromDir) {
+function findPackageRoot(fromDir) {
   let current = fromDir;
   for (let i = 0;i < 5; i++) {
     const pj = path2.join(current, "package.json");
@@ -21826,9 +21840,9 @@ function resolvePackageRoot(fromDir) {
       break;
     current = parent;
   }
-  return path2.resolve(fromDir, "..");
+  return null;
 }
-var packageRoot = resolvePackageRoot(__dirname2);
+var packageRoot = findPackageRoot(path2.resolve(__dirname2, "..", "..")) ?? findPackageRoot(__dirname2) ?? path2.resolve(__dirname2, "..", "..");
 var packageJsonPath = path2.join(packageRoot, "package.json");
 var skillsDir = path2.join(packageRoot, ".opencode", "skills");
 var opencodePackageCache = path2.join(os3.homedir(), ".cache", "opencode", "packages");
@@ -21872,7 +21886,7 @@ function getStaticBootstrapContent() {
   const { content: frontmatterContent } = extractFrontmatter(fullContent);
   const bootstrapEnd = frontmatterContent.indexOf("<!-- bootstrap-end -->");
   const trimmedContent = bootstrapEnd !== -1 ? frontmatterContent.slice(0, bootstrapEnd).trim() : frontmatterContent;
-  const cacheNukeCommand = `Remove-Item -Recurse -Force "$env:USERPROFILE\\.cache\\opencode\\packages\\agnes@git+https_*"`;
+  const cacheNukeCommand = `rm -rf "$HOME/.cache/opencode/packages"/agnes@git+https_*`;
   const toolMapping = `**Tool Mapping for OpenCode:**
 When skills reference tools you don't have, substitute OpenCode equivalents:
 - \`TodoWrite\` \u2192 \`todowrite\`
@@ -21999,28 +22013,28 @@ function buildProtocolBlock() {
   }));
 }
 var SKILL_SUGGEST_NEXT = {
-  "clarifier": ["explorer", "planner"],
-  "explorer": ["architect", "planner"],
-  "architect": ["planner"],
-  "planner": ["plan-reviewer"],
+  clarifier: ["explorer", "planner"],
+  explorer: ["architect", "planner"],
+  architect: ["planner"],
+  planner: ["plan-reviewer"],
   "plan-reviewer": ["tdd", "builder"],
-  "prd": ["planner"],
-  "prototype": ["tdd", "builder"],
-  "builder": ["tester", "verifier"],
-  "tdd": ["verifier"],
-  "tester": ["reviewer"],
-  "verifier": ["reviewer", "shipper"],
-  "reviewer": ["documenter", "shipper"],
+  prd: ["planner"],
+  prototype: ["tdd", "builder"],
+  builder: ["tester", "verifier"],
+  tdd: ["verifier"],
+  tester: ["reviewer"],
+  verifier: ["reviewer", "shipper"],
+  reviewer: ["documenter", "shipper"],
   "feedback-receiver": ["builder", "debugger"],
-  "debugger": ["verifier"],
-  "griller": ["debugger", "verifier"],
-  "shipper": ["documenter", "retro"],
-  "triage": ["planner", "debugger"],
-  "documenter": ["retro"],
-  "retro": [],
-  "skillwriter": ["tdd"],
-  "brandkit": ["prototype", "builder"],
-  "init": ["clarifier", "explorer"]
+  debugger: ["verifier"],
+  griller: ["debugger", "verifier"],
+  shipper: ["documenter", "retro"],
+  triage: ["planner", "debugger"],
+  documenter: ["retro"],
+  retro: [],
+  skillwriter: ["tdd"],
+  brandkit: ["prototype", "builder"],
+  init: ["clarifier", "explorer"]
 };
 function readSkillRegistry() {
   if (!fs2.existsSync(skillsDir))
@@ -22039,10 +22053,10 @@ function readSkillRegistry() {
       if (!m)
         continue;
       const fm = $parse(m[1]);
-       if (typeof fm.id !== "string" || typeof fm.phase !== "string")
-         continue;
-       const id = fm.id.startsWith("ag-") ? fm.id.slice(3) : fm.id;
-       skills.push({ id, phase: fm.phase.toUpperCase(), suggest_next: SKILL_SUGGEST_NEXT[id] || [] });
+      if (typeof fm.id !== "string" || typeof fm.phase !== "string")
+        continue;
+      const id = resolveSkillName(fm.id);
+      skills.push({ id, phase: fm.phase.toUpperCase(), suggest_next: (SKILL_SUGGEST_NEXT[id] || []).map(resolveSkillName) });
     } catch {}
   }
   return skills.sort((a, b) => a.id.localeCompare(b.id));
