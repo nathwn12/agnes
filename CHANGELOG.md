@@ -2,6 +2,32 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.14.0 (2026-05-25)
+
+### Breaking
+
+- **Model-agnostic overhaul**: Removed all DS4-specific detection (`DEEPSEEK_V4_PATTERNS`, `isDeepSeekV4()`) and provider-specific branching. Bootstrap unified to structured format for ALL models — no model-name gating anywhere.
+
+### Added
+
+- **Compaction/pruning built-in**: `compaction.ts` wired into `plugin.ts` transform pipeline. Compaction policy evaluated on every message. Advisory injected automatically when threshold is met.
+- **ESLint integration**: ESLint 10 + @typescript-eslint/parser + @typescript-eslint/eslint-plugin installed. TypeScript-aware `eslint.config.js` with separate entries for source and test files. `lint` and `lint:fix` scripts added.
+
+### Removed
+
+- **Biome**: Removed `biome.json` per user directive. Biome package was never actually installed despite being claimed complete in previous plan iterations.
+- **DS4 branching**: All DeepSeek V4 model detection, `interleaved` config gating, and structured-block model branching eliminated — replaced with unconditional model-agnostic defaults.
+
+### Fixed
+
+- **Compaction state serialization**: `buildExecutionContextBlock()` in bootstrap.ts now accepts optional `compaction?: CompactionPolicyState` and injects it as a nested YAML field when present. Fixes "stores the last evaluated state" test expectation mismatch.
+- **Unused import**: Removed unused `estimatePromptTokens` import from `src/plugin.ts` (typecheck error).
+- **Plan state accuracy**: Corrected plans 030/031 which falsely claimed Biome installation was complete. Cancelled both. Plan 032 superseded (DS4 removal and compaction were actually implemented despite pending markers).
+
+### Changed
+
+- **Plan state cleanup**: All plan state reconciled with actual codebase state via audit. `index.json` status set to done.
+
 ## 0.13.5 (2026-05-25)
 
 ### Fixed

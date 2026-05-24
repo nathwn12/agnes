@@ -21928,7 +21928,7 @@ function getStaticBootstrapContent() {
   const version2 = getPackageVersion();
   const fullContent = fs2.readFileSync(skillPath, "utf8");
   const cacheKey = `${version2}:${simpleHash(fullContent)}`;
-  if (_bootstrapCache !== undefined && _bootstrapCache.key === cacheKey) {
+  if (_bootstrapCache?.key === cacheKey) {
     return _bootstrapCache.content;
   }
   const { content: frontmatterContent } = extractFrontmatter(fullContent);
@@ -22057,7 +22057,17 @@ function buildExecutionContextBlock(ctx) {
     type: "execution",
     attempt: ctx.attempt || 1,
     struggle_detected: ctx.struggleDetected || false,
-    last_promise_tag: ctx.lastPromiseTag || null
+    last_promise_tag: ctx.lastPromiseTag || null,
+    ...ctx.compaction ? {
+      compaction: {
+        token_count: ctx.compaction.tokenCount,
+        soft_limit: ctx.compaction.softLimit,
+        hard_limit: ctx.compaction.hardLimit,
+        last_action: ctx.compaction.lastAction,
+        last_reason: ctx.compaction.lastReason,
+        last_triggered_at: ctx.compaction.lastTriggeredAt
+      }
+    } : {}
   }));
 }
 function buildProtocolBlock() {
@@ -22258,7 +22268,7 @@ function getPlanGate(workspaceRoot) {
   if (!state.hasActivePlan) {
     return "\n**PLAN REQUIRED:** No active plan found. Create a plan with `.agnes/` before any implementation work.";
   }
-  if (state.activePlan && state.activePlan.entry.status === "blocked") {
+  if (state.activePlan?.entry.status === "blocked") {
     return `
 **BLOCKED PLAN:** ${state.activePlan.entry.id} is blocked. Resolve or create a new iteration.`;
   }
@@ -22341,19 +22351,129 @@ var STOPWORDS = new Set([
   "that"
 ]);
 
+// src/compaction.ts
+var DEFAULT_COMPACTION_SOFT_LIMIT = 150000;
+var DEFAULT_COMPACTION_HARD_LIMIT = 200000;
+var DEFAULT_DISCRETIONARY_COMPACTION_FLOOR = 50000;
+var compactionStates = new Map;
+var COMPACTION_STATE_TTL_MS = 60 * 60 * 1000;
+var MAX_COMPACTION_STATES = 200;
+function formatTokens(value) {
+  return value.toLocaleString("en-US");
+}
+function countRepeatedStruggleErrors(struggle) {
+  if (!struggle)
+    return 0;
+  return Object.values(struggle.repeatedErrors).filter((count) => count >= 2).length;
+}
+function hasDiscretionaryStruggle(struggle) {
+  if (!struggle)
+    return false;
+  return struggle.noProgressIterations >= 3 || struggle.shortIterations >= 3 || countRepeatedStruggleErrors(struggle) > 0;
+}
+function pruneCompactionStates() {
+  const now = Date.now();
+  for (const [sessionID, entry] of compactionStates) {
+    if (now - entry.lastAccessed > COMPACTION_STATE_TTL_MS) {
+      compactionStates.delete(sessionID);
+    }
+  }
+  if (compactionStates.size <= MAX_COMPACTION_STATES)
+    return;
+  const overflow = [...compactionStates.entries()].sort((a, b) => a[1].lastAccessed - b[1].lastAccessed).slice(0, compactionStates.size - MAX_COMPACTION_STATES);
+  for (const [sessionID] of overflow) {
+    compactionStates.delete(sessionID);
+  }
+}
+function estimatePromptTokens(text) {
+  const trimmed = text.trim();
+  if (!trimmed)
+    return 0;
+  return Math.max(1, Math.ceil(trimmed.length / 4));
+}
+function collectMessageText(messages) {
+  const chunks = [];
+  for (const message of messages) {
+    for (const part of message.parts ?? []) {
+      if (part.type !== "text" || typeof part.text !== "string")
+        continue;
+      const text = part.text.trim();
+      if (text.length > 0)
+        chunks.push(text);
+    }
+  }
+  return chunks.join(`
+`);
+}
+function evaluateCompactionPolicy(input) {
+  const softLimit = input.softLimit ?? DEFAULT_COMPACTION_SOFT_LIMIT;
+  const hardLimit = input.hardLimit ?? DEFAULT_COMPACTION_HARD_LIMIT;
+  const tokenCount = estimatePromptTokens(input.promptText);
+  const previous = compactionStates.get(input.sessionID) ?? null;
+  const now = input.now ?? new Date().toISOString();
+  let action = "none";
+  let reason = "Approximate context is within budget.";
+  const discretionaryFloor = input.discretionaryFloor ?? DEFAULT_DISCRETIONARY_COMPACTION_FLOOR;
+  if (tokenCount >= hardLimit) {
+    action = "alert";
+    reason = `Approximate context is ${formatTokens(tokenCount)} tokens, at or above the ${formatTokens(hardLimit)} token hard limit.`;
+  } else if (hasDiscretionaryStruggle(input.struggle) && tokenCount >= discretionaryFloor) {
+    action = "compact";
+    reason = `Context is stale or bloated and the session is struggling; approximate load is ${formatTokens(tokenCount)} tokens.`;
+  } else if (tokenCount >= softLimit) {
+    action = "nudge";
+    reason = `Approximate context is ${formatTokens(tokenCount)} tokens, approaching the ${formatTokens(softLimit)} token soft limit.`;
+  }
+  const state = {
+    tokenCount,
+    softLimit,
+    hardLimit,
+    lastAction: action,
+    lastReason: action === "none" ? null : reason,
+    lastTriggeredAt: action === "none" ? previous?.state.lastTriggeredAt ?? null : now
+  };
+  return {
+    action,
+    reason,
+    state,
+    advisory: buildCompactionAdvisory(action, reason)
+  };
+}
+function rememberCompactionState(sessionID, state) {
+  pruneCompactionStates();
+  compactionStates.set(sessionID, {
+    state,
+    lastAccessed: Date.now()
+  });
+  return state;
+}
+function buildCompactionAdvisory(action, reason) {
+  if (action === "none")
+    return "";
+  if (action === "compact") {
+    return [
+      "## Compaction Recommended",
+      reason,
+      "Compact now and preserve the active plan, recent decisions, and unresolved blockers."
+    ].join(`
+`);
+  }
+  if (action === "alert") {
+    return ["## Compaction Required", reason, "Use `/compact` or `/summarize` now before adding more work."].join(`
+`);
+  }
+  return [
+    "## Compaction Advisory",
+    reason,
+    "You are approaching the compaction threshold. Use `/compact` or `/summarize` soon."
+  ].join(`
+`);
+}
+
 // src/plugin.ts
 var __dirname3 = path4.dirname(fileURLToPath2(import.meta.url));
 var skillsDir2 = path4.resolve(__dirname3, "../skills");
 var _modelName;
-var DEEPSEEK_V4_PATTERNS = [
-  /^deepseek\/deepseek-v4/i,
-  /^deepseek-v4/i,
-  /^ds4\//i,
-  /deepseek.*v4/i
-];
-function isDeepSeekV4(modelName) {
-  return DEEPSEEK_V4_PATTERNS.some((p) => p.test(modelName));
-}
 function buildStructuredBootstrap() {
   const proseBootstrap = getBootstrapContent();
   if (!proseBootstrap)
@@ -22412,12 +22532,10 @@ var AgnesPlugin = async () => {
       detectShell();
       const configObj = config2;
       _modelName = typeof configObj.model === "string" ? configObj.model : undefined;
-      if (_modelName && isDeepSeekV4(_modelName)) {
-        configObj.provider = {
-          ...configObj.provider || {},
-          interleaved: { field: "reasoning_content" }
-        };
-      }
+      configObj.provider = {
+        ...configObj.provider || {},
+        interleaved: { field: "reasoning_content" }
+      };
       const skillsConfig = configObj.skills;
       const paths = skillsConfig?.paths ? [...skillsConfig.paths] : [];
       if (!paths.includes(skillsDir2)) {
@@ -22431,12 +22549,11 @@ var AgnesPlugin = async () => {
       }
     },
     "experimental.chat.messages.transform": async (_input, output) => {
-      const isDsV4 = _modelName ? isDeepSeekV4(_modelName) : false;
-      const bootstrap = isDsV4 ? buildStructuredBootstrap() : getBootstrapContent();
+      const bootstrap = buildStructuredBootstrap();
       if (!bootstrap || !output.messages?.length)
         return;
       const firstUser = output.messages.find((m) => m.info?.role === "user");
-      if (!firstUser || !firstUser.parts?.length)
+      if (!firstUser?.parts?.length)
         return;
       if (firstUser.parts.some((p) => p.type === "text" && typeof p.text === "string" && p.text.includes("EXTREMELY_IMPORTANT")))
         return;
@@ -22471,6 +22588,25 @@ ${modelLabel}
 ${execContext}
 `;
       }
+      let compactionAdvisory = "";
+      try {
+        const allText = collectMessageText(output.messages || []);
+        if (allText) {
+          const sessionID2 = _modelName || "default";
+          const decision = evaluateCompactionPolicy({
+            sessionID: sessionID2,
+            promptText: allText
+          });
+          rememberCompactionState(sessionID2, decision.state);
+          compactionAdvisory = decision.advisory;
+        }
+      } catch {}
+      if (compactionAdvisory) {
+        fullBootstrap += `
+
+` + compactionAdvisory + `
+`;
+      }
       fullBootstrap += `
 
 ## Completion Protocol
@@ -22491,6 +22627,5 @@ For partial results:
   };
 };
 export {
-  isDeepSeekV4,
   AgnesPlugin
 };

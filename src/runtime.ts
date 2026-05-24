@@ -213,7 +213,7 @@ export function getPlanGate(workspaceRoot?: string | null): string | null {
   if (!state.hasActivePlan) {
     return '\n**PLAN REQUIRED:** No active plan found. Create a plan with `.agnes/` before any implementation work.';
   }
-  if (state.activePlan && state.activePlan.entry.status === 'blocked') {
+  if (state.activePlan?.entry.status === 'blocked') {
     return `\n**BLOCKED PLAN:** ${state.activePlan.entry.id} is blocked. Resolve or create a new iteration.`;
   }
   const approvalBlock = getExecutionApprovalBlock(state.planIndex);
@@ -404,7 +404,7 @@ function persistToPlan(
     const root = projectRoot ?? findProjectRoot();
     if (!root) return;
     const index = readPlanIndex(root);
-    if (!index || !index.activePlanId) return;
+    if (!index?.activePlanId) return;
     const activeEntry = index.plans.find(p => p.id === index.activePlanId);
     if (!activeEntry) return;
     if (activeEntry.status === 'blocked') return;

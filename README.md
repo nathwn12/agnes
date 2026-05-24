@@ -1,7 +1,7 @@
 <h1 align="center">AGNES — OpenCode Native Plugin</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.13.5-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.14.0-blue" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
   <img src="https://img.shields.io/badge/skills-23-orange" alt="23 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
@@ -134,15 +134,15 @@ AGNES is organized into layered modules that handle protocol, state, runtime, an
 | **Schema** | `src/schema.ts` | Self-describing skill contracts with JSON Schema validation |
 | **Middleware** | `src/middleware.ts` | Composable hook chain (before/after wave, before/after subagent) |
 | **Flow Control** | `src/flowcontrol.ts` | Ephemeral jump signals (retry, skip, blocked, next_wave, end) |
-| **Bootstrap** | `src/bootstrap.ts` | Agent injection — injects plan context, shell env, and DS V4 structured blocks into agent system prompt |
-| **Plugin** | `src/plugin.ts` | OpenCode entry point — plugin registration, auto-detects DeepSeek V4, injects interleaved reasoning config |
+| **Bootstrap** | `src/bootstrap.ts` | Agent injection — injects plan context, shell env, and structured blocks into agent system prompt |
+| **Plugin** | `src/plugin.ts` | OpenCode entry point — plugin registration, unconditional interleaved config (model-agnostic) |
 | **Runtime** | `src/runtime.ts` | Core execution loop — wave cycle, subagent dispatch, retry with struggle detection, closed-loop orchestration |
 | **Shell** | `src/shell.ts` | Shell detection — identifies pwsh/bash/cmd and detects shell mismatch between host and workspace |
 | **State** | `src/state.ts` | Plan state machine — CRUD for plan-NNN.yaml, index.json, session tracking, retention pruning |
 | **Verification** | `src/verification.ts` | Structured gates with PASS/FAIL/SKIP status |
 | **Validation** | `src/validation.ts` | Allowlist-based message validation and injection protection |
 
-In v0.10+, AGNES adds a machine-optimized Structured Protocol: YAML plan files with JSON Schema validation (`.agnes/plans/plan-NNN.yaml`), typed `<agnes:message>` envelopes with DS V4 support, and Zod-based message validation. Bootstrap injection auto-detects DeepSeek V4 models to prevent the 400-on-turn-2 protocol bug.
+In v0.10+, AGNES adds a machine-optimized Structured Protocol: YAML plan files with JSON Schema validation (`.agnes/plans/plan-NNN.yaml`), typed `<agnes:message>` envelopes, and Zod-based message validation. Bootstrap injection unified to a model-agnostic structured format.
 
 ---
 
@@ -186,8 +186,10 @@ To override per-project, add a `retention` field to `index.json`:
 ```bash
 bun run bundle        # bundles to .opencode/plugins/agnes.js
 bun run bundle:watch  # watch mode for development
+bun run lint          # lint source files
+bun run lint:fix      # auto-fix lint issues
 bun run typecheck     # type-safety gate
-bun test              # 371 tests across 12 suites
+bun test              # 386 tests across 13 suites
 ```
 
 ---

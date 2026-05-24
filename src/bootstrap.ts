@@ -7,6 +7,7 @@ import type { PlanIndex } from './state.js';
 import { resolveSkillName } from './schema.js';
 import { detectShell } from './shell.js';
 import { parse as yamlParse, stringify as yamlDump } from 'yaml';
+import type { CompactionPolicyState } from './compaction.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -76,7 +77,7 @@ export function getStaticBootstrapContent(): string | null {
   const fullContent = fs.readFileSync(skillPath, 'utf8');
   const cacheKey = `${version}:${simpleHash(fullContent)}`;
 
-  if (_bootstrapCache !== undefined && _bootstrapCache.key === cacheKey) {
+  if (_bootstrapCache?.key === cacheKey) {
     return _bootstrapCache.content;
   }
   const { content: frontmatterContent } = extractFrontmatter(fullContent);
@@ -234,12 +235,27 @@ export function buildShellBlock(shell: { name: string; version: string; antiPatt
   }));
 }
 
-export function buildExecutionContextBlock(ctx: { attempt: number; struggleDetected: boolean; lastPromiseTag: string | null }): string {
+export function buildExecutionContextBlock(ctx: {
+  attempt: number;
+  struggleDetected: boolean;
+  lastPromiseTag: string | null;
+  compaction?: CompactionPolicyState;
+}): string {
   return wrapStructured("execution", yamlDump({
     type: "execution",
     attempt: ctx.attempt || 1,
     struggle_detected: ctx.struggleDetected || false,
     last_promise_tag: ctx.lastPromiseTag || null,
+    ...(ctx.compaction ? {
+      compaction: {
+        token_count: ctx.compaction.tokenCount,
+        soft_limit: ctx.compaction.softLimit,
+        hard_limit: ctx.compaction.hardLimit,
+        last_action: ctx.compaction.lastAction,
+        last_reason: ctx.compaction.lastReason,
+        last_triggered_at: ctx.compaction.lastTriggeredAt,
+      },
+    } : {}),
   }));
 }
 
