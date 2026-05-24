@@ -2,6 +2,13 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.13.4 (2026-05-25)
+
+### Changed
+
+- **Release maintenance**: Bumped package metadata and README version badge to `0.13.4`.
+- **Approved-plan execution gate**: Kept execution readiness machine-usable via approved plan status and direct-parent supersession.
+
 ## 0.13.3 (2026-05-24)
 
 ### Changed

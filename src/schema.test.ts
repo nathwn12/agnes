@@ -88,6 +88,11 @@ describe('PlanSchema', () => {
     expect(invalid.success).toBe(false);
   });
 
+  test('PlanStatusSchema accepts approved plans', () => {
+    const result = PlanStatusSchema.safeParse('approved');
+    expect(result.success).toBe(true);
+  });
+
   test('PlanTaskSchema validates effort format', () => {
     const good = PlanTaskSchema.safeParse({ id: 'task-001', summary: 'task', effort: '30m' });
     expect(good.success).toBe(true);

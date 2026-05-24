@@ -407,6 +407,13 @@ describe('processMessage', () => {
     ],
   };
 
+  const mockIndexWithApprovedPlan: PlanIndex = {
+    ...mockIndexWithPlan,
+    plans: [
+      { id: 'plan-001', status: 'approved', createdAt: '', updatedAt: '', summary: 'Test', total: 1, completed: 0, blocked: 0, file: 'plan-001.yaml' },
+    ],
+  };
+
   const mockIndexWithoutPlan: PlanIndex = {
     agnesVersion: '0.7.2',
     schemaVersion: 2,
@@ -424,15 +431,33 @@ describe('processMessage', () => {
   });
 
   test('blocks implement intent when plan does not match', () => {
-    const result = processMessage('fix the login bug', mockIndexWithPlan, 'Add user profile page') as Extract<ProcessMessageResult, { type: 'block' }>;
+    const result = processMessage('fix the login bug', mockIndexWithApprovedPlan, 'Add user profile page') as Extract<ProcessMessageResult, { type: 'block' }>;
     expect(result.type).toBe('block');
     expect(result.reason).toBe('plan_mismatch');
   });
 
-  test('allows implement intent when plan matches', () => {
-    const result = processMessage('fix the login bug', mockIndexWithPlan, 'Plan to fix the login bug') as Extract<ProcessMessageResult, { type: 'proceed' }>;
+  test('blocks implement intent when active plan is not approved', () => {
+    const result = processMessage('fix the login bug', mockIndexWithPlan, 'Plan to fix the login bug') as Extract<ProcessMessageResult, { type: 'block' }>;
+    expect(result.type).toBe('block');
+    expect(result.reason).toBe('plan_not_approved');
+  });
+
+  test('allows implement intent when approved plan matches', () => {
+    const result = processMessage('fix the login bug', mockIndexWithApprovedPlan, 'Plan to fix the login bug') as Extract<ProcessMessageResult, { type: 'proceed' }>;
     expect(result.type).toBe('proceed');
     expect(result.intent).toBe('implement');
+  });
+
+  test('blocks implement intent when approved plan is superseded by direct child', () => {
+    const result = processMessage('fix the login bug', {
+      ...mockIndexWithApprovedPlan,
+      plans: [
+        ...mockIndexWithApprovedPlan.plans,
+        { id: 'plan-002', status: 'draft', parent: 'plan-001', createdAt: '', updatedAt: '', summary: 'Child', total: 1, completed: 0, blocked: 0, file: 'plan-002.yaml' },
+      ],
+    }, 'Plan to fix the login bug') as Extract<ProcessMessageResult, { type: 'block' }>;
+    expect(result.type).toBe('block');
+    expect(result.reason).toBe('plan_not_approved');
   });
 
   test('bypasses gate for clarify intent', () => {

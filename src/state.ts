@@ -55,6 +55,7 @@ export type PlanStatus =
   | "draft"
   | "reviewed"
   | "ready"
+  | "approved"
   | "in_progress"
   | "blocked"
   | "done"
@@ -380,7 +381,7 @@ export function getLatestActivePlan(projectRoot?: string): ActivePlan | null {
   const index = readPlanIndex(root);
   if (!index) return null;
 
-  const activeStatuses: PlanStatus[] = ['draft', 'reviewed', 'ready', 'in_progress', 'blocked'];
+  const activeStatuses: PlanStatus[] = ['draft', 'reviewed', 'ready', 'approved', 'in_progress', 'blocked'];
 
   let target: PlanIndexEntry | undefined;
 
@@ -551,7 +552,7 @@ export function createPlan(input: {
 
   index.plans.push(entry);
   index.updatedAt = now;
-  const isActive = status === 'draft' || status === 'reviewed' || status === 'ready' || status === 'in_progress' || status === 'blocked';
+  const isActive = status === 'draft' || status === 'reviewed' || status === 'ready' || status === 'approved' || status === 'in_progress' || status === 'blocked';
   index.activePlanId = isActive ? id : null;
   writePlanIndex(index, root);
 
@@ -683,7 +684,7 @@ export function updatePlanStatus(input: {
     if (index.activePlanId === input.id) index.activePlanId = null;
   }
 
-  if (input.status === 'draft' || input.status === 'reviewed' || input.status === 'ready' || input.status === 'in_progress' || input.status === 'blocked') {
+  if (input.status === 'draft' || input.status === 'reviewed' || input.status === 'ready' || input.status === 'approved' || input.status === 'in_progress' || input.status === 'blocked') {
     index.activePlanId = input.id;
   }
 
@@ -789,8 +790,9 @@ export function detectStruggle(metrics: StruggleMetrics): string[] {
 
 export const VALID_TRANSITIONS: Record<string, string[]> = {
   draft: ['reviewed', 'abandoned'],
-  reviewed: ['ready', 'draft', 'abandoned'],
+  reviewed: ['ready', 'approved', 'draft', 'abandoned'],
   ready: ['in_progress', 'abandoned'],
+  approved: ['in_progress', 'abandoned'],
   in_progress: ['done', 'blocked', 'abandoned'],
   blocked: ['ready', 'abandoned'],
   done: [],

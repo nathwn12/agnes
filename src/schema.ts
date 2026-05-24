@@ -195,7 +195,7 @@ for (const [legacyName, canonicalName] of SKILL_NAME_ALIASES) {
 // ── Plan schemas ──────────────────────────────────────────────────────────────
 
 export const PlanStatusSchema = z.enum([
-  "pending", "draft", "reviewed", "ready", "in_progress", "done", "blocked", "abandoned"
+  "pending", "draft", "reviewed", "ready", "approved", "in_progress", "done", "blocked", "abandoned"
 ]);
 export type PlanStatus = z.infer<typeof PlanStatusSchema>;
 

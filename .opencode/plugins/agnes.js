@@ -21349,6 +21349,7 @@ var PlanStatusSchema = exports_external.enum([
   "draft",
   "reviewed",
   "ready",
+  "approved",
   "in_progress",
   "done",
   "blocked",
@@ -21707,7 +21708,7 @@ function getLatestActivePlan(projectRoot) {
   const index = readPlanIndex(root);
   if (!index)
     return null;
-  const activeStatuses = ["draft", "reviewed", "ready", "in_progress", "blocked"];
+  const activeStatuses = ["draft", "reviewed", "ready", "approved", "in_progress", "blocked"];
   let target;
   if (index.activePlanId) {
     const entry = index.plans.find((p) => p.id === index.activePlanId);
@@ -22185,6 +22186,32 @@ function loadSessions(projectRoot) {
     }
   } catch {}
 }
+function isLaterPlan(candidate, parent) {
+  const candidateTime = new Date(candidate.updatedAt).getTime();
+  const parentTime = new Date(parent.updatedAt).getTime();
+  if (!Number.isNaN(candidateTime) && !Number.isNaN(parentTime)) {
+    return candidateTime > parentTime;
+  }
+  return candidate.id.localeCompare(parent.id) > 0;
+}
+function directChildSupersedesPlan(index, parent) {
+  return index.plans.some((plan) => plan.parent === parent.id && isLaterPlan(plan, parent));
+}
+function getExecutionApprovalBlock(index) {
+  const activePlanId = index.activePlanId;
+  if (!activePlanId)
+    return "No active plan found. Create a plan with `.agnes/` before any implementation work.";
+  const activeEntry = index.plans.find((plan) => plan.id === activePlanId);
+  if (!activeEntry)
+    return "No active plan found. Create a plan with `.agnes/` before any implementation work.";
+  if (activeEntry.status !== "approved") {
+    return `${activeEntry.id} is ${activeEntry.status}. Implementation requires an approved active plan.`;
+  }
+  if (directChildSupersedesPlan(index, activeEntry)) {
+    return `${activeEntry.id} was superseded by a direct child plan. Approve the current plan before implementation.`;
+  }
+  return null;
+}
 function getPlanState(workspaceRoot) {
   if (workspaceRoot === undefined) {
     workspaceRoot = findProjectRoot();
@@ -22230,6 +22257,11 @@ function getPlanGate(workspaceRoot) {
   if (state.activePlan && state.activePlan.entry.status === "blocked") {
     return `
 **BLOCKED PLAN:** ${state.activePlan.entry.id} is blocked. Resolve or create a new iteration.`;
+  }
+  const approvalBlock = getExecutionApprovalBlock(state.planIndex);
+  if (approvalBlock) {
+    return `
+**APPROVAL REQUIRED:** ${approvalBlock}`;
   }
   return null;
 }

@@ -197,7 +197,7 @@ describe('planning discipline integration', () => {
       activePlanId: 'plan-001',
       plans: [{
         id: 'plan-001',
-        status: 'in_progress',
+        status: 'approved',
         createdAt: now,
         updatedAt: now,
         summary: 'Fix login bug',

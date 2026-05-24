@@ -127,6 +127,37 @@ export function getPlanGateFromState(state: AgnesRuntimeState): string | null {
   if (!state.hasActivePlan) {
     return `\n**PLAN REQUIRED:** No active plan found. Create a plan with \`.agnes/\` before any implementation work.`;
   }
+  if (state.planEntry && state.planEntry.status !== 'approved') {
+    return `\n**APPROVAL REQUIRED:** ${state.planEntry.id} is ${state.planEntry.status}. Implementation requires an approved active plan.`;
+  }
+  return null;
+}
+
+function isLaterPlan(candidate: PlanIndexEntry, parent: PlanIndexEntry): boolean {
+  const candidateTime = new Date(candidate.updatedAt).getTime();
+  const parentTime = new Date(parent.updatedAt).getTime();
+  if (!Number.isNaN(candidateTime) && !Number.isNaN(parentTime)) {
+    return candidateTime > parentTime;
+  }
+  return candidate.id.localeCompare(parent.id) > 0;
+}
+
+function directChildSupersedesPlan(index: PlanIndex, parent: PlanIndexEntry): boolean {
+  return index.plans.some(plan => plan.parent === parent.id && isLaterPlan(plan, parent));
+}
+
+function getExecutionApprovalBlock(index: PlanIndex): string | null {
+  const activePlanId = index.activePlanId;
+  if (!activePlanId) return 'No active plan found. Create a plan with `.agnes/` before any implementation work.';
+
+  const activeEntry = index.plans.find(plan => plan.id === activePlanId);
+  if (!activeEntry) return 'No active plan found. Create a plan with `.agnes/` before any implementation work.';
+  if (activeEntry.status !== 'approved') {
+    return `${activeEntry.id} is ${activeEntry.status}. Implementation requires an approved active plan.`;
+  }
+  if (directChildSupersedesPlan(index, activeEntry)) {
+    return `${activeEntry.id} was superseded by a direct child plan. Approve the current plan before implementation.`;
+  }
   return null;
 }
 
@@ -180,6 +211,10 @@ export function getPlanGate(workspaceRoot?: string | null): string | null {
   }
   if (state.activePlan && state.activePlan.entry.status === 'blocked') {
     return `\n**BLOCKED PLAN:** ${state.activePlan.entry.id} is blocked. Resolve or create a new iteration.`;
+  }
+  const approvalBlock = getExecutionApprovalBlock(state.planIndex);
+  if (approvalBlock) {
+    return `\n**APPROVAL REQUIRED:** ${approvalBlock}`;
   }
   return null;
 }
@@ -512,6 +547,7 @@ export function requestMatchesPlan(message: string, plan: string): boolean {
 
 export type ProcessMessageResult =
   | { type: 'block'; reason: 'no_active_plan'; message: string }
+  | { type: 'block'; reason: 'plan_not_approved'; message: string }
   | { type: 'block'; reason: 'plan_mismatch'; message: string }
   | { type: 'proceed'; intent: IntentClassification['category'] };
 
@@ -530,6 +566,15 @@ export function processMessage(
         type: 'block',
         reason: 'no_active_plan',
         message: 'I need a plan before I can implement. Do you have a plan in mind?',
+      };
+    }
+
+    const approvalBlock = getExecutionApprovalBlock(index);
+    if (approvalBlock) {
+      return {
+        type: 'block',
+        reason: 'plan_not_approved',
+        message: approvalBlock,
       };
     }
 

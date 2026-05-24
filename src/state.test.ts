@@ -584,6 +584,23 @@ describe('createPlan', () => {
     expect(active.entry.status).toBe('in_progress');
   });
 
+  test('createPlan with approved status sets activePlanId and is execution-ready', () => {
+    const tmp = createTempProject();
+    const active = createPlan({
+      summary: 'Approved plan',
+      goal: 'Do approved work',
+      check: 'check',
+      tasks: ['Task 1'],
+      status: 'approved',
+      projectRoot: tmp,
+    });
+
+    expect(active.entry.status).toBe('approved');
+    const index = readIndex(tmp)!;
+    expect(index.activePlanId).toBe('plan-001');
+    expect(getPlanGate(tmp)).toBeNull();
+  });
+
   test('preserves existing [x] and [/] markers in tasks', () => {
     const tmp = createTempProject();
     const active = createPlan({
@@ -884,6 +901,31 @@ describe('updatePlanStatus', () => {
     index = readIndex(tmp)!;
     expect(index.activePlanId).toBe('plan-001');
   });
+
+  test('updatePlanStatus(approved) sets activePlanId and is execution-ready', () => {
+    const tmp = createTempProject();
+    createPlan({
+      summary: 'Test',
+      goal: 'Goal',
+      check: 'check',
+      tasks: ['Task 1'],
+      status: 'done',
+      projectRoot: tmp,
+    });
+
+    let index = readIndex(tmp)!;
+    expect(index.activePlanId).toBeNull();
+
+    updatePlanStatus({
+      id: 'plan-001',
+      status: 'approved',
+      projectRoot: tmp,
+    });
+
+    index = readIndex(tmp)!;
+    expect(index.activePlanId).toBe('plan-001');
+    expect(getPlanGate(tmp)).toBeNull();
+  });
 });
 
 describe('getPlanState', () => {
@@ -980,7 +1022,7 @@ describe('getPlanGate', () => {
     expect(gate).toContain('No active plan');
   });
 
-  test('returns null when active plan exists', () => {
+  test('blocks implementation when active plan is not approved', () => {
     const tmp = createTempProject();
     const now = new Date().toISOString();
     writeIndex(tmp, {
@@ -1003,6 +1045,115 @@ describe('getPlanGate', () => {
       }],
     });
     fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'schema: agnes/plan-v1\nid: plan-001\nversion: 1\ncreatedAt: 2026-01-01T00:00:00.000Z\nupdatedAt: 2026-01-01T00:00:00.000Z\nstatus: in_progress\nparent: null\ngoal: Test\ncheck: Verify\nsummary: Active plan\ntasks:\n  - id: task-001\n    summary: one\n    status: pending\n    files:\n      - verify one\n    depends_on: []\nnotes: []\n', 'utf8');
+    expect(getPlanGate(tmp)).toContain('APPROVAL REQUIRED');
+  });
+
+  test('returns null when active plan is approved', () => {
+    const tmp = createTempProject();
+    const now = new Date().toISOString();
+    writeIndex(tmp, {
+      agnesVersion: '0.4.4',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: now,
+      activePlanId: 'plan-001',
+      plans: [{
+        id: 'plan-001',
+        status: 'approved',
+        createdAt: now,
+        updatedAt: now,
+        summary: 'Approved plan',
+        total: 1,
+        completed: 0,
+        blocked: 0,
+        file: 'plan-001.yaml',
+      }],
+    });
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'schema: agnes/plan-v1\nid: plan-001\nversion: 1\ncreatedAt: 2026-01-01T00:00:00.000Z\nupdatedAt: 2026-01-01T00:00:00.000Z\nstatus: approved\nparent: null\ngoal: Test\ncheck: Verify\nsummary: Approved plan\ntasks:\n  - id: task-001\n    summary: one\n    status: pending\n    files:\n      - verify one\n    depends_on: []\nnotes: []\n', 'utf8');
+    expect(getPlanGate(tmp)).toBeNull();
+  });
+
+  test('blocks approved active plan superseded by direct child', () => {
+    const tmp = createTempProject();
+    const now = new Date().toISOString();
+    const later = new Date(Date.now() + 1000).toISOString();
+    writeIndex(tmp, {
+      agnesVersion: '0.4.4',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: now,
+      activePlanId: 'plan-001',
+      plans: [
+        {
+          id: 'plan-001',
+          status: 'approved',
+          createdAt: now,
+          updatedAt: now,
+          summary: 'Approved parent',
+          total: 1,
+          completed: 0,
+          blocked: 0,
+          file: 'plan-001.yaml',
+        },
+        {
+          id: 'plan-002',
+          status: 'draft',
+          createdAt: later,
+          updatedAt: later,
+          parent: 'plan-001',
+          summary: 'Superseding child',
+          total: 1,
+          completed: 0,
+          blocked: 0,
+          file: 'plan-002.yaml',
+        },
+      ],
+    });
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'schema: agnes/plan-v1\nid: plan-001\nversion: 1\ncreatedAt: 2026-01-01T00:00:00.000Z\nupdatedAt: 2026-01-01T00:00:00.000Z\nstatus: approved\nparent: null\ngoal: Test\ncheck: Verify\nsummary: Approved parent\ntasks:\n  - id: task-001\n    summary: one\n    status: pending\n    files:\n      - verify one\n    depends_on: []\nnotes: []\n', 'utf8');
+    const gate = getPlanGate(tmp);
+    expect(gate).toContain('superseded');
+  });
+
+  test('keeps approval valid when direct child is not later', () => {
+    const tmp = createTempProject();
+    const now = new Date().toISOString();
+    const earlier = new Date(Date.now() - 1000).toISOString();
+    writeIndex(tmp, {
+      agnesVersion: '0.4.4',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: now,
+      activePlanId: 'plan-001',
+      plans: [
+        {
+          id: 'plan-001',
+          status: 'approved',
+          createdAt: now,
+          updatedAt: now,
+          summary: 'Approved parent',
+          total: 1,
+          completed: 0,
+          blocked: 0,
+          file: 'plan-001.yaml',
+        },
+        {
+          id: 'plan-000',
+          status: 'draft',
+          createdAt: earlier,
+          updatedAt: earlier,
+          parent: 'plan-001',
+          summary: 'Older child',
+          total: 1,
+          completed: 0,
+          blocked: 0,
+          file: 'plan-000.yaml',
+        },
+      ],
+    });
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'schema: agnes/plan-v1\nid: plan-001\nversion: 1\ncreatedAt: 2026-01-01T00:00:00.000Z\nupdatedAt: 2026-01-01T00:00:00.000Z\nstatus: approved\nparent: null\ngoal: Test\ncheck: Verify\nsummary: Approved parent\ntasks:\n  - id: task-001\n    summary: one\n    status: pending\n    files:\n      - verify one\n    depends_on: []\nnotes: []\n', 'utf8');
     expect(getPlanGate(tmp)).toBeNull();
   });
 
