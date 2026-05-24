@@ -2,6 +2,16 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.13.5 (2026-05-25)
+
+### Fixed
+
+- **Stale active-plan recovery**: `getExecutionApprovalBlock()` now falls back to the latest approved active plan when `activePlanId` is stale, so runtime gating stays aligned with `getPlanGate()` and `processMessage()`.
+
+### Changed
+
+- **Release maintenance**: Bumped package metadata and README version badge to `0.13.5`, then rebuilt the bundled plugin so the published artifact stays aligned.
+
 ## 0.13.4 (2026-05-25)
 
 ### Changed

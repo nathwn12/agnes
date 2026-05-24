@@ -22201,7 +22201,11 @@ function getExecutionApprovalBlock(index) {
   const activePlanId = index.activePlanId;
   if (!activePlanId)
     return "No active plan found. Create a plan with `.agnes/` before any implementation work.";
-  const activeEntry = index.plans.find((plan) => plan.id === activePlanId);
+  let activeEntry = index.plans.find((plan) => plan.id === activePlanId);
+  if (!activeEntry) {
+    const fallback = getLatestActivePlan(index.projectDir);
+    activeEntry = fallback?.entry;
+  }
   if (!activeEntry)
     return "No active plan found. Create a plan with `.agnes/` before any implementation work.";
   if (activeEntry.status !== "approved") {

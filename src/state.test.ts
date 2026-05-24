@@ -1074,6 +1074,35 @@ describe('getPlanGate', () => {
     expect(getPlanGate(tmp)).toBeNull();
   });
 
+  test('uses fallback plan when activePlanId is stale', () => {
+    const tmp = createTempProject();
+    const now = new Date().toISOString();
+    const later = new Date(Date.now() + 1000).toISOString();
+    writeIndex(tmp, {
+      agnesVersion: '0.4.4',
+      schemaVersion: 2,
+      projectDir: tmp,
+      projectName: 'test',
+      updatedAt: later,
+      activePlanId: 'plan-stale',
+      plans: [
+        {
+          id: 'plan-001',
+          status: 'approved',
+          createdAt: now,
+          updatedAt: now,
+          summary: 'Approved fallback plan',
+          total: 1,
+          completed: 0,
+          blocked: 0,
+          file: 'plan-001.yaml',
+        },
+      ],
+    });
+    fs.writeFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'schema: agnes/plan-v1\nid: plan-001\nversion: 1\ncreatedAt: 2026-01-01T00:00:00.000Z\nupdatedAt: 2026-01-01T00:00:00.000Z\nstatus: approved\nparent: null\ngoal: Test\ncheck: Verify\nsummary: Approved fallback plan\ntasks:\n  - id: task-001\n    summary: one\n    status: pending\n    files:\n      - verify one\n    depends_on: []\nnotes: []\n', 'utf8');
+    expect(getPlanGate(tmp)).toBeNull();
+  });
+
   test('blocks approved active plan superseded by direct child', () => {
     const tmp = createTempProject();
     const now = new Date().toISOString();
