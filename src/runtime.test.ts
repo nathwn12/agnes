@@ -423,8 +423,8 @@ describe('classifyComplexity', () => {
     expect(classifyComplexity('Fix the login then add error handling')).toBe('complex');
   });
 
-  test('connectors like "also" signal complex', () => {
-    expect(classifyComplexity('Also need to update the tests')).toBe('complex');
+  test('simple "also" sentence is now trivial', () => {
+    expect(classifyComplexity('Also need to update the tests')).toBe('trivial');
   });
 
   test('empty string returns trivial', () => {
@@ -492,10 +492,12 @@ describe('processMessage', () => {
     plans: [],
   };
 
-  test('blocks implement intent without active plan', () => {
-    const result = processMessage('Refactor the database layer', mockIndexWithoutPlan, null) as Extract<ProcessMessageResult, { type: 'block' | 'nudge' }>;
-    expect(result.type).toBe('nudge');
-    expect(result.reason).toBe('no_active_plan');
+  test('auto-creates plan for complex implement intent without active plan', () => {
+    const result = processMessage('Refactor the database layer', mockIndexWithoutPlan, null);
+    expect(result.type).toBe('proceed');
+    if (result.type === 'proceed') {
+      expect(result.context).toBe('complex');
+    }
   });
 
   test('blocks implement intent when plan does not match', () => {

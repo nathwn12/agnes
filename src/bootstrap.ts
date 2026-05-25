@@ -210,7 +210,7 @@ export function buildPlanStateBlock(index: PlanIndex): string {
       type: "plan_state",
       active_plan: null,
       status: "none",
-      message: "No active plan. Create one before delegating work.",
+      message: "No active plan. For simple tasks, just ask. For complex tasks, I'll suggest firing up init.",
     }));
   }
   return wrapStructured("plan_state", yamlDump({

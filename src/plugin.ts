@@ -12,6 +12,7 @@ import type { PlanIndex } from './state.js';
 import {
   findProjectRoot,
   readPlanIndex,
+  createAutoPlan,
 } from './state.js';
 import { getPlanGate, buildExecutionContext, classifyComplexity } from './runtime.js';
 import { serializeAgnesMessage } from './protocol.js';
@@ -129,8 +130,18 @@ export const AgnesPlugin: Plugin = async () => {
             .filter((p) => p.type === 'text' && typeof p.text === 'string')
             .map((p) => p.text as string)
             .join(' ');
-          const isTrivial = userText ? classifyComplexity(userText) === 'trivial' : false;
-          planGate = isTrivial ? '' : (getPlanGate(workspaceRoot) || '');
+          if (userText) {
+            const complexity = classifyComplexity(userText);
+            if (complexity === 'trivial') {
+              planGate = '';
+            } else {
+              const index = readPlanIndex(workspaceRoot);
+              if (!index || !index.activePlanId) {
+                createAutoPlan({ goal: userText, source: 'user' }, workspaceRoot);
+              }
+              planGate = getPlanGate(workspaceRoot) || '';
+            }
+          }
           const index = readPlanIndex(workspaceRoot);
           if (index?.activePlanId) {
             const activeEntry = index.plans.find(p => p.id === index.activePlanId);

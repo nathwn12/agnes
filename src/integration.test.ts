@@ -78,9 +78,13 @@ describe('planning discipline integration', () => {
     expect(classifyIntent('fix the broken login').category).toBe('implement');
 
     const index = readIndex(tmp)!;
-    const result = processMessage('Refactor the database layer', index, null) as Extract<ProcessMessageResult, { type: 'nudge' }>;
-    expect(result.type).toBe('nudge');
-    expect(result.reason).toBe('no_active_plan');
+    const result = processMessage('Refactor the database layer', index, null);
+    expect(result.type).toBe('proceed');
+    if (result.type === 'proceed') {
+      expect(result.context).toBe('complex');
+    }
+    const updatedIndex = readIndex(tmp)!;
+    expect(updatedIndex.activePlanId).not.toBeNull();
   });
 
   test('createAutoPlan creates draft plan with structured template', () => {
@@ -233,11 +237,10 @@ describe('planning discipline integration', () => {
 
   test('Edge cases: missing index, NaN dates, empty scope', () => {
     const result = processMessage('Refactor the database layer', null, null);
-    expect(result).toEqual({
-      type: 'nudge',
-      reason: 'no_active_plan',
-      message: expect.stringContaining('fire up init'),
-    });
+    expect(result.type).toBe('proceed');
+    if (result.type === 'proceed') {
+      expect(result.context).toBe('complex');
+    }
 
     const tmp = createTempProject();
     writeIndex(tmp, makeCleanIndex(tmp));

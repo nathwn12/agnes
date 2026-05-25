@@ -1038,6 +1038,7 @@ export function createAutoPlan(params: { goal: string; source: 'gate' | 'user' |
     plans: [],
   };
 
+  index.activePlanId = id;
   index.plans.push(entry);
   index.updatedAt = now;
   writePlanIndex(index, root);

@@ -7,6 +7,7 @@ import {
   readPlanIndex,
   updatePlanStatus,
   createPlanIteration,
+  createAutoPlan,
   extractPromiseTag,
   freshStruggleMetrics,
   updateStruggleMetrics,
@@ -533,31 +534,23 @@ export function classifyIntent(message: string): IntentClassification {
 export type Complexity = 'trivial' | 'complex';
 
 const COMPLEX_KEYWORDS = ['feature', 'refactor', 'migrate', 'architecture', 'plan', 'redesign'];
-const SEQUENTIAL_PATTERN = /\b(then|after|also|additionally|furthermore|meanwhile)\b/i;
+const SEQUENTIAL_PATTERN = /\b(then|after|additionally|furthermore|meanwhile)\b/i;
 
 export function classifyComplexity(message: string): Complexity {
-  const _log = (r: Complexity, reason: string) => console.debug('[agnes] classifyComplexity', JSON.stringify({ input: message.slice(0, 60), result: r, reason }));
   const lower = message.toLowerCase().trim();
-  if (!lower) { _log('trivial', 'empty'); return 'trivial'; }
+  if (!lower) return 'trivial';
 
-  if (COMPLEX_KEYWORDS.some(k => lower.includes(k))) { _log('complex', 'keyword match'); return 'complex'; }
-  if (SEQUENTIAL_PATTERN.test(lower)) { _log('complex', 'sequential pattern'); return 'complex'; }
+  if (COMPLEX_KEYWORDS.some(k => lower.includes(k))) return 'complex';
+  if (SEQUENTIAL_PATTERN.test(lower)) return 'complex';
 
   const fileRefs = (lower.match(/\b\w+\.\w+\b/g) || []).length;
-  if (fileRefs > 2) { _log('complex', 'multiple file refs'); return 'complex'; }
+  if (fileRefs > 2) return 'complex';
 
   const sentences = lower.split(/[.!?\n]+/).filter(Boolean);
-  if (sentences.length > 3) { _log('complex', 'sentences > 3'); return 'complex'; }
+  if (sentences.length > 3) return 'complex';
 
-  _log('trivial', 'no complex signals');
   return 'trivial';
 }
-
-export const INIT_NUDGE_MESSAGE = `
-This task looks complex — fire up init to track progress?
-  [Y] Create plan
-  [N] Proceed without plan
-`;
 
 export const NO_PLAN_NUDGE = "No active plan. For simple tasks, just ask. For complex tasks, I'll suggest firing up init.";
 
@@ -584,8 +577,7 @@ export type ProcessMessageResult =
   | { type: 'block'; reason: 'no_active_plan'; message: string }
   | { type: 'block'; reason: 'plan_not_approved'; message: string }
   | { type: 'block'; reason: 'plan_mismatch'; message: string }
-  | { type: 'nudge'; reason: 'no_active_plan'; message: string }
-  | { type: 'proceed'; intent: IntentClassification['category']; context?: 'trivial' };
+  | { type: 'proceed'; intent: IntentClassification['category']; context?: 'trivial' | 'complex' };
 
 export function processMessage(
   message: string,
@@ -602,12 +594,12 @@ export function processMessage(
       return { type: 'proceed', intent: intent.category, context: 'trivial' };
     }
 
+    // Complex tasks: auto-create a plan if none exists
     if (!index || index.activePlanId === null) {
-      return {
-        type: 'nudge',
-        reason: 'no_active_plan',
-        message: INIT_NUDGE_MESSAGE,
-      };
+      if (index) {
+        createAutoPlan({ goal: message, source: 'user' }, index.projectDir);
+      }
+      return { type: 'proceed', intent: intent.category, context: 'complex' };
     }
 
     const approvalBlock = getExecutionApprovalBlock(index);
