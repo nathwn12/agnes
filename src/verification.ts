@@ -129,6 +129,15 @@ export const planExistsGate: Gate = {
       const index = JSON.parse(content);
       if (!index.activePlanId) {
         errors.push('No active plan found in .agnes/index.json');
+      } else {
+        const activePlan = Array.isArray(index.plans)
+          ? index.plans.find((plan: { id?: unknown }) => plan.id === index.activePlanId)
+          : undefined;
+        if (!activePlan) {
+          errors.push(`Active plan ${index.activePlanId} was not found in .agnes/index.json plans`);
+        } else if (activePlan.status !== 'approved') {
+          errors.push(`Active plan ${index.activePlanId} is ${String(activePlan.status)}; expected approved`);
+        }
       }
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));

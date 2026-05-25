@@ -11,10 +11,34 @@ import {
   processMessage,
   checkPlanDrift,
   assertTaskScope,
+  runWaveGates,
 } from './runtime.js';
 import type { AgnesRuntimeState, ProcessMessageResult } from './runtime.js';
+import { FlowController } from './flowcontrol.js';
 import type { PlanIndex } from './state.js';
 import { freshStruggleMetrics } from './state.js';
+import type { Gate, GateResult } from './verification.js';
+
+function makeGateResult(overrides: Partial<GateResult>): GateResult {
+  return {
+    gateId: 'test-gate',
+    status: 'PASS',
+    evidence: { errors: [] },
+    timestamp: new Date().toISOString(),
+    durationMs: 0,
+    ...overrides,
+  };
+}
+
+function makeGate(result: GateResult, isBlocking = true): Gate {
+  return {
+    id: result.gateId,
+    name: result.gateId,
+    description: '',
+    isBlocking,
+    run: async () => result,
+  };
+}
 
 describe('checkIterationCompletion', () => {
   test('detects completion with expected promise', () => {
@@ -515,5 +539,35 @@ describe('assertTaskScope', () => {
 
   test('does not throw for empty lists', () => {
     expect(() => assertTaskScope([], [])).not.toThrow();
+  });
+});
+
+describe('runWaveGates', () => {
+  test('blocks the flow on failing blocking gates', async () => {
+    const flow = new FlowController();
+    const failingResult = makeGateResult({
+      gateId: 'required-review',
+      status: 'FAIL',
+      evidence: { errors: ['tests failed'] },
+    });
+
+    const results = await runWaveGates([makeGate(failingResult)], flow);
+
+    expect(results).toEqual([failingResult]);
+    expect(flow.isBlocked()).toBe(true);
+  });
+
+  test('does not block the flow on failing non-blocking gates', async () => {
+    const flow = new FlowController();
+    const failingResult = makeGateResult({
+      gateId: 'advisory-review',
+      status: 'FAIL',
+      evidence: { errors: ['advisory failed'] },
+    });
+
+    const results = await runWaveGates([makeGate(failingResult, false)], flow);
+
+    expect(results).toEqual([failingResult]);
+    expect(flow.isBlocked()).toBe(false);
   });
 });

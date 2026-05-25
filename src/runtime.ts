@@ -700,15 +700,15 @@ export async function runWaveGates(
   flow: FlowController,
 ): Promise<GateResult[]> {
   const results = await runGates(gates);
+  const blockingFailure = results.find((result) => {
+    const gate = gates.find(candidate => candidate.id === result.gateId);
+    return gate?.isBlocking === true && result.status === 'FAIL';
+  });
 
-  for (const result of results) {
-    if (result.status === 'FAIL') {
-      const gate = gates.find(g => g.id === result.gateId);
-      if (gate?.isBlocking) {
-        flow.setJump('blocked', `Gate ${result.gateId} failed: ${result.evidence.errors.join('; ')}`);
-        break;
-      }
-    }
+  if (blockingFailure) {
+    flow.setJump('blocked', `blocking_gate_failed:${blockingFailure.gateId}`, {
+      gateId: blockingFailure.gateId,
+    });
   }
 
   return results;

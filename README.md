@@ -3,13 +3,13 @@
 <p align="center">
   <img src="https://img.shields.io/badge/version-0.14.0-blue" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
-  <img src="https://img.shields.io/badge/skills-23-orange" alt="23 skills">
+  <img src="https://img.shields.io/badge/skills-24-orange" alt="24 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
 </p>
 
 <p align="center">
   <b>Swarm orchestrator for OpenCode.</b><br>
-  Routes every engineering task across 23 specialized skills. Delegates relentlessly. Parallelizes by default. Never writes code directly.
+  Routes every engineering task across 24 specialized skills. Delegates relentlessly. Parallelizes by default. Never writes code directly.
 </p>
 
 ---
@@ -30,7 +30,7 @@ Add to your `opencode.json`:
 }
 ```
 
-Restart OpenCode. AGNES injects its bootstrap and registers all 23 skills automatically.
+Restart OpenCode. AGNES injects its bootstrap and registers all 24 skills automatically.
 
 ---
 
@@ -43,7 +43,7 @@ AGNES routes every task through a default chronological pipeline. The flow is li
 1. **SETUP** → `init`
 2. **CLARIFY** → `clarifier` ← **GATE:** spec must be approved
 3. **RESEARCH** → `explorer` → `architect` (optional deepening)
-4. **PLAN** → `planner` → `plan-reviewer` ← **GATE:** plan must be approved
+4. **PLAN** → `planner` → `multi-reviewer` ← **GATE:** plan must be approved
 5. **BUILD** → `tdd` (new features) or `builder` (plan execution) → `tester` (coverage)
 6. **VERIFY** → `verifier` → `reviewer` ← **GATE:** all checks must pass
 7. **SHIP** → `shipper` (PR → merge)
@@ -64,7 +64,7 @@ AGNES routes every task through a default chronological pipeline. The flow is li
 
 ## Skills
 
-All 23 skills with concrete trigger conditions and outputs. "When to Use" is written for both beginners (what you'll be feeling/experiencing) and advanced users (the precise boundary conditions).
+All 24 bundled skills with concrete trigger conditions and outputs. "When to Use" is written for both beginners (what you'll be feeling/experiencing) and advanced users (the precise boundary conditions).
 
 | Skill | Phase | When to Use | What It Produces |
 |-------|-------|-------------|------------------|
@@ -77,7 +77,8 @@ All 23 skills with concrete trigger conditions and outputs. "When to Use" is wri
 | **prototype** | DESIGN / BUILD | Need to validate a design decision with throwaway code. Not sure if the state machine is right, or if that UX pattern works. | Runnable prototype + documented answer (discarded after) |
 | **prd** | PLAN | Requirements are clear but need formal capture. Stakeholders need a documented PRD with stories, acceptance criteria, and priorities. | Published PRD with user stories, acceptance criteria, priority matrix |
 | **planner** | PLAN | Spec or PRD is approved. Need to break it into actionable implementation steps with dependencies and ordering. | Bite-sized implementation checklist (plan-NNN.yaml) |
-| **plan-reviewer** | PLAN REVIEW | Planner produced a plan. Need a quality gate before any implementation starts. Applies four lenses: CEO (business value), Eng (architecture), Design (UX), DX (developer experience). | Score per lens + verdict: Approve / Revise / Reject |
+| **multi-reviewer** | PLAN REVIEW | Planner produced a plan. Need a quality gate before any implementation starts. Applies four lenses: CEO (business value), Eng (architecture), Design (UX), DX (developer experience). | Score per lens + verdict: `APPROVE`, `REVISE`, or `REJECT` |
+| **plan-reviewer** | PLAN REVIEW | Legacy compatibility skill still bundled for older workflows. Prefer `multi-reviewer` for new plan gates. | Legacy plan review findings |
 | **builder** | BUILD | Plan is approved and ready to execute. Has detailed tasks with clear boundaries. Dispatches subagent swarms in isolated worktrees. | Verified, reviewed commits |
 | **tdd** | TEST / BUILD | Building features from scratch. Prefer test-first development. Each cycle: RED (write failing test) → GREEN (minimal code) → REFACTOR (clean up). | Red-green-refactor vertical slices through all layers |
 | **tester** | TEST | Features are built, need comprehensive test coverage. Or coverage gaps are identified and need filling. Not for test-first workflows. | Unit/integration/edge case tests + coverage gap report |
@@ -136,7 +137,7 @@ AGNES is organized into layered modules that handle protocol, state, runtime, an
 | **Flow Control** | `src/flowcontrol.ts` | Ephemeral jump signals (retry, skip, blocked, next_wave, end) |
 | **Bootstrap** | `src/bootstrap.ts` | Agent injection — injects plan context, shell env, and structured blocks into agent system prompt |
 | **Plugin** | `src/plugin.ts` | OpenCode entry point — plugin registration, unconditional interleaved config (model-agnostic) |
-| **Runtime** | `src/runtime.ts` | Core execution loop — wave cycle, subagent dispatch, retry with struggle detection, closed-loop orchestration |
+| **Runtime Helpers** | `src/runtime.ts` | Wave helpers, subagent dispatch scaffolding, retry with struggle detection, and gate integration |
 | **Shell** | `src/shell.ts` | Shell detection — identifies pwsh/bash/cmd and detects shell mismatch between host and workspace |
 | **State** | `src/state.ts` | Plan state machine — CRUD for plan-NNN.yaml, index.json, session tracking, retention pruning |
 | **Verification** | `src/verification.ts` | Structured gates with PASS/FAIL/SKIP status |
@@ -189,7 +190,7 @@ bun run bundle:watch  # watch mode for development
 bun run lint          # lint source files
 bun run lint:fix      # auto-fix lint issues
 bun run typecheck     # type-safety gate
-bun test              # 386 tests across 13 suites
+bun test              # 390 tests across 13 suites
 ```
 
 ---

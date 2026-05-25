@@ -10,6 +10,7 @@ All notable changes to AGNES are documented here.
 
 ### Added
 
+- **multi-reviewer gate**: Replaced the old plan-reviewer phase boundary with the multi-axis `multi-reviewer` gate and bundled its skill for plan judgment.
 - **Compaction/pruning built-in**: `compaction.ts` wired into `plugin.ts` transform pipeline. Compaction policy evaluated on every message. Advisory injected automatically when threshold is met.
 - **ESLint integration**: ESLint 10 + @typescript-eslint/parser + @typescript-eslint/eslint-plugin installed. TypeScript-aware `eslint.config.js` with separate entries for source and test files. `lint` and `lint:fix` scripts added.
 
@@ -20,12 +21,14 @@ All notable changes to AGNES are documented here.
 
 ### Fixed
 
+- **Bundled skill count docs**: README and AGENTS now document all 24 bundled skills, including legacy `plan-reviewer` alongside `multi-reviewer`.
 - **Compaction state serialization**: `buildExecutionContextBlock()` in bootstrap.ts now accepts optional `compaction?: CompactionPolicyState` and injects it as a nested YAML field when present. Fixes "stores the last evaluated state" test expectation mismatch.
 - **Unused import**: Removed unused `estimatePromptTokens` import from `src/plugin.ts` (typecheck error).
 - **Plan state accuracy**: Corrected plans 030/031 which falsely claimed Biome installation was complete. Cancelled both. Plan 032 superseded (DS4 removal and compaction were actually implemented despite pending markers).
 
 ### Changed
 
+- **Release maintenance**: Bumped AGNES from `0.13.5` to `0.14.0`, refreshed README claims, and rebuilt the checked-in plugin bundle.
 - **Plan state cleanup**: All plan state reconciled with actual codebase state via audit. `index.json` status set to done.
 
 ## 0.13.5 (2026-05-25)

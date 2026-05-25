@@ -176,7 +176,7 @@ describe('buildSkillRegistryBlock', () => {
 
   test('includes suggest_next with known downstream skills', () => {
     const block = buildSkillRegistryBlock();
-    expect(block).toContain('plan-reviewer');
+    expect(block).toContain('multi-reviewer');
     expect(block).toContain('verifier');
   });
 
@@ -200,7 +200,7 @@ describe('buildSkillRegistryText', () => {
   test('includes suggest_next arrows for skills with downstream suggestions', () => {
     const text = buildSkillRegistryText();
     expect(text).toContain('→ next:');
-    expect(text).toContain('plan-reviewer');
+    expect(text).toContain('multi-reviewer');
   });
 
   test('does NOT contain structured tags', () => {

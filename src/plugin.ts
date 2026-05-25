@@ -126,7 +126,7 @@ export const AgnesPlugin: Plugin = async () => {
         if (workspaceRoot) {
           planGate = getPlanGate(workspaceRoot) || '';
           const index = readPlanIndex(workspaceRoot);
-          if (index && index.activePlanId) {
+          if (index?.activePlanId) {
             const activeEntry = index.plans.find(p => p.id === index.activePlanId);
             if (activeEntry) {
               execContext = buildExecutionContext(activeEntry);

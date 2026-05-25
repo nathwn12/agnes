@@ -1,4 +1,7 @@
-import { describe, expect, test, afterEach } from 'bun:test';
+import { describe, expect, test, afterEach, beforeEach } from 'bun:test';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
   runGates,
   formatGateReport,
@@ -203,6 +206,45 @@ describe('promiseComplianceGate acceptance', () => {
     process.env.AGNES_LAST_OUTPUT = '';
     const result = await promiseComplianceGate.run();
     expect(result.status).toBe('FAIL');
+  });
+});
+
+describe('planExistsGate approval precondition', () => {
+  const originalCwd = process.cwd();
+  let tempDir = '';
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-plan-gate-'));
+    fs.mkdirSync(path.join(tempDir, '.agnes'));
+    process.chdir(tempDir);
+  });
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  test('fails when active plan is not approved', async () => {
+    fs.writeFileSync(path.join(tempDir, '.agnes', 'index.json'), JSON.stringify({
+      activePlanId: 'plan-001',
+      plans: [{ id: 'plan-001', status: 'draft' }],
+    }), 'utf8');
+
+    const result = await planExistsGate.run();
+
+    expect(result.status).toBe('FAIL');
+    expect(result.evidence.errors).toContain('Active plan plan-001 is draft; expected approved');
+  });
+
+  test('passes when active plan is approved', async () => {
+    fs.writeFileSync(path.join(tempDir, '.agnes', 'index.json'), JSON.stringify({
+      activePlanId: 'plan-001',
+      plans: [{ id: 'plan-001', status: 'approved' }],
+    }), 'utf8');
+
+    const result = await planExistsGate.run();
+
+    expect(result.status).toBe('PASS');
   });
 });
 

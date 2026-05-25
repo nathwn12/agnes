@@ -21380,10 +21380,12 @@ var PlanSchema = exports_external.object({
 var BootstrapBlockTypeSchema = exports_external.enum([
   "runtime",
   "orchestrator",
+  "named_roles",
   "plan_state",
   "shell",
   "execution",
-  "protocol"
+  "protocol",
+  "skill_registry"
 ]);
 var BootstrapBlockSchema = exports_external.object({
   type: BootstrapBlockTypeSchema
@@ -22081,8 +22083,8 @@ var SKILL_SUGGEST_NEXT = {
   clarifier: ["explorer", "planner"],
   explorer: ["architect", "planner"],
   architect: ["planner"],
-  planner: ["plan-reviewer"],
-  "plan-reviewer": ["tdd", "builder"],
+  planner: ["multi-reviewer"],
+  "multi-reviewer": ["tdd", "builder"],
   prd: ["planner"],
   prototype: ["tdd", "builder"],
   builder: ["tester", "verifier"],
@@ -22564,7 +22566,7 @@ var AgnesPlugin = async () => {
         if (workspaceRoot) {
           planGate = getPlanGate(workspaceRoot) || "";
           const index = readPlanIndex(workspaceRoot);
-          if (index && index.activePlanId) {
+          if (index?.activePlanId) {
             const activeEntry = index.plans.find((p) => p.id === index.activePlanId);
             if (activeEntry) {
               execContext = buildExecutionContext(activeEntry);

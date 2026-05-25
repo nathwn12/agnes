@@ -228,7 +228,7 @@ export type Plan = z.infer<typeof PlanSchema>;
 // ── Bootstrap block schemas ───────────────────────────────────────────────────
 
 export const BootstrapBlockTypeSchema = z.enum([
-  "runtime", "orchestrator", "plan_state", "shell", "execution", "protocol"
+  "runtime", "orchestrator", "named_roles", "plan_state", "shell", "execution", "protocol", "skill_registry"
 ]);
 
 export const BootstrapBlockSchema = z.object({
