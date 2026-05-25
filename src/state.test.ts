@@ -31,7 +31,7 @@ import {
   generateRetrospective,
 } from './state.js';
 import type { PlanIndex, PlanIndexEntry, ActivePlan, StruggleMetrics, RetentionPolicy, PlanQualityReport } from './state.js';
-import { getPlanState, getPlanGate, getCurrentState, getPlanGateFromState } from './runtime.js';
+import { getPlanState, getPlanGate, getCurrentState, getPlanGateFromState, NO_PLAN_NUDGE } from './runtime.js';
 import type { AgnesRuntimeState } from './runtime.js';
 
 afterAll(() => {
@@ -422,7 +422,7 @@ notes: []
 
 describe('buildPlanSummary', () => {
   test('returns no-plan message when no project root', () => {
-    expect(buildPlanSummary(fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-')))).toBe('No active plan. Create one before delegating work.');
+    expect(buildPlanSummary(fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-')))).toBe(NO_PLAN_NUDGE);
   });
 
   test('returns no-plan message when no plans exist', () => {
@@ -437,7 +437,7 @@ describe('buildPlanSummary', () => {
       activePlanId: null,
       plans: [],
     });
-    expect(buildPlanSummary(tmp)).toBe('No active plan. Create one before delegating work.');
+    expect(buildPlanSummary(tmp)).toBe(NO_PLAN_NUDGE);
   });
 
   test('returns summary for active plan', () => {
@@ -990,13 +990,13 @@ describe('getPlanState', () => {
 });
 
 describe('getPlanGate', () => {
-  test('returns warning when no index found', () => {
+  test('returns null when no index found', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-'));
     const gate = getPlanGate(tmp);
-    expect(gate).toContain('PLAN REQUIRED');
+    expect(gate).toBeNull();
   });
 
-  test('returns warning when no active plan', () => {
+  test('returns empty string when no active plan', () => {
     const tmp = createTempProject();
     const now = new Date().toISOString();
     writeIndex(tmp, {
@@ -1019,7 +1019,7 @@ describe('getPlanGate', () => {
       }],
     });
     const gate = getPlanGate(tmp);
-    expect(gate).toContain('No active plan');
+    expect(gate).toBe('');
   });
 
   test('blocks implementation when active plan is not approved', () => {

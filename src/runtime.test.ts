@@ -7,12 +7,14 @@ import {
   buildExecutionContext,
   recordAttempt,
   classifyIntent,
+  classifyComplexity,
   requestMatchesPlan,
   processMessage,
   checkPlanDrift,
   assertTaskScope,
   runWaveGates,
 } from './runtime.js';
+import type { Complexity } from './runtime.js';
 import type { AgnesRuntimeState, ProcessMessageResult } from './runtime.js';
 import { FlowController } from './flowcontrol.js';
 import type { PlanIndex } from './state.js';
@@ -396,6 +398,48 @@ describe('classifyIntent', () => {
   });
 });
 
+describe('classifyComplexity', () => {
+  test('short fix request returns trivial', () => {
+    expect(classifyComplexity('Fix the typo in login.ts')).toBe('trivial');
+  });
+
+  test('rename request returns trivial', () => {
+    expect(classifyComplexity('Rename getCwd to getCurrentDir')).toBe('trivial');
+  });
+
+  test('single-sentence request returns trivial', () => {
+    expect(classifyComplexity('Add error handling to the auth function')).toBe('trivial');
+  });
+
+  test('multi-step feature request returns complex', () => {
+    expect(classifyComplexity('Implement a user registration feature with email verification and profile page')).toBe('complex');
+  });
+
+  test('refactor keyword returns complex', () => {
+    expect(classifyComplexity('Refactor the database layer to use transactions')).toBe('complex');
+  });
+
+  test('connectors like "then" signal complex', () => {
+    expect(classifyComplexity('Fix the login then add error handling')).toBe('complex');
+  });
+
+  test('connectors like "also" signal complex', () => {
+    expect(classifyComplexity('Also need to update the tests')).toBe('complex');
+  });
+
+  test('empty string returns trivial', () => {
+    expect(classifyComplexity('')).toBe('trivial');
+  });
+
+  test('more than 3 sentences signals complex', () => {
+    expect(classifyComplexity('Step one. Step two. Step three. Step four.')).toBe('complex');
+  });
+
+  test('3 or fewer sentences is trivial', () => {
+    expect(classifyComplexity('Step one. Step two. Step three.')).toBe('trivial');
+  });
+});
+
 describe('requestMatchesPlan', () => {
   test('returns true when significant token overlap', () => {
     expect(requestMatchesPlan('fix the login bug', 'Plan to fix the login bug')).toBe(true);
@@ -449,19 +493,19 @@ describe('processMessage', () => {
   };
 
   test('blocks implement intent without active plan', () => {
-    const result = processMessage('fix the login bug', mockIndexWithoutPlan, null) as Extract<ProcessMessageResult, { type: 'block' }>;
-    expect(result.type).toBe('block');
+    const result = processMessage('Refactor the database layer', mockIndexWithoutPlan, null) as Extract<ProcessMessageResult, { type: 'block' | 'nudge' }>;
+    expect(result.type).toBe('nudge');
     expect(result.reason).toBe('no_active_plan');
   });
 
   test('blocks implement intent when plan does not match', () => {
-    const result = processMessage('fix the login bug', mockIndexWithApprovedPlan, 'Add user profile page') as Extract<ProcessMessageResult, { type: 'block' }>;
+    const result = processMessage('Refactor the database layer', mockIndexWithApprovedPlan, 'Add user profile page') as Extract<ProcessMessageResult, { type: 'block' }>;
     expect(result.type).toBe('block');
     expect(result.reason).toBe('plan_mismatch');
   });
 
   test('blocks implement intent when active plan is not approved', () => {
-    const result = processMessage('fix the login bug', mockIndexWithPlan, 'Plan to fix the login bug') as Extract<ProcessMessageResult, { type: 'block' }>;
+    const result = processMessage('Refactor the database layer', mockIndexWithPlan, 'Plan to fix the login bug') as Extract<ProcessMessageResult, { type: 'block' }>;
     expect(result.type).toBe('block');
     expect(result.reason).toBe('plan_not_approved');
   });
@@ -473,7 +517,7 @@ describe('processMessage', () => {
   });
 
   test('blocks implement intent when approved plan is superseded by direct child', () => {
-    const result = processMessage('fix the login bug', {
+    const result = processMessage('Refactor the database layer', {
       ...mockIndexWithApprovedPlan,
       plans: [
         ...mockIndexWithApprovedPlan.plans,

@@ -216,7 +216,7 @@ State files in `.agnes/`:
 
 | Action | When |
 |--------|------|
-| **Start** | Check index.json for existing plans. No active plan? Create plan-001.yaml + update index.json. |
+| **Start** | Check index.json for existing plans. No active plan? Classify complexity. Trivial → do work. Complex → nudge user to create plan. |
 | **Iterate** | State change detected → read index.json → create plan-(N+1).yaml with parent=activePlanId → update index.json (set old plan status, set activePlanId to new, update counts). |
 | **Handoff** | Blocked or stopping → create new plan iteration with blocked status. |
 | **Clear** | Plan done → set status to done in index.json, clear activePlanId. |
@@ -226,25 +226,34 @@ State lifecycle:
 Task starts
     │
     ▼
-┌───────────────────────────────────┐
-│ 1. Check .agnes/index.json        │
-│ 2. Any active plan?               │
-│    ├── YES → read plan-NNN.yaml   │
-│    │         continue work        │
-│    └── NO  → create plan-001.yaml │
-│              update index.json    │
-│ 3. Delegate work via subagents    │
-│ 4. Verify subagent results        │
-│ 5. State change detected?         │
-│    ├── YES → create new plan iter │
-│    │         update index.json    │
-│    └── NO  → continue step 3      │
-│ 6. Condition met?                 │
-│    ├── YES → set plan done        │
-│    └── NO  → new iteration?       │
-│        ├── YES → plan-NNN+1.yaml  │
-│        └── NO  → continue step 3  │
-└───────────────────────────────────┘
+┌─────────────────────────────────────┐
+│ 1. Check .agnes/index.json          │
+│ 2. Any active plan?                 │
+│    ├── YES → read plan-NNN.yaml     │
+│    │         continue work          │
+│    └── NO  → classify task:         │
+│        ├── TRIVIAL → do work        │
+│        │             skip plan      │
+│        └── COMPLEX → nudge user:    │
+│            "Fire up init?"          │
+│            ├── YES → create plan    │
+│            │         update index   │
+│            └── NO  → do work        │
+│                      (no tracking)  │
+│ 3. Delegate work via subagents      │
+│ 4. Verify subagent results          │
+│ 5. State change detected?           │
+│    ├── YES → create new plan iter   │
+│    │         update index.json      │
+│    └── NO  → continue step 3        │
+│ 6. Condition met?                   │
+│    ├── YES → set plan done          │
+│    │         clear activePlanId     │
+│    └── NO  → plan iteration?        │
+│        ├── YES → plan-NNN+1.yaml    │
+│        └── NO  → continue step 3    │
+└─────────────────────────────────────┘
+Goal met → done → clear
 ```
 
 ## Tool Requirements
@@ -358,8 +367,15 @@ Task starts
 │ 2. Any active plan?                 │
 │    ├── YES → read plan-NNN.yaml     │
 │    │         continue work          │
-│    └── NO  → create plan-001.yaml   │
-│              update index.json      │
+│    └── NO  → classify task:         │
+│        ├── TRIVIAL → do work        │
+│        │             skip plan      │
+│        └── COMPLEX → nudge user:    │
+│            "Fire up init?"          │
+│            ├── YES → create plan    │
+│            │         update index   │
+│            └── NO  → do work        │
+│                      (no tracking)  │
 │ 3. Delegate work via subagents      │
 │ 4. Verify subagent results          │
 │ 5. State change detected?           │

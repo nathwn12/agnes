@@ -13,7 +13,7 @@ import {
   findProjectRoot,
   readPlanIndex,
 } from './state.js';
-import { getPlanGate, buildExecutionContext } from './runtime.js';
+import { getPlanGate, buildExecutionContext, classifyComplexity } from './runtime.js';
 import { serializeAgnesMessage } from './protocol.js';
 
 import { detectShell } from './shell.js';
@@ -124,7 +124,13 @@ export const AgnesPlugin: Plugin = async () => {
       try {
         const workspaceRoot = findProjectRoot();
         if (workspaceRoot) {
-          planGate = getPlanGate(workspaceRoot) || '';
+          const userParts = firstUser.parts as Array<{ type: string; text?: string }>;
+          const userText = userParts
+            .filter((p) => p.type === 'text' && typeof p.text === 'string')
+            .map((p) => p.text as string)
+            .join(' ');
+          const isTrivial = userText ? classifyComplexity(userText) === 'trivial' : false;
+          planGate = isTrivial ? '' : (getPlanGate(workspaceRoot) || '');
           const index = readPlanIndex(workspaceRoot);
           if (index?.activePlanId) {
             const activeEntry = index.plans.find(p => p.id === index.activePlanId);

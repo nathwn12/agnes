@@ -9,6 +9,7 @@ import type { Plan, PlanTask } from './schema.js';
 
 import { parseAgnesMessage } from './protocol.js';
 import type { CompletionStatus } from './protocol.js';
+import { NO_PLAN_NUDGE } from './runtime.js';
 
 function assertShape<T>(data: unknown, shape: Record<string, string>): data is T {
   if (!data || typeof data !== 'object') return false;
@@ -416,13 +417,13 @@ export function getLatestActivePlan(projectRoot?: string): ActivePlan | null {
 
 export function buildPlanSummary(projectRoot?: string): string {
   const root = projectRoot ?? findProjectRoot();
-  if (!root) return 'No active plan. Create one before delegating work.';
+  if (!root) return NO_PLAN_NUDGE;
 
   const index = readPlanIndex(root);
-  if (!index || index.plans.length === 0) return 'No active plan. Create one before delegating work.';
+  if (!index || index.plans.length === 0) return NO_PLAN_NUDGE;
 
   const active = getLatestActivePlan(root);
-  if (!active) return 'No active plan. Create one before delegating work.';
+  if (!active) return NO_PLAN_NUDGE;
 
   const { entry } = active;
 
@@ -985,9 +986,13 @@ export function assessPlanQuality(content: string): PlanQualityReport {
   return { score, flags };
 }
 
-export function createAutoPlan(params: { goal: string; source: 'gate' | 'user' | 'user_ready' }, projectRoot?: string): string {
+export function createAutoPlan(params: { goal: string; source: 'gate' | 'user' | 'user_ready'; complexity?: 'trivial' | 'complex' }, projectRoot?: string): string {
   const root = projectRoot ?? findProjectRoot();
   if (!root) throw new Error('Cannot create auto plan: no project root found');
+
+  if (params.complexity === 'trivial') {
+    return '';
+  }
 
   const now = new Date().toISOString();
   const id = getNextPlanId(root);

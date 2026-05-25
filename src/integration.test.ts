@@ -78,8 +78,8 @@ describe('planning discipline integration', () => {
     expect(classifyIntent('fix the broken login').category).toBe('implement');
 
     const index = readIndex(tmp)!;
-    const result = processMessage('fix the broken login', index, null) as Extract<ProcessMessageResult, { type: 'block' }>;
-    expect(result.type).toBe('block');
+    const result = processMessage('Refactor the database layer', index, null) as Extract<ProcessMessageResult, { type: 'nudge' }>;
+    expect(result.type).toBe('nudge');
     expect(result.reason).toBe('no_active_plan');
   });
 
@@ -232,11 +232,11 @@ describe('planning discipline integration', () => {
   });
 
   test('Edge cases: missing index, NaN dates, empty scope', () => {
-    const result = processMessage('fix the login', null, null);
+    const result = processMessage('Refactor the database layer', null, null);
     expect(result).toEqual({
-      type: 'block',
+      type: 'nudge',
       reason: 'no_active_plan',
-      message: 'I need a plan before I can implement. Do you have a plan in mind?',
+      message: expect.stringContaining('fire up init'),
     });
 
     const tmp = createTempProject();
