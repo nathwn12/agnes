@@ -3,8 +3,8 @@ id: verifier
 name: verifier
 description: 'After any code change (called by builder), before claiming any task is complete, before shipper starts.'
 phase: "VERIFY"
-use_when: "After any code change (called by builder), before claiming any task is complete, before shipper starts."
-version: 1.0
+use_when: "After any code change (called by builder), before claiming any task is complete, before shipper starts. Also when a Definition of Done contract with evidence-backed assertions must be verified before completion can be claimed."
+version: 1.1
 ---
 
 ## Use When
@@ -27,6 +27,8 @@ Evidence before assertions, always. Trusting "should work" or previous runs is d
 - **Promise Scan**: Searches subagent output for `<promise>TAG</promise>` completion markers; the promise tag must match the expected completion promise
 - **Evidence**: Full captured output from each verification step, logged as structured pass/fail with timing and metrics
 - **Rationalization**: Any excuse used to defer or skip fresh verification — all rejected by the Iron Law
+- **Contract**: A declarative set of testable assertions encoding the Definition of Done. Each assertion is a promise with an evidence requirement — no assertion passes without attached command output.
+- **Definition of Done (DoD)**: The complete set of conditions that must be met (all assertions passed, all evidence captured) before a task can be marked complete. A failing or pending assertion without evidence blocks the gate.
 
 ## Context Requirements
 
@@ -75,6 +77,20 @@ Scan the subagent's full output for a `<promise>` completion tag:
 - If no promise tag found → FAIL (task not marked complete)
 - Capture the promise tag value as evidence
 
+### 5.5 Contract / Definition of Done
+
+When the task specifies a Definition of Done contract, verify each assertion against evidence:
+
+- Each assertion must carry an evidence-backed status: `passed`, `failed`, or `pending`
+- Evidence must reference actual command output (stdout, exit codes, file content, test results) — never subjective self-assessment
+- Any `failed` assertion blocks the gate immediately. Document: assertion name, expected outcome, actual result, and the evidence that disproves it
+- Any `pending` assertion blocks the gate — pending means the task is incomplete
+- The `<promise>TAG</promise>` completion marker is verified as the final assertion:
+  - Match pattern: `<promise>EXPECTED_TAG</promise>` (default: `DONE`)
+  - Regex: `/<promise>\s*EXPECTED_TAG\s*<\/promise>/i`
+  - Without a matching promise tag, the task is not complete even if all assertions pass
+- Collect evidence per-assertion in the Evidence Capture step
+
 ### 6. Evidence Capture
 
 Log actual output, not "should work":
@@ -84,6 +100,7 @@ Lint: PASS (0 errors, 0 warnings, 1.5s)
 Test: PASS (24 tests, 3 suites, 0.8s)
 Build: PASS (output: dist/index.js, 156KB)
 Promise:  PASS (<promise>DONE</promise>)
+Contract: PASS (3/3 assertions passed, all evidence attached)
 ```
 
 ## Tool Requirements
@@ -101,6 +118,7 @@ Lint: PASS (0 errors, 0 warnings, 1.5s)
 Test: PASS (24 tests, 3 suites, 0.8s)
 Build: PASS (output: dist/index.js, 156KB)
 Promise:  PASS (<promise>DONE</promise>)
+Contract: PASS (3/3 assertions passed, all evidence attached)
 ```
 
 If any gate fails, output the failure details and stop — do not continue to subsequent gates.
@@ -119,6 +137,8 @@ If any gate fails, output the failure details and stop — do not continue to su
 | "Just this once" | No exceptions |
 | "The test isn't important" | Then remove it or fix it |
 | "I'll check later" | Check now or document why not |
+| "All assertions feel right" | Show me the command evidence |
+| "It's probably done" | Run the contract assertions |
 
 ## Named Subagent Roles — @executor
 

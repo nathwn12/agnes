@@ -1,15 +1,15 @@
 <h1 align="center">AGNES — OpenCode Native Plugin</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.14.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.15.0-blue" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
-  <img src="https://img.shields.io/badge/skills-24-orange" alt="24 skills">
+  <img src="https://img.shields.io/badge/skills-30-orange" alt="30 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
 </p>
 
 <p align="center">
   <b>Swarm orchestrator for OpenCode.</b><br>
-  Routes every engineering task across 24 specialized skills. Delegates relentlessly. Parallelizes by default. Never writes code directly.
+  Routes every engineering task across 30 specialized skills. Delegates relentlessly. Parallelizes by default. Never writes code directly.
 </p>
 
 ---
@@ -30,7 +30,7 @@ Add to your `opencode.json`:
 }
 ```
 
-Restart OpenCode. AGNES injects its bootstrap and registers all 24 skills automatically.
+Restart OpenCode. AGNES injects its bootstrap and registers all 30 skills automatically.
 
 ---
 
@@ -64,12 +64,14 @@ AGNES routes every task through a default chronological pipeline. The flow is li
 
 ## Skills
 
-All 24 bundled skills with concrete trigger conditions and outputs. "When to Use" is written for both beginners (what you'll be feeling/experiencing) and advanced users (the precise boundary conditions).
+All 30 bundled skills with concrete trigger conditions and outputs. "When to Use" is written for both beginners (what you'll be feeling/experiencing) and advanced users (the precise boundary conditions).
 
 | Skill | Phase | When to Use | What It Produces |
 |-------|-------|-------------|------------------|
 | **orchestrator** | META | *Always active.* Coordinates all other skills, delegates work to subagents, manages parallel execution, tracks session state. | Delegation waves, goal/plan state, subagent results |
+| **instinct** | META | Cross-session context retention and learned pattern memory. Agents observe patterns, create instincts with confidence scores, promote or decay them over time. | Learned patterns with confidence scores, promoted/decayed instincts |
 | **init** | SETUP | First time running AGNES in a project. Or existing state files are corrupted/missing. | `.agnes/` directory with `index.json` + `AGENTS.md` |
+| **brainstorming** | THINK | Ambiguous creative direction, no clear implementation path, need to explore design space before committing to a plan. | Design doc with forcing questions, 2-3 approach proposals, approved spec |
 | **clarifier** | THINK | Request is vague ("make it better"), ambiguous ("fix the issue"), or has terminology conflicts between team members. Sharpens until executable. | Written, user-approved specification |
 | **explorer** | RESEARCH | Need to understand unfamiliar code before making changes. Or need to find where a thing lives, how data flows, what conventions exist. | Structured findings report: file map, dependency chains, pattern analysis |
 | **architect** | RESEARCH / DESIGN | Codebase feels hard to change — adding features requires touching 5 files, tests are brittle, module boundaries are blurry. Finds deepening opportunities. | Seam map, interface proposals, Design It Twice alternatives |
@@ -122,6 +124,8 @@ AGNES never writes code directly. Every task is delegated to a subagent or speci
 | **Scarcity** | Cheapest sufficient path first — shallow-first, compact outputs, context as budget. |
 | **Work-steal** | Subagent finished early? Dispatch it with the next task immediately. |
 | **Promise-driven execution** | Tracks subagent progress via promise tags, detects struggle patterns, and retries with session-aware backoff. |
+| **Contract assertions** | Evidence-backed Definition of Done protocol. No partial credit for failing assertions. |
+| **Caveman default style** | All AGNES reports use ultra-compressed style — drop articles, filler, pleasantries, hedging. |
 
 ---
 

@@ -2,7 +2,28 @@
 
 All notable changes to AGNES are documented here.
 
-## 0.14.0 (2026-05-25)
+## 0.15.0 (2026-05-25)
+
+### Added
+
+- **2 new skills**: `brainstorming` (THINK — design-before-build gate with forcing questions) and `instinct` (META — cross-session context retention and pattern learning with confidence/decay model). Fused from Superpowers, GStack, ECC instinct system, and Hermes autonomous creation. (24 → 26 standalone skills, 30 effective with enhanced merges)
+- **4 skills enhanced**: shipper (finishing-branch PR/merge/cleanup), feedback-receiver (receiving-review behavioral reviewee discipline), verifier (contract/DoD evidence-backed assertions), builder (git-worktree workspace isolation). Merged proven patterns from Superpowers, SmallCode, and ECC verification.
+- **Caveman default style**: Orchestrator now mandates ultra-compressed reporting — drop articles, filler, pleasantries, hedging. Fragments OK. Short synonyms. Auto-clarity exception for security warnings.
+
+### Changed
+
+- **Orchestrator restored**: Reverted trimmed orchestrator (254 → 383 lines) to original full content. Caveman style preserved. Updated skill registry with brainstorming + instinct entries.
+- **Multi-reviewer restored**: Reverted trimmed version (223 → 390 lines) to original full rubric depth. Quality gate spine needs every detail.
+- **README**: Updated skills badge 24 → 30, added brainstorming/instinct to skills table, added contract assertions and caveman style to ethos.
+- **Release maintenance**: Bumped package metadata from 0.14.0 to 0.15.0.
+
+### Removed
+
+- **plan-reviewer deprecated**: Fully redirects to multi-reviewer. 16-line stub preserved for backward compatibility.
+
+### Fixed
+
+- **Skill count accuracy**: All 30 effective skills now documented (26 standalone .opencode/skills/ directories + 4 enhanced). Previous docs claimed 24.
 
 ### Breaking
 
