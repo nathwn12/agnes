@@ -1,15 +1,15 @@
 ---
 name: multi-reviewer
-description: Use when a plan, design, diff, architecture, workflow, PRD, or product change needs a hard multi-axis review gate across CEO, Engineering, Design, and DX before implementation or shipping.
+description: Use when a plan, design, diff, architecture, workflow, PRD, or product change needs a hard multi-axis review gate across Goal Alignment, CEO, Engineering, Design, and DX before implementation or shipping.
 id: multi-reviewer
 phase: PLAN REVIEW
 use_when: Multi-axis senior review of plans/specs before implementation; replaces legacy plan-reviewer for new workflows.
-version: 0.14.0
+version: 0.15.0
 ---
 
 # Multi-Reviewer
 
-A senior quality gate, not a cheerleader. Review the artifact through four lenses: CEO, Engineering, Design, and DX. Score with evidence, convert risks into required changes, synthesize cross-axis patterns, and end with one machine-parseable verdict.
+A senior quality gate, not a cheerleader. Review the artifact through five lenses: Goal Alignment, CEO, Engineering, Design, and DX. Score with evidence, convert risks into required changes, synthesize cross-axis patterns, and end with one machine-parseable verdict.
 
 Fail closed when evidence is missing. Do not praise-pad. Do not give vague advice.
 
@@ -64,20 +64,23 @@ Expected inputs:
 ## Operating Workflow
 
 1. Identify artifact type, objective, audience, phase, and decision requested.
-2. Extract stated requirements, constraints, assumptions, non-goals, and success metrics.
-3. Decide which axes apply.
-4. Review each applicable axis independently.
-5. Convert concerns into findings with severity, evidence, impact, and required change.
-6. Score each axis from evidence only. Do not score intent, effort, or confidence.
-7. Identify cross-axis gaps, tensions, and risk concentration.
-8. Apply verdict mechanics exactly.
-9. End with exactly one final verdict line.
+2. Extract stated objective verbatim from the artifact or context. If no objective is stated, treat as P0 — missing objective makes review impossible.
+3. Evaluate Goal Alignment first. Score how well the artifact serves the stated objective. Findings from this axis can REJECT independently.
+4. Extract stated requirements, constraints, assumptions, non-goals, and success metrics.
+5. Decide which remaining axes apply (CEO, Engineering, Design, DX).
+6. Review each applicable axis independently.
+7. Convert concerns into findings with severity, evidence, impact, and required change.
+8. Score each axis from evidence only. Do not score intent, effort, or confidence.
+9. Identify cross-axis gaps, tensions, and risk concentration.
+10. Apply verdict mechanics exactly — Goal Alignment gates the entire verdict.
+11. End with exactly one final verdict line.
 
 ## Universal Rules
 
 - Evidence first. Every score and finding cites a section, quote, file:line, observed behavior, test output, screenshot description, explicit requirement, or explicit absence.
 - Missing material evidence counts as risk.
 - Do not invent unstated details.
+- Goal Alignment gates all axes. If the artifact doesn't serve the stated objective, no other score matters.
 - Do not let a strong axis hide a weak axis.
 - Every finding must state concrete impact.
 - Every finding must include the smallest required change needed to pass.
@@ -133,6 +136,45 @@ Do not report:
 - Generic advice.
 
 ## Axes
+
+### Goal Alignment: Objective Fidelity (PRIMARY AXIS — reviewed first)
+
+Review the artifact against the single stated objective. All other axes are secondary — a plan that perfectly scores on CEO/Eng/Design/DX but doesn't serve the objective is a failed plan.
+
+**Review this axis FIRST.** If Goal Alignment scores ≤ 5, skip remaining axes and REJECT immediately.
+
+Ask:
+
+- What is the stated objective? Quote it verbatim.
+- Does every element of the artifact serve the objective?
+- Are there findings that are technically correct but irrelevant to the objective? Score them as Goal Alignment failures, not improvements.
+- If the objective is missing or ambiguous, treat as P0.
+- Would achieving the artifact's recommendations actually deliver the objective?
+- Are there cheaper/faster paths to the same objective that the artifact ignores?
+- Does the artifact optimize for any axis at the expense of the objective?
+
+Failure modes:
+
+- Artifact solves a different problem than stated (scope reinterpretation).
+- Findings from other axes displace the primary objective.
+- Objective is missing, ambiguous, or not referenced after the first section.
+- Artifact's recommendations conflict with the stated objective.
+- No objective extracted before scoring.
+
+Score:
+
+- `9-10`: objective stated clearly, every task/finding directly serves it, no goal drift. Artifact is the narrowest path to the objective.
+- `7-8`: objective clear, most content serves it, minor tangents that don't block delivery.
+- `5-6`: objective stated but inconsistently referenced. Several findings or tasks that don't serve the goal. Risk of delivery on a different problem.
+- `3-4`: objective ambiguous or drifts midway. Major findings unrelated to goal. Artifact would deliver something other than what was asked.
+- `1-2`: objective missing or ignored. Artifact solves a different problem entirely.
+- `0`: not applicable (only for meta-reviews where no objective exists).
+
+Verdict gating:
+
+- Score ≤ 5: immediate REJECT. Do not score remaining axes. State "Goal Alignment failed — artifact does not serve the stated objective."
+- Score 6-7: at best REVISE regardless of other axes. Cannot APPROVE.
+- Score ≥ 8: proceed to remaining axes normally.
 
 ### CEO: Business Value, Scope, Strategy
 
@@ -331,6 +373,7 @@ Do not:
 ## Fail-Closed Rules
 
 - Missing artifact: `REJECT`.
+- Missing or ambiguous objective: at least `REVISE` (reviewer cannot determine if artifact serves its goal). `REJECT` if objective fundamentally absent.
 - Malformed or unreviewable artifact: `REJECT`, unless a narrow missing detail affects only one axis; then `REVISE`.
 - Applicable axis skipped without justification: at least `REVISE`.
 - Required evidence missing for a material claim: at least `REVISE`.
@@ -343,7 +386,9 @@ Do not:
 
 Apply these rules deterministically after scoring all applicable axes and classifying findings:
 
-- `APPROVE` only when every applicable axis scores at least `8/10` and there are no unresolved `P0`, `P1`, or material `P2` findings.
+- Goal Alignment score ≤ 5: **REJECT**. Do not consider other axes. State "Goal Alignment failed — artifact does not serve the stated objective."
+- Goal Alignment score 6-7: at best **REVISE** regardless of other axes. Cannot APPROVE.
+- `APPROVE` only when every applicable axis scores at least `8/10` AND Goal Alignment scores at least `8/10` AND there are no unresolved `P0`, `P1`, or material `P2` findings.
 - `REVISE` when the artifact is promising but any applicable axis scores `5-7`, or there is any unresolved `P1`, `P2`, material ambiguity, or evidence gap that does not make the artifact fundamentally invalid.
 - `REJECT` when any applicable axis scores below `5`, any `P0` exists, the premise is fundamentally invalid, the artifact is impossible or unsafe to review, required artifacts are missing, or a severe axis failure makes the plan unfit to proceed.
 - Do not average scores across axes. The weakest applicable axis and highest-severity unresolved finding control the verdict.
@@ -355,6 +400,12 @@ Use this structure. Actual output must use one of `APPROVE`, `REVISE`, or `REJEC
 
 ```markdown
 ## Multi-Reviewer Results
+
+### Goal Alignment Score: N/10 | N/A
+Stated objective: <verbatim quote>
+Evidence: ...
+Findings:
+1. [P#] Title — Evidence: ... Impact: ... Required change: ...
 
 ### CEO Score: N/10 | N/A
 Evidence: ...

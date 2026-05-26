@@ -19,12 +19,16 @@ import { MiddlewareChain } from './middleware.js';
 import type { WaveContext, SubagentContext } from './middleware.js';
 import { FlowController } from './flowcontrol.js';
 import type { JumpTarget } from './flowcontrol.js';
+import { SimpleMutex } from './mutex.js';
 import type { TaskDescriptor } from './schema.js';
 import type { ResultMessage, CompletionStatus } from './protocol.js';
 import { detectShell } from './shell.js';
 import type { ShellType } from './shell.js';
 import { runGates } from './verification.js';
 import type { Gate, GateResult } from './verification.js';
+import { spawnAgent } from './subagent.js';
+import type { SubagentTask } from './subagent.js';
+import { resolveAgentPath } from './path-utils.js';
 
 const MAX_RETRIES_BEFORE_BLOCK = 3;
 const MAX_BLOCK_CHAIN = 3;
@@ -713,73 +717,145 @@ export function assertTaskScope(editedFiles: string[], planScope: string[]): voi
   }
 }
 
+const waveMutex = new SimpleMutex();
+
 export async function executeWave(
   planId: string,
   tasks: TaskDescriptor[],
   middleware: MiddlewareChain,
   flow: FlowController,
 ): Promise<{ results: ResultMessage[]; nextAction: JumpTarget | null }> {
-  let waveCtx: WaveContext = {
-    planId,
-    waveIndex: 0,
-    tasks,
-    state: {},
-  };
-
-  waveCtx = await middleware.executeBeforeWave(waveCtx);
-
-  const beforeJump = flow.getJump();
-  if (beforeJump) {
-    return { results: [], nextAction: beforeJump };
+  try {
+    await waveMutex.acquire(planId, 30000);
+  } catch {
+    return {
+      results: [],
+      nextAction: 'blocked',
+    };
   }
 
-  const results: ResultMessage[] = [];
+  try {
+    let waveCtx: WaveContext = {
+      planId,
+      waveIndex: 0,
+      tasks,
+      state: {},
+    };
 
-  for (const task of tasks) {
-    const subCtx: SubagentContext = { task, wave: waveCtx };
+    waveCtx = await middleware.executeBeforeWave(waveCtx);
 
-    if (flow.shouldSkip()) {
-      flow.consumeSignal();
-      continue;
-    }
-    if (flow.isBlocked()) {
-      break;
-    }
-
-    // TODO: Wire subagent spawning via OpenCode API. Currently returns a BLOCKED result for each task.
-    const handler = async (_ctx: SubagentContext): Promise<ResultMessage> => ({
-      type: 'result',
-      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
-      timestamp: new Date().toISOString(),
-      taskId: `task-${_ctx.task.skill}`,
-      status: 'BLOCKED',
-      content: `Subagent handler not yet wired — executeWave is structural only. Task ${_ctx.task.skill} skipped.`,
-    });
-
-    try {
-      const result = await middleware.executeSubagent(subCtx, handler);
-      results.push(result);
-    } catch (err) {
-      results.push({
-        type: 'result',
-        id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
-        timestamp: new Date().toISOString(),
-        taskId: `task-${task.skill}`,
-        status: 'BLOCKED',
-        content: err instanceof Error ? err.message : String(err),
-      });
+    const beforeJump = flow.getJump();
+    if (beforeJump) {
+      return { results: [], nextAction: beforeJump };
     }
 
-    const jump = flow.getJump();
-    if (jump) {
-      return { results, nextAction: jump };
+    const results: ResultMessage[] = [];
+
+    for (const task of tasks) {
+      const subCtx: SubagentContext = { task, wave: waveCtx };
+
+      if (flow.shouldSkip()) {
+        flow.consumeSignal();
+        continue;
+      }
+      if (flow.isBlocked()) {
+        break;
+      }
+
+      const handler = async (_ctx: SubagentContext): Promise<ResultMessage> => {
+        const subagentTask: SubagentTask = {
+          skill: task.skill,
+          payload: task.payload,
+          config: {
+            maxDepth: 5,
+            currentDepth: 0,
+            maxDurationMs: task.config?.maxDurationMs ?? 30000,
+          },
+        };
+
+        return spawnAgent(subagentTask, async () => {
+          let agentPath: string;
+          try {
+            agentPath = resolveAgentPath();
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return {
+              type: 'result',
+              id: randomId(),
+              timestamp: new Date().toISOString(),
+              taskId: `task-${task.skill}`,
+              status: 'BLOCKED',
+              content: `Agent binary not found: ${msg}`,
+            };
+          }
+
+          const proc = Bun.spawn([agentPath, '--skill', task.skill], {
+            stdin: 'pipe',
+            stdout: 'pipe',
+            stderr: 'pipe',
+            env: {
+              ...process.env,
+              AGNES_TASK_PAYLOAD: JSON.stringify(task.payload),
+            },
+          });
+
+          const stdout = await new Response(proc.stdout).text();
+          const stderr = await new Response(proc.stderr).text();
+          const exitCode = await proc.exited;
+
+          if (exitCode !== 0) {
+            return {
+              type: 'result',
+              id: randomId(),
+              timestamp: new Date().toISOString(),
+              taskId: `task-${task.skill}`,
+              status: 'BLOCKED',
+              content: `Subagent exited with code ${exitCode}${stderr ? ': ' + stderr : ''}`,
+            };
+          }
+
+          try {
+            return JSON.parse(stdout) as ResultMessage;
+          } catch {
+            return {
+              type: 'result',
+              id: randomId(),
+              timestamp: new Date().toISOString(),
+              taskId: `task-${task.skill}`,
+              status: 'DONE',
+              content: stdout || stderr || `Task ${task.skill} completed`,
+            };
+          }
+        });
+      };
+
+      try {
+        const result = await middleware.executeSubagent(subCtx, handler);
+        results.push(result);
+      } catch (err) {
+        results.push({
+          type: 'result',
+          id: randomId(),
+          timestamp: new Date().toISOString(),
+          taskId: `task-${task.skill}`,
+          status: 'BLOCKED',
+          content: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      const jump = flow.getJump();
+      if (jump) {
+        return { results, nextAction: jump };
+      }
     }
+
+    waveCtx = await middleware.executeAfterWave(waveCtx, results);
+
+    const finalJump = flow.getJump();
+    return { results, nextAction: finalJump };
+  } finally {
+    waveMutex.release(planId);
   }
-
-  waveCtx = await middleware.executeAfterWave(waveCtx, results);
-
-  const finalJump = flow.getJump();
-  return { results, nextAction: finalJump };
 }
 
 export async function runWaveGates(
@@ -799,5 +875,9 @@ export async function runWaveGates(
   }
 
   return results;
+}
+
+function randomId(): string {
+  return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 }
 

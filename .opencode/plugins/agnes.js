@@ -6960,18 +6960,19 @@ var require_public_api = __commonJS((exports) => {
 // src/plugin.ts
 import { randomUUID as randomUUID2 } from "crypto";
 import * as path4 from "path";
-import { fileURLToPath as fileURLToPath2 } from "url";
+import { fileURLToPath as fileURLToPath3 } from "url";
 
 // src/bootstrap.ts
-import * as fs2 from "fs";
+import * as fs3 from "fs";
 import * as os3 from "os";
-import * as path2 from "path";
-import { fileURLToPath } from "url";
+import * as path3 from "path";
+import { fileURLToPath as fileURLToPath2 } from "url";
 
 // src/state.ts
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
+import * as fs2 from "fs";
+import * as os2 from "os";
+import * as path2 from "path";
+import { fileURLToPath } from "url";
 
 // node_modules/yaml/dist/index.js
 var composer = require_composer();
@@ -21375,7 +21376,9 @@ var PlanSchema = exports_external.object({
   check: exports_external.string().min(1).max(500),
   summary: exports_external.string().min(1).max(200),
   tasks: exports_external.array(PlanTaskSchema).default([]),
-  notes: exports_external.array(exports_external.string()).default([])
+  notes: exports_external.array(exports_external.string()).default([]),
+  plannerMode: exports_external.enum(["builtin", "full"]).optional(),
+  plannerSource: exports_external.enum(["auto", "user", "gate"]).optional()
 });
 var BootstrapBlockTypeSchema = exports_external.enum([
   "runtime",
@@ -21458,338 +21461,60 @@ function serializeAgnesMessage(msg) {
   return `<agnes:message>${json2}</agnes:message>`;
 }
 
-// src/state.ts
-function assertShape(data, shape) {
-  if (!data || typeof data !== "object")
-    return false;
-  const obj = data;
-  for (const [field, expectedType] of Object.entries(shape)) {
-    if (typeof obj[field] !== expectedType)
-      return false;
+// src/runtime.ts
+import * as fs from "fs";
+import * as path from "path";
+
+// src/mutex.ts
+class MutexTimeoutError extends Error {
+  constructor(key, timeout) {
+    super(`Mutex timeout for key "${key}": waited ${timeout}ms without acquiring lock`);
+    this.name = "MutexTimeoutError";
   }
-  return true;
 }
-var OPENCODE_CACHE_ROOT = path.join(os.homedir(), ".cache", "opencode", "packages");
-var AGNES_DIR = ".agnes";
-var PLANS_DIR = "plans";
-function isBlockedPath(dir) {
-  const resolved = path.resolve(dir);
-  const root = path.resolve(OPENCODE_CACHE_ROOT);
-  if (os.platform() === "win32") {
-    return resolved.toLowerCase().startsWith(root.toLowerCase());
-  }
-  return resolved.startsWith(root);
-}
-function getPlanFilePath(root, entry) {
-  const filename = entry.file || `${entry.id}.yaml`;
-  return path.join(root, AGNES_DIR, PLANS_DIR, filename);
-}
-function readPlanArtifact(plansDir, planId) {
-  const yamlPath = path.join(plansDir, `${planId}.yaml`);
-  if (fs.existsSync(yamlPath)) {
-    const content = fs.readFileSync(yamlPath, "utf8");
-    return { content, plan: PlanSchema.parse($parse(content)) };
-  }
-  const mdPath = path.join(plansDir, `${planId}.md`);
-  if (fs.existsSync(mdPath)) {
-    return { content: fs.readFileSync(mdPath, "utf8"), plan: parseLegacyMdPlan(mdPath) };
-  }
-  return null;
-}
-var _cachedProjectRoot = null;
-function findProjectRoot(startDir) {
-  if (_cachedProjectRoot && !startDir) {
-    const indexPath = path.join(_cachedProjectRoot, AGNES_DIR, "index.json");
-    if (fs.existsSync(indexPath)) {
-      return _cachedProjectRoot;
+
+class SimpleMutex {
+  queues = new Map;
+  held = new Set;
+  acquire(key, timeout = 30000) {
+    if (!this.held.has(key)) {
+      this.held.add(key);
+      return Promise.resolve();
     }
-    _cachedProjectRoot = null;
-  }
-  let dir = startDir ? path.resolve(startDir) : process.cwd();
-  let found = null;
-  for (let i = 0;i < 20; i++) {
-    if (isBlockedPath(dir))
-      break;
-    if (dir === os.homedir())
-      break;
-    if (fs.existsSync(path.join(dir, AGNES_DIR, "index.json"))) {
-      found = dir;
-      break;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir)
-      break;
-    dir = parent;
-  }
-  if (!startDir && found) {
-    _cachedProjectRoot = found;
-  }
-  return found;
-}
-function cacheDir(projectRoot) {
-  const root = projectRoot ?? findProjectRoot();
-  if (!root)
-    return null;
-  return path.join(root, AGNES_DIR);
-}
-var ENTRY_REQUIRED_SHAPE = {
-  id: "string",
-  status: "string",
-  createdAt: "string",
-  updatedAt: "string",
-  summary: "string",
-  total: "number",
-  completed: "number",
-  blocked: "number"
-};
-var INDEX_REQUIRED_SHAPE = {
-  agnesVersion: "string",
-  schemaVersion: "number",
-  projectDir: "string",
-  projectName: "string",
-  updatedAt: "string",
-  plans: "object"
-};
-function validatePlanIndex(raw) {
-  if (!raw || typeof raw !== "object")
-    return false;
-  const idx = raw;
-  if (!assertShape(idx, INDEX_REQUIRED_SHAPE))
-    return false;
-  if (idx.schemaVersion !== 2)
-    return false;
-  if (idx.activePlanId !== null && typeof idx.activePlanId !== "string")
-    return false;
-  if (!Array.isArray(idx.plans))
-    return false;
-  for (const entry of idx.plans) {
-    if (!assertShape(entry, ENTRY_REQUIRED_SHAPE))
-      return false;
-  }
-  return true;
-}
-function migratePlanEntry(root, entry) {
-  let changed = false;
-  const yamlFile = `${entry.id}.yaml`;
-  const mdFile = `${entry.id}.md`;
-  const yamlPath = path.join(root, AGNES_DIR, PLANS_DIR, yamlFile);
-  const mdPath = path.join(root, AGNES_DIR, PLANS_DIR, mdFile);
-  if (!entry.file) {
-    entry.file = fs.existsSync(yamlPath) ? yamlFile : fs.existsSync(mdPath) ? mdFile : yamlFile;
-    changed = true;
-  } else if (entry.file.endsWith(".md") && fs.existsSync(yamlPath)) {
-    entry.file = yamlFile;
-    changed = true;
-  }
-  if (typeof entry.attempts !== "number") {
-    entry.attempts = 0;
-    changed = true;
-  }
-  if (!entry.struggle) {
-    entry.struggle = freshStruggleMetrics();
-    changed = true;
-  }
-  return changed;
-}
-function readPlanIndex(projectRoot) {
-  const root = projectRoot ?? findProjectRoot();
-  if (!root)
-    return null;
-  const indexPath = path.join(root, AGNES_DIR, "index.json");
-  try {
-    const raw = fs.readFileSync(indexPath, "utf8");
-    const parsed = JSON.parse(raw);
-    if (!validatePlanIndex(parsed))
-      return null;
-    let migrated = false;
-    for (const entry of parsed.plans) {
-      if (migratePlanEntry(root, entry))
-        migrated = true;
-    }
-    if (migrated)
-      writePlanIndex(parsed, root);
-    pruneExpiredPlans(parsed, root);
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-function writePlanIndex(index, projectRoot) {
-  const root = projectRoot ?? findProjectRoot();
-  if (!root)
-    throw new Error("Cannot write plan index: no project root found");
-  const dir = path.join(root, AGNES_DIR);
-  fs.mkdirSync(dir, { recursive: true });
-  const filePath = path.join(dir, "index.json");
-  const tmp = filePath + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(index, null, 2), "utf8");
-  fs.renameSync(tmp, filePath);
-}
-var FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?/;
-function parseLegacyMdPlan(filePath) {
-  const raw = fs.readFileSync(filePath, "utf-8");
-  const fm = raw.match(FRONTMATTER_RE);
-  let frontmatter = {};
-  let body = raw;
-  if (fm) {
-    frontmatter = $parse(fm[1]);
-    body = raw.slice(fm[0].length);
-  }
-  const goalMatch = body.match(/^Goal:\s*(.+)$/m);
-  const checkMatch = body.match(/^Check:\s*(.+)$/m);
-  const summaryMatch = body.match(/^#\s+\S+\s+[\u2014\u2013-]\s+(.+)$/m);
-  const taskLines = [];
-  for (const line of body.split(`
-`)) {
-    if (/^- \[[ x\/]\]/.test(line)) {
-      taskLines.push(line);
-    }
-  }
-  const tasks = taskLines.map((t, i) => ({
-    id: `task-${String(i + 1).padStart(3, "0")}`,
-    summary: t.replace(/^- \[[ x\/]\]\s*/, "").trim(),
-    status: t.startsWith("- [x]") ? "done" : t.startsWith("- [/]") ? "blocked" : "pending",
-    files: [],
-    depends_on: []
-  }));
-  const planId = typeof frontmatter.id === "string" ? frontmatter.id : path.basename(filePath, ".md");
-  const createdAt = typeof frontmatter.createdAt === "string" ? frontmatter.createdAt : new Date().toISOString();
-  const updatedAt = typeof frontmatter.updatedAt === "string" ? frontmatter.updatedAt : createdAt;
-  return {
-    schema: "agnes/plan-v1",
-    id: planId,
-    version: 1,
-    createdAt,
-    updatedAt,
-    status: typeof frontmatter.status === "string" ? frontmatter.status : "draft",
-    parent: typeof frontmatter.parent === "string" ? frontmatter.parent : null,
-    goal: goalMatch ? goalMatch[1].trim() : typeof frontmatter.goal === "string" ? frontmatter.goal : "",
-    check: checkMatch ? checkMatch[1].trim() : typeof frontmatter.check === "string" ? frontmatter.check : "",
-    summary: typeof frontmatter.summary === "string" ? frontmatter.summary : summaryMatch ? summaryMatch[1].trim() : "",
-    tasks,
-    notes: Array.isArray(frontmatter.notes) ? frontmatter.notes : []
-  };
-}
-var DEFAULT_RETENTION = { maxAgeDays: 7, terminalStatuses: ["done", "abandoned"] };
-function pruneExpiredPlans(index, projectRoot) {
-  const root = projectRoot ?? findProjectRoot();
-  if (!root || index.plans.length === 0)
-    return index;
-  const retention = index.retention ?? DEFAULT_RETENTION;
-  const cutoffMs = Date.now() - retention.maxAgeDays * 24 * 60 * 60 * 1000;
-  const terminalSet = new Set(retention.terminalStatuses);
-  const kept = [];
-  let changed = false;
-  for (const entry of index.plans) {
-    if (terminalSet.has(entry.status)) {
-      const updatedMs = new Date(entry.updatedAt).getTime();
-      if (!isNaN(updatedMs) && updatedMs <= cutoffMs) {
-        try {
-          fs.rmSync(getPlanFilePath(root, entry), { force: true });
-        } catch {}
-        changed = true;
-        continue;
-      }
-    }
-    kept.push(entry);
-  }
-  if (!changed)
-    return index;
-  index.plans = kept;
-  index.updatedAt = new Date().toISOString();
-  if (index.activePlanId && !kept.some((p) => p.id === index.activePlanId)) {
-    index.activePlanId = null;
-  }
-  writePlanIndex(index, root);
-  return index;
-}
-function getLatestActivePlan(projectRoot) {
-  const root = projectRoot ?? findProjectRoot();
-  if (!root)
-    return null;
-  const index = readPlanIndex(root);
-  if (!index)
-    return null;
-  const activeStatuses = ["draft", "reviewed", "ready", "approved", "in_progress", "blocked"];
-  let target;
-  if (index.activePlanId) {
-    const entry = index.plans.find((p) => p.id === index.activePlanId);
-    if (entry && activeStatuses.includes(entry.status)) {
-      target = entry;
-    }
-  }
-  if (!target) {
-    const sorted = [...index.plans].filter((p) => activeStatuses.includes(p.status)).sort((a, b) => {
-      const aTime = new Date(a.updatedAt).getTime();
-      const bTime = new Date(b.updatedAt).getTime();
-      if (isNaN(aTime) && isNaN(bTime))
-        return b.id.localeCompare(a.id);
-      if (isNaN(aTime))
-        return 1;
-      if (isNaN(bTime))
-        return -1;
-      const diff = bTime - aTime;
-      if (diff !== 0)
-        return diff;
-      return b.id.localeCompare(a.id);
+    return new Promise((resolve, reject) => {
+      const queue = this.queues.get(key) ?? [];
+      const entry = { resolve, reject, timer: null };
+      entry.timer = setTimeout(() => {
+        const q = this.queues.get(key);
+        if (q) {
+          const idx = q.indexOf(entry);
+          if (idx >= 0)
+            q.splice(idx, 1);
+          if (q.length === 0)
+            this.held.delete(key);
+        }
+        reject(new MutexTimeoutError(key, timeout));
+      }, timeout);
+      queue.push(entry);
+      this.queues.set(key, queue);
     });
-    target = sorted[0];
   }
-  if (!target)
-    return null;
-  const artifact = readPlanArtifact(path.join(root, AGNES_DIR, PLANS_DIR), target.id);
-  return artifact ? { entry: target, ...artifact } : null;
-}
-function buildPlanSummary(projectRoot) {
-  const root = projectRoot ?? findProjectRoot();
-  if (!root)
-    return "No active plan. Create one before delegating work.";
-  const index = readPlanIndex(root);
-  if (!index || index.plans.length === 0)
-    return "No active plan. Create one before delegating work.";
-  const active = getLatestActivePlan(root);
-  if (!active)
-    return "No active plan. Create one before delegating work.";
-  const { entry } = active;
-  const goal = active.plan?.goal ?? (active.content.match(/^Goal:\s*(.+)$/m)?.[1] ?? "");
-  let line = `Active Plan: ${entry.id} (${entry.status}) \u2014 ${entry.completed}/${entry.total} tasks done
-Goal: ${goal}
-Latest update: ${entry.updatedAt}`;
-  if (entry.attempts !== undefined && entry.attempts > 0) {
-    line += `
-Attempts: ${entry.attempts}`;
+  release(key) {
+    const queue = this.queues.get(key);
+    if (queue && queue.length > 0) {
+      const entry = queue.shift();
+      if (queue.length === 0)
+        this.queues.delete(key);
+      clearTimeout(entry.timer);
+      entry.resolve();
+    } else {
+      this.held.delete(key);
+    }
   }
-  if (entry.struggle) {
-    const s = entry.struggle;
-    const parts = [];
-    if (s.noProgressIterations > 0)
-      parts.push(`no-progress:${s.noProgressIterations}`);
-    if (s.shortIterations > 0)
-      parts.push(`short-runs:${s.shortIterations}`);
-    const errCount = Object.keys(s.repeatedErrors).length;
-    if (errCount > 0)
-      parts.push(`repeated-errors:${errCount}`);
-    if (s.lastPromiseTag)
-      parts.push(`last-promise:${s.lastPromiseTag}`);
-    if (s.shellType)
-      parts.push(`shell:${s.shellType}`);
-    if (parts.length > 0)
-      line += `
-Struggle: ${parts.join(", ")}`;
-  }
-  return line;
-}
-function freshStruggleMetrics() {
-  return {
-    noProgressIterations: 0,
-    repeatedErrors: {},
-    shortIterations: 0,
-    lastPromiseTag: null
-  };
 }
 
 // src/shell.ts
-import * as os2 from "os";
+import * as os from "os";
 var ANTI_PATTERNS = {
   "git-bash": ["Remove-Item", "Get-ChildItem", "New-Item", "Set-Content", "PowerShell", "powershell", "Get-Content", "Out-File", "Move-Item", "Copy-Item", "Write-Output", "Invoke-WebRequest", "ForEach-Object", "Where-Object", "Select-Object"],
   pwsh: ["Get-Content", "Set-Content", "Out-File", "Add-Content", "Get-ChildItem", "Select-String", "Remove-Item"],
@@ -21813,8 +21538,8 @@ function detectShell() {
   if (_cachedShell)
     return _cachedShell;
   const env = process.env;
-  const platform3 = os2.platform();
-  const isWindows = platform3 === "win32";
+  const platform2 = os.platform();
+  const isWindows = platform2 === "win32";
   let shellType;
   let source;
   if (env.MSYSTEM) {
@@ -21856,7 +21581,7 @@ function detectShell() {
   const preferredSyntax = shellType === "git-bash" || shellType === "wsl" || shellType === "unix" ? "bash" : shellType === "pwsh" || shellType === "powershell" ? "powershell" : "cmd";
   let antiPatterns = ANTI_PATTERNS[shellType];
   let guidance = GUIDANCE[shellType];
-  if ((shellType === "pwsh" || shellType === "powershell") && platform3 !== "win32") {
+  if ((shellType === "pwsh" || shellType === "powershell") && platform2 !== "win32") {
     antiPatterns = [];
     guidance = `You are running on PowerShell 7+ on a Unix system. Use standard POSIX/bash commands. PowerShell cmdlets like Get-Content are available but standard Unix tools (cat, echo, tee) are preferred for cross-platform compatibility.`;
   }
@@ -21871,308 +21596,50 @@ function detectShell() {
   };
   return _cachedShell;
 }
-
-// src/bootstrap.ts
-var __dirname2 = path2.dirname(fileURLToPath(import.meta.url));
-function findPackageRoot(fromDir) {
-  let current = fromDir;
-  for (let i = 0;i < 5; i++) {
-    const pj = path2.join(current, "package.json");
-    if (fs2.existsSync(pj)) {
-      try {
-        const pkg = JSON.parse(fs2.readFileSync(pj, "utf8"));
-        if (pkg.name === "agnes")
-          return current;
-      } catch {}
-    }
-    const parent = path2.resolve(current, "..");
-    if (parent === current)
-      break;
-    current = parent;
-  }
-  return null;
-}
-var packageRoot = findPackageRoot(path2.resolve(__dirname2, "..", "..")) ?? findPackageRoot(__dirname2) ?? path2.resolve(__dirname2, "..", "..");
-var packageJsonPath = path2.join(packageRoot, "package.json");
-var skillsDir = path2.join(packageRoot, ".opencode", "skills");
-var opencodePackageCache = path2.join(os3.homedir(), ".cache", "opencode", "packages");
-function extractFrontmatter(content) {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
-  if (!match)
-    return { content };
-  return { content: match[2] };
-}
-function getPackageVersion() {
-  if (!fs2.existsSync(packageJsonPath))
-    return "unknown";
-  try {
-    const packageJson = JSON.parse(fs2.readFileSync(packageJsonPath, "utf8"));
-    return packageJson.version || "unknown";
-  } catch {
-    return "unknown";
-  }
-}
-var _bootstrapCache = undefined;
-function simpleHash(str) {
-  let hash2 = 0;
-  for (let i = 0;i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash2 = (hash2 << 5) - hash2 + char;
-    hash2 |= 0;
-  }
-  return Math.abs(hash2).toString(36);
-}
-function getStaticBootstrapContent() {
-  const skillPath = path2.join(skillsDir, "orchestrator", "SKILL.md");
-  if (!fs2.existsSync(skillPath)) {
-    return null;
-  }
-  const version2 = getPackageVersion();
-  const fullContent = fs2.readFileSync(skillPath, "utf8");
-  const cacheKey = `${version2}:${simpleHash(fullContent)}`;
-  if (_bootstrapCache?.key === cacheKey) {
-    return _bootstrapCache.content;
-  }
-  const { content: frontmatterContent } = extractFrontmatter(fullContent);
-  const bootstrapEnd = frontmatterContent.indexOf("<!-- bootstrap-end -->");
-  const trimmedContent = bootstrapEnd !== -1 ? frontmatterContent.slice(0, bootstrapEnd).trim() : frontmatterContent;
-  const cacheNukeCommand = `rm -rf "$HOME/.cache/opencode/packages"/agnes@git+https_*`;
-  const toolMapping = `**Tool Mapping for OpenCode:**
-When skills reference tools you don't have, substitute OpenCode equivalents:
-- \`TodoWrite\` \u2192 \`todowrite\`
-- \`Task\` with subagents \u2192 OpenCode's subagent system (@mention)
-- \`Skill\` \u2192 OpenCode's native \`skill\` tool
-- \`Read\`, \`Write\`, \`Edit\`, \`Bash\` \u2192 Your native tools
-
-Use OpenCode's native \`skill\` tool to list and load skills.`;
-  const staticContent = `<EXTREMELY_IMPORTANT>
-You are AGNES.
-
-**Runtime Identity** (AGNES internal install paths \u2014 distinct from the current project workspace)
-- Current AGNES version: \`${version2}\`
-- Installed AGNES package root: \`${packageRoot}\`
-- Bundled AGNES skills directory: \`${skillsDir}\`
-- OpenCode package cache root: \`${opencodePackageCache}\`
-- If the user explicitly asks to clear or nuke AGNES's OpenCode cache, remove the installed AGNES cache directory or use: \`${cacheNukeCommand}\`, then restart OpenCode.
-
-**IMPORTANT: The orchestrator skill content is below. It is ALREADY LOADED. Do NOT use the skill tool to load "orchestrator" again.**
-
-${trimmedContent}
-
-${toolMapping}
-</EXTREMELY_IMPORTANT>`;
-  _bootstrapCache = { content: staticContent, key: cacheKey };
-  return staticContent;
-}
-function getBootstrapContent() {
-  const staticContent = getStaticBootstrapContent();
-  if (!staticContent)
-    return null;
-  const planSummary = buildPlanSummary(process.cwd());
-  const shell = detectShell();
-  const skillRegistryText = buildSkillRegistryText();
-  let content = `${staticContent}
-
-<AGNES_PLAN_STATE>
-${planSummary}
-</AGNES_PLAN_STATE>
-
-<SHELL_ENVIRONMENT>
-${shell.guidance}
-Anti-pattern commands to avoid: ${shell.antiPatterns.join(", ")}
-</SHELL_ENVIRONMENT>`;
-  if (skillRegistryText) {
-    content += `
-
-${skillRegistryText}
-`;
-  }
-  return content;
-}
-function wrapStructured(type, inner) {
-  return `<structured type="${type}">
-${inner}
-</structured>`;
-}
-function buildRuntimeBlock(pkg) {
-  return wrapStructured("runtime", $stringify({
-    type: "runtime",
-    agnes_version: pkg.version,
-    package_root: pkg.root,
-    skills_dir: pkg.skillsDir,
-    cache_root: pkg.cacheRoot
-  }));
-}
-function buildOrchestratorBlock(rules) {
-  return wrapStructured("orchestrator", $stringify({
-    type: "orchestrator",
-    rules: {
-      delegate_or_die: rules.delegate,
-      parallelize_by_default: rules.parallelize,
-      one_percent_rule: rules.onePercent,
-      verify_before_claiming: rules.verify,
-      no_shared_file_edits: rules.noSharedEdits,
-      fresh_subagents_per_wave: rules.freshSubagents,
-      scarcity_principle: rules.scarcity
-    }
-  }));
-}
-function buildNamedRolesBlock(rules) {
-  return wrapStructured("named_roles", $stringify({
-    type: "named_roles",
-    roles: rules.namedRoles,
-    answer_directly: rules.answerDirectly
-  }));
-}
-function buildPlanStateBlock(index) {
-  const plan = getLatestActivePlan(index.projectDir);
-  if (!plan) {
-    return wrapStructured("plan_state", $stringify({
-      type: "plan_state",
-      active_plan: null,
-      status: "none",
-      message: "No active plan. Create one before delegating work."
-    }));
-  }
-  return wrapStructured("plan_state", $stringify({
-    type: "plan_state",
-    active_plan: plan.entry.id,
-    status: plan.entry.status,
-    completed: plan.entry.completed,
-    total: plan.entry.total,
-    blocked: plan.entry.blocked,
-    goal: plan.entry.summary || "No goal set",
-    struggle_detected: (plan.entry.struggle?.noProgressIterations || 0) >= 3
-  }));
-}
-function buildShellBlock(shell) {
-  return wrapStructured("shell", $stringify({
-    type: "shell",
-    detected: shell.name,
-    version: shell.version,
-    anti_patterns: shell.antiPatterns,
-    preferred_syntax: shell.preferredSyntax
-  }));
-}
-function buildExecutionContextBlock(ctx) {
-  return wrapStructured("execution", $stringify({
-    type: "execution",
-    attempt: ctx.attempt || 1,
-    struggle_detected: ctx.struggleDetected || false,
-    last_promise_tag: ctx.lastPromiseTag || null,
-    ...ctx.compaction ? {
-      compaction: {
-        token_count: ctx.compaction.tokenCount,
-        soft_limit: ctx.compaction.softLimit,
-        hard_limit: ctx.compaction.hardLimit,
-        last_action: ctx.compaction.lastAction,
-        last_reason: ctx.compaction.lastReason,
-        last_triggered_at: ctx.compaction.lastTriggeredAt
-      }
-    } : {}
-  }));
-}
-function buildProtocolBlock() {
-  return wrapStructured("protocol", $stringify({
-    type: "protocol",
-    marker_prefix: "agnes:message",
-    types: ["task", "result", "error", "status", "completion"]
-  }));
-}
-var SKILL_SUGGEST_NEXT = {
-  clarifier: ["explorer", "planner"],
-  explorer: ["architect", "planner"],
-  architect: ["planner"],
-  planner: ["multi-reviewer"],
-  "multi-reviewer": ["tdd", "builder"],
-  prd: ["planner"],
-  prototype: ["tdd", "builder"],
-  builder: ["tester", "verifier"],
-  tdd: ["verifier"],
-  tester: ["reviewer"],
-  verifier: ["reviewer", "shipper"],
-  reviewer: ["documenter", "shipper"],
-  "feedback-receiver": ["builder", "debugger"],
-  debugger: ["verifier"],
-  griller: ["debugger", "verifier"],
-  shipper: ["documenter", "retro"],
-  triage: ["planner", "debugger"],
-  documenter: ["retro"],
-  retro: [],
-  skillwriter: ["tdd"],
-  brandkit: ["prototype", "builder"],
-  init: ["clarifier", "explorer"]
-};
-function readSkillRegistry() {
-  if (!fs2.existsSync(skillsDir))
-    return [];
-  const entries = fs2.readdirSync(skillsDir, { withFileTypes: true });
-  const skills = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory())
-      continue;
-    const sp = path2.join(skillsDir, entry.name, "SKILL.md");
-    if (!fs2.existsSync(sp))
-      continue;
+// src/metrics.ts
+class MetricsCounter {
+  counters = new Map;
+  mutex = new SimpleMutex;
+  counterLock = "metrics";
+  async withLock(fn) {
+    await this.mutex.acquire(this.counterLock);
     try {
-      const raw = fs2.readFileSync(sp, "utf8");
-      const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-      if (!m)
-        continue;
-      const fm = $parse(m[1]);
-      if (typeof fm.id !== "string" || typeof fm.phase !== "string")
-        continue;
-      const id = resolveSkillName(fm.id);
-      skills.push({ id, phase: fm.phase.toUpperCase(), suggest_next: (SKILL_SUGGEST_NEXT[id] || []).map(resolveSkillName) });
+      return fn();
+    } finally {
+      this.mutex.release(this.counterLock);
+    }
+  }
+  async increment(key, delta = 1) {
+    try {
+      await this.withLock(() => {
+        const current = this.counters.get(key) ?? 0;
+        this.counters.set(key, current + delta);
+      });
     } catch {}
   }
-  return skills.sort((a, b) => a.id.localeCompare(b.id));
-}
-function buildSkillRegistryBlock() {
-  const skills = readSkillRegistry();
-  if (!skills.length)
-    return "";
-  return wrapStructured("skill_registry", $stringify({ type: "skill_registry", skills }));
-}
-function buildSkillRegistryText() {
-  const skills = readSkillRegistry();
-  if (!skills.length)
-    return "";
-  const lines = [`### Skill Registry (next-skill suggestions)
-`];
-  for (const s of skills) {
-    if (s.suggest_next.length)
-      lines.push(`- **${s.id}** (${s.phase}) \u2192 next: ${s.suggest_next.join(", ")}`);
+  async get(key) {
+    return this.withLock(() => {
+      return this.counters.get(key) ?? 0;
+    });
   }
-  return lines.join(`
-`);
+  async reset() {
+    await this.withLock(() => {
+      this.counters.clear();
+    });
+  }
+  async snapshot() {
+    return this.withLock(() => {
+      const obj = {};
+      for (const [key, value] of this.counters) {
+        obj[key] = value;
+      }
+      return obj;
+    });
+  }
 }
-function getBootstrapPackageInfo() {
-  return {
-    version: getPackageVersion(),
-    root: packageRoot,
-    skillsDir,
-    cacheRoot: opencodePackageCache
-  };
-}
-function buildBootstrap(context) {
-  const blocks = [
-    buildRuntimeBlock(context.pkg),
-    buildOrchestratorBlock(context.rules),
-    buildNamedRolesBlock(context.rules),
-    ...context.index ? [buildPlanStateBlock(context.index)] : [],
-    buildShellBlock(context.shell),
-    buildExecutionContextBlock(context.exec),
-    buildProtocolBlock(),
-    buildSkillRegistryBlock()
-  ];
-  return blocks.filter(Boolean).join(`
-`);
-}
+var metrics = new MetricsCounter;
 
 // src/runtime.ts
-import * as fs3 from "fs";
-import * as path3 from "path";
 var sessions = new Map;
 loadSessions();
 function sessionsFilePath(projectRoot) {
@@ -22180,16 +21647,16 @@ function sessionsFilePath(projectRoot) {
   if (!root)
     return null;
   const dir = cacheDir(root);
-  return dir ? path3.join(dir, "sessions.json") : null;
+  return dir ? path.join(dir, "sessions.json") : null;
 }
 function loadSessions(projectRoot) {
   try {
     const filePath = sessionsFilePath(projectRoot);
     if (!filePath)
       return;
-    if (!fs3.existsSync(filePath))
+    if (!fs.existsSync(filePath))
       return;
-    const raw = fs3.readFileSync(filePath, "utf8");
+    const raw = fs.readFileSync(filePath, "utf8");
     const data = JSON.parse(raw);
     for (const [key, state] of Object.entries(data)) {
       if (state && typeof state.attempts === "number" && state.struggle && typeof state.lastAccessed === "number") {
@@ -22264,11 +21731,10 @@ function getPlanState(workspaceRoot) {
 function getPlanGate(workspaceRoot) {
   const state = getPlanState(workspaceRoot);
   if (!state.planIndex) {
-    return `
-**PLAN REQUIRED:** No plan index found. Initialize AGNES state first.`;
+    return null;
   }
   if (!state.hasActivePlan) {
-    return "\n**PLAN REQUIRED:** No active plan found. Create a plan with `.agnes/` before any implementation work.";
+    return "";
   }
   if (state.activePlan?.entry.status === "blocked") {
     return `
@@ -22332,6 +21798,7 @@ var IMPLEMENT_WORDS = new Set([
   "want",
   "should"
 ]);
+var CLARIFY_PATTERNS = ["what is", "how does", "explain", "why", "describe", "tell me", "show me"];
 var STOPWORDS = new Set([
   "a",
   "an",
@@ -22352,6 +21819,917 @@ var STOPWORDS = new Set([
   "this",
   "that"
 ]);
+var INTENT_SKILL_MAP = {
+  implement: ["builder"],
+  clarify: ["clarifier"],
+  plan: ["planner", "prd"],
+  review: ["reviewer", "verifier"],
+  test: ["tdd", "tester"],
+  debug: ["debugger", "griller"],
+  unknown: []
+};
+function classifyIntent(message) {
+  const lower = message.toLowerCase().trim();
+  if (!lower)
+    return { category: "unknown", suggestedSkills: [] };
+  if (lower.includes("?") || CLARIFY_PATTERNS.some((p) => lower.includes(p))) {
+    return { category: "clarify", suggestedSkills: INTENT_SKILL_MAP.clarify };
+  }
+  const tokens = lower.split(/[^a-z0-9]+/).filter((t) => t.length > 0);
+  const hasDebugPhrase = lower.includes("debug") || lower.includes("bug");
+  const hasReviewPhrase = lower.includes("review") || lower.includes("check") || lower.includes("verify");
+  const hasTestPhrase = lower.includes("test");
+  const hasImplPhrase = lower.includes("doesn't work") || lower.includes("test fails");
+  const hasImplToken = tokens.some((t) => IMPLEMENT_WORDS.has(t));
+  const hasImplementationSignal = hasImplPhrase || hasImplToken;
+  const hasPlanToken = tokens.some((t) => t === "plan");
+  const hasAnyWorkSignal = hasImplementationSignal || hasTestPhrase || hasDebugPhrase || hasReviewPhrase;
+  if (hasPlanToken && hasAnyWorkSignal) {
+    return { category: "plan", suggestedSkills: INTENT_SKILL_MAP.plan };
+  }
+  if (hasDebugPhrase && !hasImplPhrase && !hasImplToken) {
+    return { category: "debug", suggestedSkills: INTENT_SKILL_MAP.debug };
+  }
+  if (hasReviewPhrase && !hasImplPhrase && !hasImplToken) {
+    return { category: "review", suggestedSkills: INTENT_SKILL_MAP.review };
+  }
+  if (hasTestPhrase && !hasImplPhrase) {
+    return { category: "test", suggestedSkills: INTENT_SKILL_MAP.test };
+  }
+  if (hasImplementationSignal) {
+    return { category: "implement", suggestedSkills: INTENT_SKILL_MAP.implement };
+  }
+  if (hasTestPhrase) {
+    return { category: "test", suggestedSkills: INTENT_SKILL_MAP.test };
+  }
+  return { category: "unknown", suggestedSkills: [] };
+}
+var COMPLEX_KEYWORDS = ["feature", "refactor", "migrate", "architecture", "plan", "redesign"];
+var SEQUENTIAL_PATTERN = /\b(then|after|additionally|furthermore|meanwhile)\b/i;
+function classifyPlannerScope(message) {
+  const lower = message.toLowerCase().trim();
+  if (!lower)
+    return "trivial";
+  const intent = classifyIntent(message);
+  if (intent.category !== "implement")
+    return "trivial";
+  if (COMPLEX_KEYWORDS.some((k) => lower.includes(k)))
+    return "complex";
+  if (SEQUENTIAL_PATTERN.test(lower))
+    return "complex";
+  const fileRefs = (lower.match(/\b\w+\.\w+\b/g) || []).length;
+  if (fileRefs > 2)
+    return "complex";
+  const sentenceText = lower.replace(/\b\w+\.\w+\b/g, "file");
+  const sentences = sentenceText.split(/[.!?\n]+/).filter(Boolean);
+  if (sentences.length > 3)
+    return "complex";
+  const tokens = lower.split(/\s+/).filter(Boolean).length;
+  if (tokens <= 6 && fileRefs <= 1 && sentences.length <= 1)
+    return "trivial";
+  if (tokens <= 14 && fileRefs <= 2 && sentences.length <= 2)
+    return "lightweight";
+  return "complex";
+}
+function classifyPlannerRoute(message, mode = "auto") {
+  const scope = classifyPlannerScope(message);
+  if (scope === "trivial") {
+    return { mode, route: "trivial", reason: "simple request" };
+  }
+  if (mode === "full") {
+    return { mode, route: "full", reason: "forced-full override" };
+  }
+  if (scope === "lightweight") {
+    if (mode === "builtin" || mode === "auto") {
+      return { mode, route: "builtin", reason: "eligible lightweight boundary" };
+    }
+  }
+  return {
+    mode,
+    route: "full",
+    reason: scope === "complex" ? "outside lightweight boundary" : "not eligible for builtin route"
+  };
+}
+var NO_PLAN_NUDGE = "No active plan. For simple tasks, just ask. For complex tasks, use the current planner path.";
+var waveMutex = new SimpleMutex;
+
+// src/state.ts
+function assertShape(data, shape) {
+  if (!data || typeof data !== "object")
+    return false;
+  const obj = data;
+  for (const [field, expectedType] of Object.entries(shape)) {
+    if (typeof obj[field] !== expectedType)
+      return false;
+  }
+  return true;
+}
+var OPENCODE_CACHE_ROOT = path2.join(os2.homedir(), ".cache", "opencode", "packages");
+var AGNES_DIR = ".agnes";
+var PLANS_DIR = "plans";
+var _agnesVersion = null;
+function getAgnesVersion() {
+  if (_agnesVersion)
+    return _agnesVersion;
+  let version2;
+  try {
+    const __filename2 = fileURLToPath(import.meta.url);
+    const __dirname2 = path2.dirname(__filename2);
+    const pkgPath = path2.join(__dirname2, "..", "..", "package.json");
+    const pkg = JSON.parse(fs2.readFileSync(pkgPath, "utf8"));
+    version2 = pkg.version ?? "0.0.0";
+  } catch {
+    version2 = "0.0.0";
+  }
+  _agnesVersion = version2;
+  return _agnesVersion;
+}
+function isBlockedPath(dir) {
+  const resolved = path2.resolve(dir);
+  const root = path2.resolve(OPENCODE_CACHE_ROOT);
+  if (os2.platform() === "win32") {
+    return resolved.toLowerCase().startsWith(root.toLowerCase());
+  }
+  return resolved.startsWith(root);
+}
+function getPlanFilePath(root, entry) {
+  const filename = entry.file || `${entry.id}.yaml`;
+  return path2.join(root, AGNES_DIR, PLANS_DIR, filename);
+}
+function serializePlan(plan) {
+  const parsed = PlanSchema.parse(plan);
+  return $stringify(JSON.parse(JSON.stringify(parsed)), null, { indent: 2 });
+}
+function readPlanArtifact(plansDir, planId) {
+  const yamlPath = path2.join(plansDir, `${planId}.yaml`);
+  if (fs2.existsSync(yamlPath)) {
+    const content = fs2.readFileSync(yamlPath, "utf8");
+    return { content, plan: PlanSchema.parse($parse(content)) };
+  }
+  const mdPath = path2.join(plansDir, `${planId}.md`);
+  if (fs2.existsSync(mdPath)) {
+    return { content: fs2.readFileSync(mdPath, "utf8"), plan: parseLegacyMdPlan(mdPath) };
+  }
+  return null;
+}
+var _cachedProjectRoot = null;
+function findProjectRoot(startDir) {
+  if (_cachedProjectRoot && !startDir) {
+    const indexPath = path2.join(_cachedProjectRoot, AGNES_DIR, "index.json");
+    if (fs2.existsSync(indexPath)) {
+      return _cachedProjectRoot;
+    }
+    _cachedProjectRoot = null;
+  }
+  let dir = startDir ? path2.resolve(startDir) : process.cwd();
+  let found = null;
+  for (let i = 0;i < 20; i++) {
+    if (isBlockedPath(dir))
+      break;
+    if (dir === os2.homedir())
+      break;
+    if (fs2.existsSync(path2.join(dir, AGNES_DIR, "index.json"))) {
+      found = dir;
+      break;
+    }
+    const parent = path2.dirname(dir);
+    if (parent === dir)
+      break;
+    dir = parent;
+  }
+  if (!startDir && found) {
+    _cachedProjectRoot = found;
+  }
+  return found;
+}
+function cacheDir(projectRoot) {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root)
+    return null;
+  return path2.join(root, AGNES_DIR);
+}
+var ENTRY_REQUIRED_SHAPE = {
+  id: "string",
+  status: "string",
+  createdAt: "string",
+  updatedAt: "string",
+  summary: "string",
+  total: "number",
+  completed: "number",
+  blocked: "number"
+};
+var INDEX_REQUIRED_SHAPE = {
+  agnesVersion: "string",
+  schemaVersion: "number",
+  projectDir: "string",
+  projectName: "string",
+  updatedAt: "string",
+  plans: "object"
+};
+function validatePlanIndex(raw) {
+  if (!raw || typeof raw !== "object")
+    return false;
+  const idx = raw;
+  if (!assertShape(idx, INDEX_REQUIRED_SHAPE))
+    return false;
+  if (idx.schemaVersion !== 2)
+    return false;
+  if (idx.activePlanId !== null && typeof idx.activePlanId !== "string")
+    return false;
+  if (!Array.isArray(idx.plans))
+    return false;
+  for (const entry of idx.plans) {
+    if (!assertShape(entry, ENTRY_REQUIRED_SHAPE))
+      return false;
+  }
+  return true;
+}
+function migratePlanEntry(root, entry) {
+  let changed = false;
+  const yamlFile = `${entry.id}.yaml`;
+  const mdFile = `${entry.id}.md`;
+  const yamlPath = path2.join(root, AGNES_DIR, PLANS_DIR, yamlFile);
+  const mdPath = path2.join(root, AGNES_DIR, PLANS_DIR, mdFile);
+  if (!entry.file) {
+    entry.file = fs2.existsSync(yamlPath) ? yamlFile : fs2.existsSync(mdPath) ? mdFile : yamlFile;
+    changed = true;
+  } else if (entry.file.endsWith(".md") && fs2.existsSync(yamlPath)) {
+    entry.file = yamlFile;
+    changed = true;
+  }
+  if (typeof entry.attempts !== "number") {
+    entry.attempts = 0;
+    changed = true;
+  }
+  if (!entry.struggle) {
+    entry.struggle = freshStruggleMetrics();
+    changed = true;
+  }
+  return changed;
+}
+function readPlanIndex(projectRoot) {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root)
+    return null;
+  const indexPath = path2.join(root, AGNES_DIR, "index.json");
+  try {
+    const raw = fs2.readFileSync(indexPath, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!validatePlanIndex(parsed))
+      return null;
+    let migrated = false;
+    for (const entry of parsed.plans) {
+      if (migratePlanEntry(root, entry))
+        migrated = true;
+    }
+    if (migrated)
+      writePlanIndex(parsed, root);
+    pruneExpiredPlans(parsed, root);
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+function writePlanIndex(index, projectRoot) {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root)
+    throw new Error("Cannot write plan index: no project root found");
+  const dir = path2.join(root, AGNES_DIR);
+  fs2.mkdirSync(dir, { recursive: true });
+  const filePath = path2.join(dir, "index.json");
+  const tmp = filePath + ".tmp";
+  fs2.writeFileSync(tmp, JSON.stringify(index, null, 2), "utf8");
+  fs2.renameSync(tmp, filePath);
+}
+function writePlanFile(plan, plansDir) {
+  const parsed = PlanSchema.parse(plan);
+  const filePath = path2.join(plansDir, `${parsed.id}.yaml`);
+  const yaml = $stringify(JSON.parse(JSON.stringify(parsed)), null, { indent: 2 });
+  const tmpPath = filePath + ".tmp";
+  fs2.writeFileSync(tmpPath, yaml, "utf-8");
+  fs2.renameSync(tmpPath, filePath);
+  return filePath;
+}
+var FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?/;
+function parseLegacyMdPlan(filePath) {
+  const raw = fs2.readFileSync(filePath, "utf-8");
+  const fm = raw.match(FRONTMATTER_RE);
+  let frontmatter = {};
+  let body = raw;
+  if (fm) {
+    frontmatter = $parse(fm[1]);
+    body = raw.slice(fm[0].length);
+  }
+  const goalMatch = body.match(/^Goal:\s*(.+)$/m);
+  const checkMatch = body.match(/^Check:\s*(.+)$/m);
+  const summaryMatch = body.match(/^#\s+\S+\s+[\u2014\u2013-]\s+(.+)$/m);
+  const taskLines = [];
+  for (const line of body.split(`
+`)) {
+    if (/^- \[[ x\/]\]/.test(line)) {
+      taskLines.push(line);
+    }
+  }
+  const tasks = taskLines.map((t, i) => ({
+    id: `task-${String(i + 1).padStart(3, "0")}`,
+    summary: t.replace(/^- \[[ x\/]\]\s*/, "").trim(),
+    status: t.startsWith("- [x]") ? "done" : t.startsWith("- [/]") ? "blocked" : "pending",
+    files: [],
+    depends_on: []
+  }));
+  const planId = typeof frontmatter.id === "string" ? frontmatter.id : path2.basename(filePath, ".md");
+  const createdAt = typeof frontmatter.createdAt === "string" ? frontmatter.createdAt : new Date().toISOString();
+  const updatedAt = typeof frontmatter.updatedAt === "string" ? frontmatter.updatedAt : createdAt;
+  return {
+    schema: "agnes/plan-v1",
+    id: planId,
+    version: 1,
+    createdAt,
+    updatedAt,
+    status: typeof frontmatter.status === "string" ? frontmatter.status : "draft",
+    parent: typeof frontmatter.parent === "string" ? frontmatter.parent : null,
+    goal: goalMatch ? goalMatch[1].trim() : typeof frontmatter.goal === "string" ? frontmatter.goal : "",
+    check: checkMatch ? checkMatch[1].trim() : typeof frontmatter.check === "string" ? frontmatter.check : "",
+    summary: typeof frontmatter.summary === "string" ? frontmatter.summary : summaryMatch ? summaryMatch[1].trim() : "",
+    tasks,
+    notes: Array.isArray(frontmatter.notes) ? frontmatter.notes : []
+  };
+}
+var DEFAULT_RETENTION = { maxAgeDays: 7, terminalStatuses: ["done", "abandoned"] };
+function pruneExpiredPlans(index, projectRoot) {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root || index.plans.length === 0)
+    return index;
+  const retention = index.retention ?? DEFAULT_RETENTION;
+  const cutoffMs = Date.now() - retention.maxAgeDays * 24 * 60 * 60 * 1000;
+  const terminalSet = new Set(retention.terminalStatuses);
+  const kept = [];
+  let changed = false;
+  for (const entry of index.plans) {
+    if (terminalSet.has(entry.status)) {
+      const updatedMs = new Date(entry.updatedAt).getTime();
+      if (!isNaN(updatedMs) && updatedMs <= cutoffMs) {
+        try {
+          fs2.rmSync(getPlanFilePath(root, entry), { force: true });
+        } catch {}
+        changed = true;
+        continue;
+      }
+    }
+    kept.push(entry);
+  }
+  if (!changed)
+    return index;
+  index.plans = kept;
+  index.updatedAt = new Date().toISOString();
+  if (index.activePlanId && !kept.some((p) => p.id === index.activePlanId)) {
+    index.activePlanId = null;
+  }
+  writePlanIndex(index, root);
+  return index;
+}
+function getLatestActivePlan(projectRoot) {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root)
+    return null;
+  const index = readPlanIndex(root);
+  if (!index)
+    return null;
+  const activeStatuses = ["draft", "reviewed", "ready", "approved", "in_progress", "blocked"];
+  let target;
+  if (index.activePlanId) {
+    const entry = index.plans.find((p) => p.id === index.activePlanId);
+    if (entry && activeStatuses.includes(entry.status)) {
+      target = entry;
+    }
+  }
+  if (!target) {
+    const sorted = [...index.plans].filter((p) => activeStatuses.includes(p.status)).sort((a, b) => {
+      const aTime = new Date(a.updatedAt).getTime();
+      const bTime = new Date(b.updatedAt).getTime();
+      if (isNaN(aTime) && isNaN(bTime))
+        return b.id.localeCompare(a.id);
+      if (isNaN(aTime))
+        return 1;
+      if (isNaN(bTime))
+        return -1;
+      const diff = bTime - aTime;
+      if (diff !== 0)
+        return diff;
+      return b.id.localeCompare(a.id);
+    });
+    target = sorted[0];
+  }
+  if (!target)
+    return null;
+  const artifact = readPlanArtifact(path2.join(root, AGNES_DIR, PLANS_DIR), target.id);
+  return artifact ? { entry: target, ...artifact } : null;
+}
+function formatPlannerProvenance(entry, planner) {
+  const parts = [];
+  if (entry?.plannerMode) {
+    parts.push(`planner:${entry.plannerMode}`);
+  }
+  if (entry?.plannerSource) {
+    parts.push(`source:${entry.plannerSource}`);
+  }
+  if (planner) {
+    parts.push(`route:${planner.route}`);
+    parts.push(`mode:${planner.mode}`);
+    parts.push(`reason:${planner.reason}`);
+  }
+  return parts.length > 0 ? `
+Planner: ${parts.join(", ")}` : "";
+}
+function buildPlanSummary(projectRoot, planner) {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root)
+    return NO_PLAN_NUDGE + formatPlannerProvenance(null, planner);
+  const index = readPlanIndex(root);
+  if (!index || index.plans.length === 0)
+    return NO_PLAN_NUDGE + formatPlannerProvenance(null, planner);
+  const active = getLatestActivePlan(root);
+  if (!active)
+    return NO_PLAN_NUDGE + formatPlannerProvenance(null, planner);
+  const { entry } = active;
+  const goal = active.plan?.goal ?? (active.content.match(/^Goal:\s*(.+)$/m)?.[1] ?? "");
+  let line = `Active Plan: ${entry.id} (${entry.status}) \u2014 ${entry.completed}/${entry.total} tasks done
+Goal: ${goal}
+Latest update: ${entry.updatedAt}`;
+  if (entry.attempts !== undefined && entry.attempts > 0) {
+    line += `
+Attempts: ${entry.attempts}`;
+  }
+  if (entry.plannerMode || entry.plannerSource || planner) {
+    line += formatPlannerProvenance(entry, planner);
+  }
+  if (entry.struggle) {
+    const s = entry.struggle;
+    const parts = [];
+    if (s.noProgressIterations > 0)
+      parts.push(`no-progress:${s.noProgressIterations}`);
+    if (s.shortIterations > 0)
+      parts.push(`short-runs:${s.shortIterations}`);
+    const errCount = Object.keys(s.repeatedErrors).length;
+    if (errCount > 0)
+      parts.push(`repeated-errors:${errCount}`);
+    if (s.lastPromiseTag)
+      parts.push(`last-promise:${s.lastPromiseTag}`);
+    if (s.shellType)
+      parts.push(`shell:${s.shellType}`);
+    if (parts.length > 0)
+      line += `
+Struggle: ${parts.join(", ")}`;
+  }
+  return line;
+}
+function getNextPlanId(projectRoot) {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root)
+    return "plan-001";
+  const cache = path2.join(root, AGNES_DIR, PLANS_DIR);
+  fs2.mkdirSync(cache, { recursive: true });
+  let max = 0;
+  try {
+    const files = fs2.readdirSync(cache);
+    for (const f of files) {
+      const match = f.match(/^plan-(\d+)\.yaml$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > max)
+          max = num;
+      }
+    }
+  } catch {}
+  return `plan-${String(max + 1).padStart(3, "0")}`;
+}
+function createPlan(input) {
+  const root = input.projectRoot ?? findProjectRoot();
+  if (!root)
+    throw new Error("Cannot create plan: no project root found");
+  const now = new Date().toISOString();
+  const id = getNextPlanId(root);
+  const status = input.status ?? "draft";
+  const total = input.tasks.length;
+  const completed = 0;
+  const blocked = 0;
+  const plansDir = path2.join(root, AGNES_DIR, PLANS_DIR);
+  const plan = {
+    schema: "agnes/plan-v1",
+    id,
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    status,
+    parent: input.parent ?? null,
+    goal: input.goal,
+    check: input.check,
+    summary: input.summary,
+    ...input.plannerMode ? { plannerMode: input.plannerMode } : {},
+    ...input.plannerSource ? { plannerSource: input.plannerSource } : {},
+    tasks: input.tasks.map((t, i) => {
+      const cleaned = t.replace(/^- \[[ x\/]\]\s*/, "").trim();
+      let taskStatus;
+      if (t.startsWith("- [x]"))
+        taskStatus = "done";
+      else if (t.startsWith("- [/]"))
+        taskStatus = "blocked";
+      else
+        taskStatus = "pending";
+      return {
+        id: `task-${String(i + 1).padStart(3, "0")}`,
+        summary: cleaned,
+        status: taskStatus,
+        files: [],
+        depends_on: []
+      };
+    }),
+    notes: input.notes ?? []
+  };
+  const content = serializePlan(plan);
+  writePlanFile(plan, plansDir);
+  const entry = {
+    id,
+    status,
+    createdAt: now,
+    updatedAt: now,
+    parent: input.parent,
+    summary: input.summary,
+    total,
+    completed,
+    blocked,
+    file: `${id}.yaml`,
+    ...input.attempts !== undefined ? { attempts: input.attempts } : {},
+    ...input.struggle !== undefined ? { struggle: input.struggle } : {},
+    ...input.plannerMode ? { plannerMode: input.plannerMode } : {},
+    ...input.plannerSource ? { plannerSource: input.plannerSource } : {}
+  };
+  const index = readPlanIndex(root) ?? {
+    agnesVersion: getAgnesVersion(),
+    schemaVersion: 2,
+    projectDir: root,
+    projectName: path2.basename(root),
+    updatedAt: now,
+    activePlanId: null,
+    plans: []
+  };
+  index.plans.push(entry);
+  index.updatedAt = now;
+  const isActive = status === "draft" || status === "reviewed" || status === "ready" || status === "approved" || status === "in_progress" || status === "blocked";
+  index.activePlanId = isActive ? id : null;
+  writePlanIndex(index, root);
+  return { entry, content, plan };
+}
+function freshStruggleMetrics() {
+  return {
+    noProgressIterations: 0,
+    repeatedErrors: {},
+    shortIterations: 0,
+    lastPromiseTag: null
+  };
+}
+function buildBuiltinPlanTasks(goal) {
+  const trimmedGoal = goal.trim();
+  const subject = trimmedGoal.length > 72 ? `${trimmedGoal.slice(0, 69)}...` : trimmedGoal;
+  return [
+    `Confirm the smallest scope for: ${subject}`,
+    "Implement the change in the primary file or module",
+    "Verify the result with a focused test or manual check"
+  ];
+}
+function buildBuiltinPlanCheck(goal) {
+  const trimmedGoal = goal.trim();
+  const subject = trimmedGoal.length > 72 ? `${trimmedGoal.slice(0, 69)}...` : trimmedGoal;
+  return `Focused verification confirms the requested change: ${subject}`;
+}
+function createBuiltinPlan(input, projectRoot) {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root)
+    throw new Error("Cannot create builtin plan: no project root found");
+  const status = input.source === "user_ready" ? "ready" : "draft";
+  const summary = input.goal.length > 80 ? `${input.goal.substring(0, 80)}...` : input.goal;
+  const active = createPlan({
+    summary,
+    goal: input.goal,
+    check: buildBuiltinPlanCheck(input.goal),
+    tasks: buildBuiltinPlanTasks(input.goal),
+    status,
+    projectRoot: root,
+    plannerMode: "builtin",
+    plannerSource: input.source === "gate" ? "gate" : "user"
+  });
+  return active.entry.id;
+}
+
+// src/bootstrap.ts
+var __dirname2 = path3.dirname(fileURLToPath2(import.meta.url));
+function findPackageRoot(fromDir) {
+  let current = fromDir;
+  for (let i = 0;i < 5; i++) {
+    const pj = path3.join(current, "package.json");
+    if (fs3.existsSync(pj)) {
+      try {
+        const pkg = JSON.parse(fs3.readFileSync(pj, "utf8"));
+        if (pkg.name === "agnes")
+          return current;
+      } catch {}
+    }
+    const parent = path3.resolve(current, "..");
+    if (parent === current)
+      break;
+    current = parent;
+  }
+  return null;
+}
+var packageRoot = findPackageRoot(path3.resolve(__dirname2, "..", "..")) ?? findPackageRoot(__dirname2) ?? path3.resolve(__dirname2, "..", "..");
+var packageJsonPath = path3.join(packageRoot, "package.json");
+var skillsDir = path3.join(packageRoot, ".opencode", "skills");
+var opencodePackageCache = path3.join(os3.homedir(), ".cache", "opencode", "packages");
+function extractFrontmatter(content) {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+  if (!match)
+    return { content };
+  return { content: match[2] };
+}
+function getPackageVersion() {
+  if (!fs3.existsSync(packageJsonPath))
+    return "unknown";
+  try {
+    const packageJson = JSON.parse(fs3.readFileSync(packageJsonPath, "utf8"));
+    return packageJson.version || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+var _bootstrapCache = undefined;
+function simpleHash(str) {
+  let hash2 = 0;
+  for (let i = 0;i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash2 = (hash2 << 5) - hash2 + char;
+    hash2 |= 0;
+  }
+  return Math.abs(hash2).toString(36);
+}
+function getStaticBootstrapContent() {
+  const skillPath = path3.join(skillsDir, "orchestrator", "SKILL.md");
+  if (!fs3.existsSync(skillPath)) {
+    return null;
+  }
+  const version2 = getPackageVersion();
+  const fullContent = fs3.readFileSync(skillPath, "utf8");
+  const cacheKey = `${version2}:${simpleHash(fullContent)}`;
+  if (_bootstrapCache?.key === cacheKey) {
+    return _bootstrapCache.content;
+  }
+  const { content: frontmatterContent } = extractFrontmatter(fullContent);
+  const bootstrapEnd = frontmatterContent.indexOf("<!-- bootstrap-end -->");
+  const trimmedContent = bootstrapEnd !== -1 ? frontmatterContent.slice(0, bootstrapEnd).trim() : frontmatterContent;
+  const cacheNukeCommand = `rm -rf "$HOME/.cache/opencode/packages"/agnes@git+https_*`;
+  const toolMapping = `**Tool Mapping for OpenCode:**
+When skills reference tools you don't have, substitute OpenCode equivalents:
+- \`TodoWrite\` \u2192 \`todowrite\`
+- \`Task\` with subagents \u2192 OpenCode's subagent system (@mention)
+- \`Skill\` \u2192 OpenCode's native \`skill\` tool
+- \`Read\`, \`Write\`, \`Edit\`, \`Bash\` \u2192 Your native tools
+
+Use OpenCode's native \`skill\` tool to list and load skills.`;
+  const staticContent = `<EXTREMELY_IMPORTANT>
+You are AGNES.
+
+**Runtime Identity** (AGNES internal install paths \u2014 distinct from the current project workspace)
+- Current AGNES version: \`${version2}\`
+- Installed AGNES package root: \`${packageRoot}\`
+- Bundled AGNES skills directory: \`${skillsDir}\`
+- OpenCode package cache root: \`${opencodePackageCache}\`
+- If the user explicitly asks to clear or nuke AGNES's OpenCode cache, remove the installed AGNES cache directory or use: \`${cacheNukeCommand}\`, then restart OpenCode.
+
+**IMPORTANT: The orchestrator skill content is below. It is ALREADY LOADED. Do NOT use the skill tool to load "orchestrator" again.**
+
+${trimmedContent}
+
+${toolMapping}
+</EXTREMELY_IMPORTANT>`;
+  _bootstrapCache = { content: staticContent, key: cacheKey };
+  return staticContent;
+}
+function getBootstrapContent(planner) {
+  const staticContent = getStaticBootstrapContent();
+  if (!staticContent)
+    return null;
+  const planSummary = buildPlanSummary(process.cwd(), planner);
+  const shell = detectShell();
+  const skillRegistryText = buildSkillRegistryText();
+  let content = `${staticContent}
+
+<AGNES_PLAN_STATE>
+${planSummary}
+</AGNES_PLAN_STATE>
+
+<SHELL_ENVIRONMENT>
+${shell.guidance}
+Anti-pattern commands to avoid: ${shell.antiPatterns.join(", ")}
+</SHELL_ENVIRONMENT>`;
+  if (skillRegistryText) {
+    content += `
+
+${skillRegistryText}
+`;
+  }
+  return content;
+}
+function wrapStructured(type, inner) {
+  return `<structured type="${type}">
+${inner}
+</structured>`;
+}
+function buildRuntimeBlock(pkg) {
+  return wrapStructured("runtime", $stringify({
+    type: "runtime",
+    agnes_version: pkg.version,
+    package_root: pkg.root,
+    skills_dir: pkg.skillsDir,
+    cache_root: pkg.cacheRoot
+  }));
+}
+function buildOrchestratorBlock(rules) {
+  return wrapStructured("orchestrator", $stringify({
+    type: "orchestrator",
+    rules: {
+      delegate_or_die: rules.delegate,
+      parallelize_by_default: rules.parallelize,
+      one_percent_rule: rules.onePercent,
+      verify_before_claiming: rules.verify,
+      no_shared_file_edits: rules.noSharedEdits,
+      fresh_subagents_per_wave: rules.freshSubagents,
+      scarcity_principle: rules.scarcity
+    }
+  }));
+}
+function buildNamedRolesBlock(rules) {
+  return wrapStructured("named_roles", $stringify({
+    type: "named_roles",
+    roles: rules.namedRoles,
+    answer_directly: rules.answerDirectly
+  }));
+}
+function buildPlanStateBlock(index, planner) {
+  const plan = index ? getLatestActivePlan(index.projectDir) : null;
+  if (!plan) {
+    return wrapStructured("plan_state", $stringify({
+      type: "plan_state",
+      active_plan: null,
+      status: "none",
+      message: "No active plan. For simple tasks, just ask. For complex tasks, use the current planner path.",
+      ...planner ? {
+        planner_mode: planner.mode,
+        planner_route: planner.route,
+        planner_reason: planner.reason
+      } : {}
+    }));
+  }
+  return wrapStructured("plan_state", $stringify({
+    type: "plan_state",
+    active_plan: plan.entry.id,
+    status: plan.entry.status,
+    completed: plan.entry.completed,
+    total: plan.entry.total,
+    blocked: plan.entry.blocked,
+    goal: plan.entry.summary || "No goal set",
+    struggle_detected: (plan.entry.struggle?.noProgressIterations || 0) >= 3,
+    ...plan.entry.plannerMode ? { planner_mode: plan.entry.plannerMode } : {},
+    ...plan.entry.plannerSource ? { planner_source: plan.entry.plannerSource } : {},
+    ...planner ? {
+      planner_mode: planner.mode,
+      planner_route: planner.route,
+      planner_reason: planner.reason
+    } : {}
+  }));
+}
+function buildShellBlock(shell) {
+  return wrapStructured("shell", $stringify({
+    type: "shell",
+    detected: shell.name,
+    version: shell.version,
+    anti_patterns: shell.antiPatterns,
+    preferred_syntax: shell.preferredSyntax
+  }));
+}
+function buildExecutionContextBlock(ctx) {
+  return wrapStructured("execution", $stringify({
+    type: "execution",
+    attempt: ctx.attempt || 1,
+    struggle_detected: ctx.struggleDetected || false,
+    last_promise_tag: ctx.lastPromiseTag || null,
+    ...ctx.compaction ? {
+      compaction: {
+        token_count: ctx.compaction.tokenCount,
+        soft_limit: ctx.compaction.softLimit,
+        hard_limit: ctx.compaction.hardLimit,
+        last_action: ctx.compaction.lastAction,
+        last_reason: ctx.compaction.lastReason,
+        last_triggered_at: ctx.compaction.lastTriggeredAt
+      }
+    } : {}
+  }));
+}
+function buildProtocolBlock() {
+  return wrapStructured("protocol", $stringify({
+    type: "protocol",
+    marker_prefix: "agnes:message",
+    types: ["task", "result", "error", "status", "completion"]
+  }));
+}
+var SKILL_SUGGEST_NEXT = {
+  clarifier: ["explorer", "planner"],
+  explorer: ["architect", "planner"],
+  architect: ["planner"],
+  planner: ["multi-reviewer"],
+  "multi-reviewer": ["tdd", "builder"],
+  prd: ["planner"],
+  prototype: ["tdd", "builder"],
+  builder: ["tester", "verifier"],
+  tdd: ["verifier"],
+  tester: ["reviewer"],
+  verifier: ["reviewer", "shipper"],
+  reviewer: ["documenter", "shipper"],
+  "feedback-receiver": ["builder", "debugger"],
+  debugger: ["verifier"],
+  griller: ["debugger", "verifier"],
+  shipper: ["documenter", "retro"],
+  triage: ["planner", "debugger"],
+  documenter: ["retro"],
+  retro: [],
+  skillwriter: ["tdd"],
+  brandkit: ["prototype", "builder"],
+  init: ["clarifier", "explorer"]
+};
+function readSkillRegistry() {
+  if (!fs3.existsSync(skillsDir))
+    return [];
+  const entries = fs3.readdirSync(skillsDir, { withFileTypes: true });
+  const skills = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory())
+      continue;
+    const sp = path3.join(skillsDir, entry.name, "SKILL.md");
+    if (!fs3.existsSync(sp))
+      continue;
+    try {
+      const raw = fs3.readFileSync(sp, "utf8");
+      const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+      if (!m)
+        continue;
+      const fm = $parse(m[1]);
+      if (typeof fm.id !== "string" || typeof fm.phase !== "string")
+        continue;
+      const id = resolveSkillName(fm.id);
+      skills.push({ id, phase: fm.phase.toUpperCase(), suggest_next: (SKILL_SUGGEST_NEXT[id] || []).map(resolveSkillName) });
+    } catch {}
+  }
+  return skills.sort((a, b) => a.id.localeCompare(b.id));
+}
+function buildSkillRegistryBlock() {
+  const skills = readSkillRegistry();
+  if (!skills.length)
+    return "";
+  return wrapStructured("skill_registry", $stringify({ type: "skill_registry", skills }));
+}
+function buildSkillRegistryText() {
+  const skills = readSkillRegistry();
+  if (!skills.length)
+    return "";
+  const lines = [`### Skill Registry (next-skill suggestions)
+`];
+  for (const s of skills) {
+    if (s.suggest_next.length)
+      lines.push(`- **${s.id}** (${s.phase}) \u2192 next: ${s.suggest_next.join(", ")}`);
+  }
+  return lines.join(`
+`);
+}
+function getBootstrapPackageInfo() {
+  return {
+    version: getPackageVersion(),
+    root: packageRoot,
+    skillsDir,
+    cacheRoot: opencodePackageCache
+  };
+}
+function buildBootstrap(context) {
+  const blocks = [
+    buildRuntimeBlock(context.pkg),
+    buildOrchestratorBlock(context.rules),
+    buildNamedRolesBlock(context.rules),
+    ...context.index || context.planner ? [buildPlanStateBlock(context.index, context.planner)] : [],
+    buildShellBlock(context.shell),
+    buildExecutionContextBlock(context.exec),
+    buildProtocolBlock(),
+    buildSkillRegistryBlock()
+  ];
+  return blocks.filter(Boolean).join(`
+`);
+}
 
 // src/compaction.ts
 var DEFAULT_COMPACTION_SOFT_LIMIT = 150000;
@@ -22473,11 +22851,12 @@ function buildCompactionAdvisory(action, reason) {
 }
 
 // src/plugin.ts
-var __dirname3 = path4.dirname(fileURLToPath2(import.meta.url));
+var __dirname3 = path4.dirname(fileURLToPath3(import.meta.url));
 var skillsDir2 = path4.resolve(__dirname3, "../skills");
 var _modelName;
-function buildStructuredBootstrap() {
-  const proseBootstrap = getBootstrapContent();
+var _plannerMode = "auto";
+function buildStructuredBootstrap(planner) {
+  const proseBootstrap = getBootstrapContent(planner);
   if (!proseBootstrap)
     return "";
   const pkg = getBootstrapPackageInfo();
@@ -22510,6 +22889,7 @@ function buildStructuredBootstrap() {
     pkg,
     rules,
     index,
+    planner,
     shell: {
       name: shell.shellType,
       version: shell.shellType,
@@ -22534,6 +22914,12 @@ var AgnesPlugin = async () => {
       detectShell();
       const configObj = config2;
       _modelName = typeof configObj.model === "string" ? configObj.model : undefined;
+      const plannerConfig = configObj.planner ?? {};
+      _plannerMode = typeof plannerConfig.mode === "string" && ["auto", "builtin", "full"].includes(plannerConfig.mode) ? plannerConfig.mode : "auto";
+      configObj.planner = {
+        ...plannerConfig,
+        mode: _plannerMode
+      };
       configObj.provider = {
         ...configObj.provider || {},
         interleaved: { field: "reasoning_content" }
@@ -22551,8 +22937,7 @@ var AgnesPlugin = async () => {
       }
     },
     "experimental.chat.messages.transform": async (_input, output) => {
-      const bootstrap = buildStructuredBootstrap();
-      if (!bootstrap || !output.messages?.length)
+      if (!output.messages?.length)
         return;
       const firstUser = output.messages.find((m) => m.info?.role === "user");
       if (!firstUser?.parts?.length)
@@ -22561,10 +22946,26 @@ var AgnesPlugin = async () => {
         return;
       let planGate = "";
       let execContext = "";
+      let plannerState;
       try {
         const workspaceRoot = findProjectRoot();
         if (workspaceRoot) {
-          planGate = getPlanGate(workspaceRoot) || "";
+          const userParts = firstUser.parts;
+          const userText = userParts.filter((p) => p.type === "text" && typeof p.text === "string").map((p) => p.text).join(" ");
+          if (userText) {
+            plannerState = classifyPlannerRoute(userText, _plannerMode);
+            if (plannerState.route === "builtin") {
+              const index2 = readPlanIndex(workspaceRoot);
+              if (!index2 || !index2.activePlanId) {
+                createBuiltinPlan({ goal: userText, source: "user" }, workspaceRoot);
+              }
+              planGate = getPlanGate(workspaceRoot) || "";
+            } else if (plannerState.route === "full") {
+              planGate = getPlanGate(workspaceRoot) || "";
+            } else {
+              planGate = "";
+            }
+          }
           const index = readPlanIndex(workspaceRoot);
           if (index?.activePlanId) {
             const activeEntry = index.plans.find((p) => p.id === index.activePlanId);
@@ -22574,6 +22975,9 @@ var AgnesPlugin = async () => {
           }
         }
       } catch {}
+      const bootstrap = buildStructuredBootstrap(plannerState);
+      if (!bootstrap)
+        return;
       const modelLabel = _modelName ? `- Current model: \`${_modelName}\`` : "";
       let fullBootstrap = bootstrap + (planGate || "");
       if (modelLabel) {

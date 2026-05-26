@@ -1,7 +1,7 @@
 <h1 align="center">AGNES — OpenCode Native Plugin</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.15.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.16.0-blue" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
   <img src="https://img.shields.io/badge/skills-30-orange" alt="30 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
@@ -137,17 +137,21 @@ AGNES is organized into layered modules that handle protocol, state, runtime, an
 |-------|--------|---------|
 | **Protocol** | `src/protocol.ts` | Typed messages (task, result, error, status, completion) |
 | **Schema** | `src/schema.ts` | Self-describing skill contracts with JSON Schema validation |
+| **Subagent** | `src/subagent.ts` | Subagent dispatch wrapper — depth limits, Prometheus-style metrics, error boundaries, `spawnAgent()` entry point |
 | **Middleware** | `src/middleware.ts` | Composable hook chain (before/after wave, before/after subagent) |
 | **Flow Control** | `src/flowcontrol.ts` | Ephemeral jump signals (retry, skip, blocked, next_wave, end) |
+| **Mutex** | `src/mutex.ts` | Promise-based SimpleMutex for concurrent wave safety, per-project keying, configurable timeout |
+| **Metrics** | `src/metrics.ts` | Thread-safe in-memory counter store (via SimpleMutex), snapshot/extensibility for external metrics |
 | **Bootstrap** | `src/bootstrap.ts` | Agent injection — injects plan context, shell env, and structured blocks into agent system prompt |
 | **Plugin** | `src/plugin.ts` | OpenCode entry point — plugin registration, unconditional interleaved config (model-agnostic) |
-| **Runtime Helpers** | `src/runtime.ts` | Wave helpers, subagent dispatch scaffolding, retry with struggle detection, and gate integration |
+| **Runtime** | `src/runtime.ts` | Wave orchestration, real subagent dispatch via `executeWave` (Bun.spawn + middleware chain), retry with struggle detection, gate integration |
+| **Path Utils** | `src/path-utils.ts` | Cross-platform agent binary resolution, `AgentNotFoundError` with attempted-path listing |
 | **Shell** | `src/shell.ts` | Shell detection — identifies pwsh/bash/cmd and detects shell mismatch between host and workspace |
 | **State** | `src/state.ts` | Plan state machine — CRUD for plan-NNN.yaml, index.json, session tracking, retention pruning |
 | **Verification** | `src/verification.ts` | Structured gates with PASS/FAIL/SKIP status |
 | **Validation** | `src/validation.ts` | Allowlist-based message validation and injection protection |
 
-In v0.10+, AGNES adds a machine-optimized Structured Protocol: YAML plan files with JSON Schema validation (`.agnes/plans/plan-NNN.yaml`), typed `<agnes:message>` envelopes, and Zod-based message validation. Bootstrap injection unified to a model-agnostic structured format.
+In v0.16+, AGNES ships with a real subagent dispatch pipeline — `executeWave` spawns subagents via `Bun.spawn`, protected by `SimpleMutex` for concurrency safety and monitored through `MetricsCounter` for observability. Subagent execution is gated by depth limits (default 5), resolved agent-binary paths with typed `AgentNotFoundError`, and wrapped by the composable middleware chain.
 
 ---
 
@@ -194,7 +198,7 @@ bun run bundle:watch  # watch mode for development
 bun run lint          # lint source files
 bun run lint:fix      # auto-fix lint issues
 bun run typecheck     # type-safety gate
-bun test              # 390 tests across 13 suites
+bun test              # 427 tests across 16 suites
 ```
 
 ---
