@@ -216,7 +216,7 @@ State files in `.agnes/`:
 
 | Action | When |
 |--------|------|
-| **Start** | Check index.json for existing plans. No active plan? Classify complexity. Trivial → do work. Complex → auto-create plan. |
+| **Start** | Check index.json for existing plans. No active plan? Classify scope. Trivial → do work. Lightweight → built-in plan. Complex → current planner + multi-reviewer. |
 | **Iterate** | State change detected → read index.json → create plan-(N+1).yaml with parent=activePlanId → update index.json (set old plan status, set activePlanId to new, update counts). |
 | **Handoff** | Blocked or stopping → create new plan iteration with blocked status. |
 | **Clear** | Plan done → set status to done in index.json, clear activePlanId. |
@@ -234,8 +234,10 @@ Task starts
 │    └── NO  → classify task:         │
 │        ├── TRIVIAL → skip plan,     │
 │        │             do work        │
-│        └── COMPLEX → auto-create    │
-│                      plan & proceed │
+│        ├── LIGHTWEIGHT → built-in   │
+│        │                plan        │
+│        └── COMPLEX → current        │
+│                      planner path   │
 │ 3. Delegate work via subagents      │
 │ 4. Verify subagent results          │
 │ 5. State change detected?           │
@@ -366,8 +368,10 @@ Task starts
 │    └── NO  → classify task:         │
 │        ├── TRIVIAL → skip plan,     │
 │        │             do work        │
-│        └── COMPLEX → auto-create    │
-│                      plan & proceed │
+│        ├── LIGHTWEIGHT → built-in   │
+│        │                plan        │
+│        └── COMPLEX → current        │
+│                      planner path   │
 │ 3. Delegate work via subagents      │
 │ 4. Verify subagent results          │
 │ 5. State change detected?           │

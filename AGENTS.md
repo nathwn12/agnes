@@ -104,7 +104,7 @@ AGNES defines 5 named subagent roles for consistent delegation:
 |------|------------|---------|
 | `@executor` | Runs commands, tests, builds. Returns compact pass/fail + file refs. Never suggests fixes. | builder, tdd, verifier |
 | `@explorer` | Codebase research only. Glob → grep → selective read. Read-only. Never edits. | architect, planner, any context-gathering skill |
-| `@planner` | Creates/refreshes `.agnes/plans/plan-NNN.yaml` from task requirements using planner skill. | orchestrator (planning phase) |
+| `@planner` | Creates/refreshes `.agnes/plans/plan-NNN.yaml` from task requirements using planner skill. Builtin fast path is only for lightweight tasks; complex work stays on planner + multi-reviewer. | orchestrator (planning phase) |
 | `@builder` | Implements one sub-task from plan. Delegates bash to @executor and review to @reviewer. | orchestrator (build phase) |
 | `@reviewer` | Reviews diff against sub-task scope using reviewer skill. Writes findings to `.opencode/review.md`. | builder, orchestrator (review phase) |
 

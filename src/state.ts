@@ -83,6 +83,14 @@ export interface PlanIndexEntry {
   file: string;
   attempts?: number;
   struggle?: StruggleMetrics;
+  plannerMode?: 'builtin' | 'full';
+  plannerSource?: 'auto' | 'user' | 'gate';
+}
+
+export interface PlannerRoutingContext {
+  mode: 'auto' | 'builtin' | 'full';
+  route: 'trivial' | 'builtin' | 'full';
+  reason: string;
 }
 
 export interface RetentionPolicy {
@@ -415,15 +423,33 @@ export function getLatestActivePlan(projectRoot?: string): ActivePlan | null {
   return artifact ? { entry: target, ...artifact } : null;
 }
 
-export function buildPlanSummary(projectRoot?: string): string {
+function formatPlannerProvenance(entry: PlanIndexEntry | null, planner?: PlannerRoutingContext): string {
+  const parts: string[] = [];
+
+  if (entry?.plannerMode) {
+    parts.push(`planner:${entry.plannerMode}`);
+  }
+  if (entry?.plannerSource) {
+    parts.push(`source:${entry.plannerSource}`);
+  }
+  if (planner) {
+    parts.push(`route:${planner.route}`);
+    parts.push(`mode:${planner.mode}`);
+    parts.push(`reason:${planner.reason}`);
+  }
+
+  return parts.length > 0 ? `\nPlanner: ${parts.join(', ')}` : '';
+}
+
+export function buildPlanSummary(projectRoot?: string, planner?: PlannerRoutingContext): string {
   const root = projectRoot ?? findProjectRoot();
-  if (!root) return NO_PLAN_NUDGE;
+  if (!root) return NO_PLAN_NUDGE + formatPlannerProvenance(null, planner);
 
   const index = readPlanIndex(root);
-  if (!index || index.plans.length === 0) return NO_PLAN_NUDGE;
+  if (!index || index.plans.length === 0) return NO_PLAN_NUDGE + formatPlannerProvenance(null, planner);
 
   const active = getLatestActivePlan(root);
-  if (!active) return NO_PLAN_NUDGE;
+  if (!active) return NO_PLAN_NUDGE + formatPlannerProvenance(null, planner);
 
   const { entry } = active;
 
@@ -433,6 +459,9 @@ export function buildPlanSummary(projectRoot?: string): string {
 
   if (entry.attempts !== undefined && entry.attempts > 0) {
     line += `\nAttempts: ${entry.attempts}`;
+  }
+  if (entry.plannerMode || entry.plannerSource || planner) {
+    line += formatPlannerProvenance(entry, planner);
   }
   if (entry.struggle) {
     const s = entry.struggle;
@@ -484,6 +513,8 @@ export function createPlan(input: {
   projectRoot?: string;
   attempts?: number;
   struggle?: StruggleMetrics;
+  plannerMode?: 'builtin' | 'full';
+  plannerSource?: 'auto' | 'user' | 'gate';
 }): ActivePlan {
   const root = input.projectRoot ?? findProjectRoot();
   if (!root) throw new Error('Cannot create plan: no project root found');
@@ -507,6 +538,8 @@ export function createPlan(input: {
     goal: input.goal,
     check: input.check,
     summary: input.summary,
+    ...(input.plannerMode ? { plannerMode: input.plannerMode } : {}),
+    ...(input.plannerSource ? { plannerSource: input.plannerSource } : {}),
     tasks: input.tasks.map((t, i) => {
       const cleaned = t.replace(/^- \[[ x\/]\]\s*/, '').trim();
       let taskStatus: PlanTask['status'];
@@ -539,9 +572,11 @@ export function createPlan(input: {
     file: `${id}.yaml`,
     ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
     ...(input.struggle !== undefined ? { struggle: input.struggle } : {}),
+    ...(input.plannerMode ? { plannerMode: input.plannerMode } : {}),
+    ...(input.plannerSource ? { plannerSource: input.plannerSource } : {}),
   };
 
-  const index = readPlanIndex(root) ?? {
+  const index: PlanIndex = readPlanIndex(root) ?? {
     agnesVersion: getAgnesVersion(),
     schemaVersion: 2 as const,
     projectDir: root,
@@ -573,6 +608,8 @@ export function createPlanIteration(input: {
   projectRoot?: string;
   attempts?: number;
   struggle?: StruggleMetrics;
+  plannerMode?: 'builtin' | 'full';
+  plannerSource?: 'auto' | 'user' | 'gate';
 }): ActivePlan {
   const root = input.projectRoot ?? findProjectRoot();
   if (!root) throw new Error('Cannot create plan iteration: no project root found');
@@ -593,6 +630,8 @@ export function createPlanIteration(input: {
     goal: input.goal,
     check: input.check,
     summary: input.summary,
+    ...(input.plannerMode ? { plannerMode: input.plannerMode } : {}),
+    ...(input.plannerSource ? { plannerSource: input.plannerSource } : {}),
     tasks: input.tasksMarkdown.split('\n')
       .filter(line => /^- \[.?\]/.test(line))
       .map((t, i) => {
@@ -634,6 +673,8 @@ export function createPlanIteration(input: {
     file: `${id}.yaml`,
     attempts: carryAttempts,
     ...(carryStruggle ? { struggle: carryStruggle } : {}),
+    ...(input.plannerMode ? { plannerMode: input.plannerMode } : {}),
+    ...(input.plannerSource ? { plannerSource: input.plannerSource } : {}),
   };
   if (parentEntry && !['done', 'abandoned'].includes(parentEntry.status)) {
     parentEntry.status = 'abandoned';
@@ -1028,7 +1069,7 @@ export function createAutoPlan(params: { goal: string; source: 'gate' | 'user' |
     file: `${id}.yaml`,
   };
 
-  const index = readPlanIndex(root) ?? {
+  const index: PlanIndex = readPlanIndex(root) ?? {
     agnesVersion: getAgnesVersion(),
     schemaVersion: 2 as const,
     projectDir: root,
@@ -1044,6 +1085,47 @@ export function createAutoPlan(params: { goal: string; source: 'gate' | 'user' |
   writePlanIndex(index, root);
 
   return id;
+}
+
+function buildBuiltinPlanTasks(goal: string): string[] {
+  const trimmedGoal = goal.trim();
+  const subject = trimmedGoal.length > 72 ? `${trimmedGoal.slice(0, 69)}...` : trimmedGoal;
+
+  return [
+    `Confirm the smallest scope for: ${subject}`,
+    'Implement the change in the primary file or module',
+    'Verify the result with a focused test or manual check',
+  ];
+}
+
+function buildBuiltinPlanCheck(goal: string): string {
+  const trimmedGoal = goal.trim();
+  const subject = trimmedGoal.length > 72 ? `${trimmedGoal.slice(0, 69)}...` : trimmedGoal;
+  return `Focused verification confirms the requested change: ${subject}`;
+}
+
+export function createBuiltinPlan(input: {
+  goal: string;
+  source: 'gate' | 'user' | 'user_ready';
+}, projectRoot?: string): string {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root) throw new Error('Cannot create builtin plan: no project root found');
+
+  const status: PlanStatus = input.source === 'user_ready' ? 'ready' : 'draft';
+  const summary = input.goal.length > 80 ? `${input.goal.substring(0, 80)}...` : input.goal;
+
+  const active = createPlan({
+    summary,
+    goal: input.goal,
+    check: buildBuiltinPlanCheck(input.goal),
+    tasks: buildBuiltinPlanTasks(input.goal),
+    status,
+    projectRoot: root,
+    plannerMode: 'builtin',
+    plannerSource: input.source === 'gate' ? 'gate' : 'user',
+  });
+
+  return active.entry.id;
 }
 
 export function transitionPlanStatus(planId: string, newStatus: string, projectRoot?: string): PlanIndex | null {

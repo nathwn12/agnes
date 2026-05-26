@@ -43,7 +43,7 @@ AGNES routes every task through a default chronological pipeline. The flow is li
 1. **SETUP** → `init`
 2. **CLARIFY** → `clarifier` ← **GATE:** spec must be approved
 3. **RESEARCH** → `explorer` → `architect` (optional deepening)
-4. **PLAN** → `planner` → `multi-reviewer` ← **GATE:** plan must be approved
+4. **PLAN** → `planner` (builtin fast path for lightweight tasks; full planner + `multi-reviewer` for complex work)
 5. **BUILD** → `tdd` (new features) or `builder` (plan execution) → `tester` (coverage)
 6. **VERIFY** → `verifier` → `reviewer` ← **GATE:** all checks must pass
 7. **SHIP** → `shipper` (PR → merge)
@@ -78,7 +78,7 @@ All 30 bundled skills with concrete trigger conditions and outputs. "When to Use
 | **brandkit** | DESIGN | Starting a UI-heavy project. Need logo, color palette, typography, design system, or brand guidelines. Not for backend-only work. | Brand assets, color system, typography scale, component mockups |
 | **prototype** | DESIGN / BUILD | Need to validate a design decision with throwaway code. Not sure if the state machine is right, or if that UX pattern works. | Runnable prototype + documented answer (discarded after) |
 | **prd** | PLAN | Requirements are clear but need formal capture. Stakeholders need a documented PRD with stories, acceptance criteria, and priorities. | Published PRD with user stories, acceptance criteria, priority matrix |
-| **planner** | PLAN | Spec or PRD is approved. Need to break it into actionable implementation steps with dependencies and ordering. | Bite-sized implementation checklist (plan-NNN.yaml) |
+| **planner** | PLAN | Spec or PRD is approved. Need to break it into actionable implementation steps with dependencies and ordering. `planner.mode=auto|builtin|full` selects builtin vs full routing. | Bite-sized implementation checklist (plan-NNN.yaml) |
 | **multi-reviewer** | PLAN REVIEW | Planner produced a plan. Need a quality gate before any implementation starts. Applies four lenses: CEO (business value), Eng (architecture), Design (UX), DX (developer experience). | Score per lens + verdict: `APPROVE`, `REVISE`, or `REJECT` |
 | **plan-reviewer** | PLAN REVIEW | Legacy compatibility skill still bundled for older workflows. Prefer `multi-reviewer` for new plan gates. | Legacy plan review findings |
 | **builder** | BUILD | Plan is approved and ready to execute. Has detailed tasks with clear boundaries. Dispatches subagent swarms in isolated worktrees. | Verified, reviewed commits |

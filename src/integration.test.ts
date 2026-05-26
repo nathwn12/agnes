@@ -7,7 +7,7 @@ import { createTempProject, writeIndex, readIndex, cleanupTempDirs } from './tes
 
 import { classifyIntent, processMessage, requestMatchesPlan, checkPlanDrift, assertTaskScope } from './runtime';
 import type { ProcessMessageResult } from './runtime';
-import { createAutoPlan, assessPlanQuality, transitionPlanStatus } from './state';
+import { createAutoPlan, createBuiltinPlan, assessPlanQuality, transitionPlanStatus } from './state';
 import type { PlanIndex } from './state';
 
 afterAll(() => {
@@ -71,7 +71,7 @@ notes:
 `;
 
 describe('planning discipline integration', () => {
-  test('Gate blocks implement intent without active plan', () => {
+  test('Complex implement intent without active plan stays on full planner path', () => {
     const tmp = createTempProject();
     writeIndex(tmp, makeCleanIndex(tmp));
 
@@ -84,7 +84,25 @@ describe('planning discipline integration', () => {
       expect(result.context).toBe('complex');
     }
     const updatedIndex = readIndex(tmp)!;
-    expect(updatedIndex.activePlanId).not.toBeNull();
+    expect(updatedIndex.activePlanId).toBeNull();
+  });
+
+  test('Builtin planner creates compact plan for lightweight implement intent', () => {
+    const tmp = createTempProject();
+    writeIndex(tmp, makeCleanIndex(tmp));
+
+    const id = createBuiltinPlan({ goal: 'Add error handling to the auth function', source: 'user' }, tmp);
+    expect(id).toBe('plan-001');
+
+    const index = readIndex(tmp)!;
+    expect(index.activePlanId).toBe(id);
+    const entry = index.plans.find((p: PlanIndex['plans'][number]) => p.id === id)!;
+    expect(entry.plannerMode).toBe('builtin');
+    expect(entry.plannerSource).toBe('user');
+
+    const planContent = fs.readFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'utf8');
+    expect(planContent).toContain('plannerMode: builtin');
+    expect(planContent).toContain('Verify the result with a focused test or manual check');
   });
 
   test('createAutoPlan creates draft plan with structured template', () => {
@@ -95,7 +113,7 @@ describe('planning discipline integration', () => {
     expect(id).toBe('plan-001');
 
     const index = readIndex(tmp)!;
-    const entry = index.plans.find(p => p.id === id);
+    const entry = index.plans.find((p: PlanIndex['plans'][number]) => p.id === id);
     expect(entry).toBeDefined();
     expect(entry!.status).toBe('draft');
 

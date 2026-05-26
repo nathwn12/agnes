@@ -222,6 +222,8 @@ export const PlanSchema = z.object({
   summary: z.string().min(1).max(200),
   tasks: z.array(PlanTaskSchema).default([]),
   notes: z.array(z.string()).default([]),
+  plannerMode: z.enum(['builtin', 'full']).optional(),
+  plannerSource: z.enum(['auto', 'user', 'gate']).optional(),
 });
 export type Plan = z.infer<typeof PlanSchema>;
 

@@ -12,9 +12,10 @@ import type { PlanIndex } from './state.js';
 import {
   findProjectRoot,
   readPlanIndex,
-  createAutoPlan,
+  createBuiltinPlan,
 } from './state.js';
-import { getPlanGate, buildExecutionContext, classifyComplexity } from './runtime.js';
+import type { PlannerRoutingContext } from './state.js';
+import { getPlanGate, buildExecutionContext, classifyPlannerRoute } from './runtime.js';
 import { serializeAgnesMessage } from './protocol.js';
 
 import { detectShell } from './shell.js';
@@ -28,9 +29,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const skillsDir = path.resolve(__dirname, '../skills');
 
 let _modelName: string | undefined;
+let _plannerMode: 'auto' | 'builtin' | 'full' = 'auto';
 
-function buildStructuredBootstrap(): string {
-  const proseBootstrap = getBootstrapContent();
+function buildStructuredBootstrap(planner?: PlannerRoutingContext): string {
+  const proseBootstrap = getBootstrapContent(planner);
   if (!proseBootstrap) return '';
 
   const pkg = getBootstrapPackageInfo();
@@ -68,6 +70,7 @@ function buildStructuredBootstrap(): string {
     pkg,
     rules,
     index,
+    planner,
     shell: {
       name: shell.shellType,
       version: shell.shellType,
@@ -91,6 +94,15 @@ export const AgnesPlugin: Plugin = async () => {
       const configObj = config as Record<string, unknown>;
       _modelName = typeof configObj.model === 'string' ? configObj.model : undefined;
 
+      const plannerConfig = (configObj.planner as Record<string, unknown> | undefined) ?? {};
+      _plannerMode = typeof plannerConfig.mode === 'string' && ['auto', 'builtin', 'full'].includes(plannerConfig.mode)
+        ? plannerConfig.mode as 'auto' | 'builtin' | 'full'
+        : 'auto';
+      configObj.planner = {
+        ...plannerConfig,
+        mode: _plannerMode,
+      } as Record<string, unknown>;
+
       configObj.provider = {
         ...(configObj.provider as Record<string, unknown> || {}),
         interleaved: { field: "reasoning_content" },
@@ -111,8 +123,7 @@ export const AgnesPlugin: Plugin = async () => {
     },
 
     'experimental.chat.messages.transform': async (_input, output) => {
-      const bootstrap = buildStructuredBootstrap();
-      if (!bootstrap || !output.messages?.length) return;
+      if (!output.messages?.length) return;
 
       const firstUser = output.messages.find((m) => m.info?.role === 'user');
       if (!firstUser?.parts?.length) return;
@@ -121,6 +132,7 @@ export const AgnesPlugin: Plugin = async () => {
 
       let planGate = '';
       let execContext = '';
+      let plannerState: PlannerRoutingContext | undefined;
 
       try {
         const workspaceRoot = findProjectRoot();
@@ -131,15 +143,17 @@ export const AgnesPlugin: Plugin = async () => {
             .map((p) => p.text as string)
             .join(' ');
           if (userText) {
-            const complexity = classifyComplexity(userText);
-            if (complexity === 'trivial') {
-              planGate = '';
-            } else {
+            plannerState = classifyPlannerRoute(userText, _plannerMode);
+            if (plannerState.route === 'builtin') {
               const index = readPlanIndex(workspaceRoot);
               if (!index || !index.activePlanId) {
-                createAutoPlan({ goal: userText, source: 'user' }, workspaceRoot);
+                createBuiltinPlan({ goal: userText, source: 'user' }, workspaceRoot);
               }
               planGate = getPlanGate(workspaceRoot) || '';
+            } else if (plannerState.route === 'full') {
+              planGate = getPlanGate(workspaceRoot) || '';
+            } else {
+              planGate = '';
             }
           }
           const index = readPlanIndex(workspaceRoot);
@@ -153,6 +167,9 @@ export const AgnesPlugin: Plugin = async () => {
       } catch {
         // non-fatal
       }
+
+      const bootstrap = buildStructuredBootstrap(plannerState);
+      if (!bootstrap) return;
 
       const modelLabel = _modelName ? `- Current model: \`${_modelName}\`` : '';
 

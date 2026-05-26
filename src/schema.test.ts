@@ -15,6 +15,8 @@ describe('PlanSchema', () => {
     check: 'All tests pass',
     summary: 'Feature X implementation',
     tasks: [],
+    plannerMode: 'builtin',
+    plannerSource: 'user',
   };
 
   test('valid plan passes validation', () => {
@@ -78,6 +80,13 @@ describe('PlanSchema', () => {
     expect(result.success).toBe(true);
     expect(result.data!.tasks.length).toBe(2);
     expect(result.data!.id).toBe('plan-001');
+  });
+
+  test('planner provenance round-trips through validation', () => {
+    const result = PlanSchema.safeParse(validPlan);
+    expect(result.success).toBe(true);
+    expect(result.data!.plannerMode).toBe('builtin');
+    expect(result.data!.plannerSource).toBe('user');
   });
 
   test('PlanStatusSchema only accepts valid status strings', () => {

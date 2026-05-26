@@ -8,13 +8,14 @@ import {
   recordAttempt,
   classifyIntent,
   classifyComplexity,
+  classifyPlannerRoute,
+  classifyPlannerScope,
   requestMatchesPlan,
   processMessage,
   checkPlanDrift,
   assertTaskScope,
   runWaveGates,
 } from './runtime.js';
-import type { Complexity } from './runtime.js';
 import type { AgnesRuntimeState, ProcessMessageResult } from './runtime.js';
 import { FlowController } from './flowcontrol.js';
 import type { PlanIndex } from './state.js';
@@ -440,6 +441,39 @@ describe('classifyComplexity', () => {
   });
 });
 
+describe('classifyPlannerScope', () => {
+  test('returns trivial for short implement request', () => {
+    expect(classifyPlannerScope('Fix the typo in login.ts')).toBe('trivial');
+  });
+
+  test('returns lightweight for narrow implement request', () => {
+    expect(classifyPlannerScope('Add error handling to the auth function')).toBe('lightweight');
+  });
+
+  test('returns complex for broad refactor request', () => {
+    expect(classifyPlannerScope('Refactor the database layer to use transactions')).toBe('complex');
+  });
+});
+
+describe('classifyPlannerRoute', () => {
+  test('routes lightweight tasks to builtin in auto mode', () => {
+    const decision = classifyPlannerRoute('Add error handling to the auth function');
+    expect(decision.route).toBe('builtin');
+    expect(decision.mode).toBe('auto');
+  });
+
+  test('routes broad tasks to full in auto mode', () => {
+    const decision = classifyPlannerRoute('Refactor the database layer to use transactions');
+    expect(decision.route).toBe('full');
+  });
+
+  test('forced full overrides builtin eligibility', () => {
+    const decision = classifyPlannerRoute('Add error handling to the auth function', 'full');
+    expect(decision.route).toBe('full');
+    expect(decision.reason).toContain('forced-full');
+  });
+});
+
 describe('requestMatchesPlan', () => {
   test('returns true when significant token overlap', () => {
     expect(requestMatchesPlan('fix the login bug', 'Plan to fix the login bug')).toBe(true);
@@ -492,7 +526,18 @@ describe('processMessage', () => {
     plans: [],
   };
 
-  test('auto-creates plan for complex implement intent without active plan', () => {
+  test('routes lightweight implement intent without active plan to builtin planner', () => {
+    const result = processMessage('Add error handling to the auth function', {
+      ...mockIndexWithoutPlan,
+      projectDir: '/test',
+    }, null);
+    expect(result.type).toBe('proceed');
+    if (result.type === 'proceed') {
+      expect(result.context).toBe('lightweight');
+    }
+  });
+
+  test('routes complex implement intent without active plan to full planner path', () => {
     const result = processMessage('Refactor the database layer', mockIndexWithoutPlan, null);
     expect(result.type).toBe('proceed');
     if (result.type === 'proceed') {

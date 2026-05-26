@@ -24,13 +24,14 @@ import {
   updateStruggleMetrics,
   detectStruggle,
   createAutoPlan,
+  createBuiltinPlan,
   generatePlanTemplate,
   assessPlanQuality,
   validatePlanTransition,
   transitionPlanStatus,
   generateRetrospective,
 } from './state.js';
-import type { PlanIndex, PlanIndexEntry, ActivePlan, StruggleMetrics, RetentionPolicy, PlanQualityReport } from './state.js';
+import type { PlanIndex, PlanIndexEntry, ActivePlan, StruggleMetrics, RetentionPolicy, PlanQualityReport, PlannerRoutingContext } from './state.js';
 import { getPlanState, getPlanGate, getCurrentState, getPlanGateFromState, NO_PLAN_NUDGE } from './runtime.js';
 import type { AgnesRuntimeState } from './runtime.js';
 
@@ -499,6 +500,12 @@ notes: []
     expect(summary).toContain('1/3 tasks done');
     expect(summary).toContain('Goal: Test the system');
   });
+
+  test('includes planner provenance when provided', () => {
+    const tmp = createTempProject();
+    const planner: PlannerRoutingContext = { mode: 'auto', route: 'builtin', reason: 'eligible lightweight boundary' };
+    expect(buildPlanSummary(tmp, planner)).toContain('Planner: route:builtin, mode:auto, reason:eligible lightweight boundary');
+  });
 });
 
 describe('getNextPlanId', () => {
@@ -538,7 +545,7 @@ describe('getNextPlanId', () => {
     const planPath = path.join(tmp, '.agnes', 'plans', 'plan-001.yaml');
     expect(fs.existsSync(planPath)).toBe(true);
     const tmpFiles = fs.readdirSync(path.join(tmp, '.agnes', 'plans'))
-      .filter(f => f.endsWith('.tmp'));
+      .filter((f: string) => f.endsWith('.tmp'));
     expect(tmpFiles).toEqual([]);
   });
 });
@@ -799,7 +806,7 @@ describe('createPlanIteration', () => {
     });
 
     const index = readIndex(tmp)!;
-    const parentEntry = index.plans.find(p => p.id === parent.entry.id);
+    const parentEntry = index.plans.find((p: PlanIndex['plans'][number]) => p.id === parent.entry.id);
     expect(parentEntry).not.toBeNull();
     expect(parentEntry!.status).toBe('abandoned');
     expect(index.activePlanId).toBe('plan-002');
@@ -1983,6 +1990,26 @@ fix things
       const id2 = createAutoPlan({ goal: 'Second', source: 'user' }, tmp);
       expect(id1).toBe('plan-001');
       expect(id2).toBe('plan-002');
+    });
+  });
+
+  describe('createBuiltinPlan', () => {
+    test('creates compact plan with provenance and active plan id', () => {
+      const tmp = createTempProject();
+      const id = createBuiltinPlan({ goal: 'Add error handling to auth function', source: 'user' }, tmp);
+      expect(id).toBe('plan-001');
+
+      const index = readPlanIndex(tmp)!;
+      const entry = index.plans.find((p: PlanIndex['plans'][number]) => p.id === id)!;
+      expect(entry.plannerMode).toBe('builtin');
+      expect(entry.plannerSource).toBe('user');
+      expect(index.activePlanId).toBe(id);
+
+      const planContent = fs.readFileSync(path.join(tmp, '.agnes', 'plans', 'plan-001.yaml'), 'utf8');
+      expect(planContent).toContain('plannerMode: builtin');
+      expect(planContent).toContain('plannerSource: user');
+      expect(planContent).toContain('tasks:');
+      expect(planContent).toContain('Verify the result with a focused test or manual check');
     });
   });
 

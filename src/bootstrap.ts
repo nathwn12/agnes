@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPlanSummary, getLatestActivePlan } from './state.js';
-import type { PlanIndex } from './state.js';
+import type { PlanIndex, PlannerRoutingContext } from './state.js';
 import { resolveSkillName } from './schema.js';
 import { detectShell } from './shell.js';
 import { parse as yamlParse, stringify as yamlDump } from 'yaml';
@@ -116,11 +116,11 @@ ${toolMapping}
   return staticContent;
 }
 
-export function getBootstrapContent(): string | null {
+export function getBootstrapContent(planner?: PlannerRoutingContext): string | null {
   const staticContent = getStaticBootstrapContent();
   if (!staticContent) return null;
 
-  const planSummary = buildPlanSummary(process.cwd());
+  const planSummary = buildPlanSummary(process.cwd(), planner);
 
   const shell = detectShell();
 
@@ -162,6 +162,7 @@ export interface BootstrapContext {
   pkg: { version: string; root: string; skillsDir: string; cacheRoot: string };
   rules: OrchestratorRules;
   index: PlanIndex | null;
+  planner?: PlannerRoutingContext;
   shell: { name: string; version: string; antiPatterns: string[]; preferredSyntax: string };
   exec: { attempt: number; struggleDetected: boolean; lastPromiseTag: string | null };
 }
@@ -203,14 +204,19 @@ export function buildNamedRolesBlock(rules: OrchestratorRules): string {
   }));
 }
 
-export function buildPlanStateBlock(index: PlanIndex): string {
-  const plan = getLatestActivePlan(index.projectDir);
+export function buildPlanStateBlock(index: PlanIndex | null, planner?: PlannerRoutingContext): string {
+  const plan = index ? getLatestActivePlan(index.projectDir) : null;
   if (!plan) {
     return wrapStructured("plan_state", yamlDump({
       type: "plan_state",
       active_plan: null,
       status: "none",
-      message: "No active plan. For simple tasks, just ask. For complex tasks, I'll suggest firing up init.",
+      message: "No active plan. For simple tasks, just ask. For complex tasks, use the current planner path.",
+      ...(planner ? {
+        planner_mode: planner.mode,
+        planner_route: planner.route,
+        planner_reason: planner.reason,
+      } : {}),
     }));
   }
   return wrapStructured("plan_state", yamlDump({
@@ -222,6 +228,13 @@ export function buildPlanStateBlock(index: PlanIndex): string {
     blocked: plan.entry.blocked,
     goal: plan.entry.summary || "No goal set",
     struggle_detected: (plan.entry.struggle?.noProgressIterations || 0) >= 3,
+    ...(plan.entry.plannerMode ? { planner_mode: plan.entry.plannerMode } : {}),
+    ...(plan.entry.plannerSource ? { planner_source: plan.entry.plannerSource } : {}),
+    ...(planner ? {
+      planner_mode: planner.mode,
+      planner_route: planner.route,
+      planner_reason: planner.reason,
+    } : {}),
   }));
 }
 
@@ -345,7 +358,7 @@ export function buildBootstrap(context: BootstrapContext): string {
     buildRuntimeBlock(context.pkg),
     buildOrchestratorBlock(context.rules),
     buildNamedRolesBlock(context.rules),
-    ...(context.index ? [buildPlanStateBlock(context.index)] : []),
+    ...(context.index || context.planner ? [buildPlanStateBlock(context.index, context.planner)] : []),
     buildShellBlock(context.shell),
     buildExecutionContextBlock(context.exec),
     buildProtocolBlock(),

@@ -9,7 +9,23 @@ import type { PlanIndex } from './state.js';
 
 describe('structured block builders', () => {
   const pkg = { version: '0.10.2', root: '/test/root', skillsDir: '/test/skills', cacheRoot: '/test/cache' };
-  const rules: OrchestratorRules = { delegate: true, parallelize: true, onePercent: true, verify: true, noSharedEdits: true, freshSubagents: true, scarcity: true };
+  const rules: OrchestratorRules = {
+    delegate: true,
+    parallelize: true,
+    onePercent: true,
+    verify: true,
+    noSharedEdits: true,
+    freshSubagents: true,
+    scarcity: true,
+    answerDirectly: true,
+    namedRoles: {
+      executor: 'Runs commands',
+      explorer: 'Codebase research only',
+      planner: 'Creates plans',
+      builder: 'Implements tasks',
+      reviewer: 'Reviews diffs',
+    },
+  };
   const shell = { name: 'powershell', version: '7.4', antiPatterns: ['Get-Content', 'Set-Content'], preferredSyntax: 'cmdlets' };
   const exec = { attempt: 2, struggleDetected: true, lastPromiseTag: 'DONE' };
 
@@ -51,6 +67,13 @@ describe('structured block builders', () => {
     };
     const block = buildPlanStateBlock(emptyIndex);
     expect(block).toContain('No active plan');
+  });
+
+  test('buildPlanStateBlock includes planner provenance when provided', () => {
+    const block = buildPlanStateBlock(null, { mode: 'builtin', route: 'builtin', reason: 'eligible lightweight boundary' });
+    expect(block).toContain('planner_mode: builtin');
+    expect(block).toContain('planner_route: builtin');
+    expect(block).toContain('planner_reason: eligible lightweight boundary');
   });
 
   test('buildPlanStateBlock produces correct type tag', () => {
@@ -132,6 +155,12 @@ describe('getBootstrapContent', () => {
     const stateMatch = content!.match(/<AGNES_PLAN_STATE>\n([\s\S]*?)\n<\/AGNES_PLAN_STATE>/);
     expect(stateMatch).not.toBeNull();
     expect(stateMatch![1].length).toBeGreaterThan(5);
+  });
+
+  test('includes planner provenance when provided', () => {
+    const content = getBootstrapContent({ mode: 'builtin', route: 'builtin', reason: 'eligible lightweight boundary' });
+    expect(content).not.toBeNull();
+    expect(content!).toContain('Planner: route:builtin, mode:builtin, reason:eligible lightweight boundary');
   });
 
   test('returns appropriate content even without a plan', () => {

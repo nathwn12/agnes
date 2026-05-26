@@ -7,14 +7,14 @@ import {
   readPlanIndex,
   updatePlanStatus,
   createPlanIteration,
-  createAutoPlan,
+  createBuiltinPlan,
   extractPromiseTag,
   freshStruggleMetrics,
   updateStruggleMetrics,
   detectStruggle,
   cacheDir,
 } from './state.js';
-import type { PlanIndexEntry, PlanIndex, ActivePlan, StruggleMetrics } from './state.js';
+import type { PlanIndexEntry, PlanIndex, ActivePlan, StruggleMetrics, PlannerRoutingContext } from './state.js';
 import { MiddlewareChain } from './middleware.js';
 import type { WaveContext, SubagentContext } from './middleware.js';
 import { FlowController } from './flowcontrol.js';
@@ -533,6 +533,9 @@ export function classifyIntent(message: string): IntentClassification {
 
 export type Complexity = 'trivial' | 'complex';
 
+export type PlannerScope = 'trivial' | 'lightweight' | 'complex';
+export type PlannerRoutingMode = 'auto' | 'builtin' | 'full';
+
 const COMPLEX_KEYWORDS = ['feature', 'refactor', 'migrate', 'architecture', 'plan', 'redesign'];
 const SEQUENTIAL_PATTERN = /\b(then|after|additionally|furthermore|meanwhile)\b/i;
 
@@ -552,7 +555,55 @@ export function classifyComplexity(message: string): Complexity {
   return 'trivial';
 }
 
-export const NO_PLAN_NUDGE = "No active plan. For simple tasks, just ask. For complex tasks, I'll suggest firing up init.";
+export function classifyPlannerScope(message: string): PlannerScope {
+  const lower = message.toLowerCase().trim();
+  if (!lower) return 'trivial';
+
+  const intent = classifyIntent(message);
+  if (intent.category !== 'implement') return 'trivial';
+
+  if (COMPLEX_KEYWORDS.some(k => lower.includes(k))) return 'complex';
+  if (SEQUENTIAL_PATTERN.test(lower)) return 'complex';
+
+  const fileRefs = (lower.match(/\b\w+\.\w+\b/g) || []).length;
+  if (fileRefs > 2) return 'complex';
+
+  const sentenceText = lower.replace(/\b\w+\.\w+\b/g, 'file');
+  const sentences = sentenceText.split(/[.!?\n]+/).filter(Boolean);
+  if (sentences.length > 3) return 'complex';
+
+  const tokens = lower.split(/\s+/).filter(Boolean).length;
+  if (tokens <= 6 && fileRefs <= 1 && sentences.length <= 1) return 'trivial';
+  if (tokens <= 14 && fileRefs <= 2 && sentences.length <= 2) return 'lightweight';
+
+  return 'complex';
+}
+
+export function classifyPlannerRoute(message: string, mode: PlannerRoutingMode = 'auto'): PlannerRoutingContext {
+  const scope = classifyPlannerScope(message);
+
+  if (scope === 'trivial') {
+    return { mode, route: 'trivial', reason: 'simple request' };
+  }
+
+  if (mode === 'full') {
+    return { mode, route: 'full', reason: 'forced-full override' };
+  }
+
+  if (scope === 'lightweight') {
+    if (mode === 'builtin' || mode === 'auto') {
+      return { mode, route: 'builtin', reason: 'eligible lightweight boundary' };
+    }
+  }
+
+  return {
+    mode,
+    route: 'full',
+    reason: scope === 'complex' ? 'outside lightweight boundary' : 'not eligible for builtin route',
+  };
+}
+
+export const NO_PLAN_NUDGE = 'No active plan. For simple tasks, just ask. For complex tasks, use the current planner path.';
 
 export function requestMatchesPlan(message: string, plan: string): boolean {
   const messageTokens = message.toLowerCase()
@@ -577,7 +628,7 @@ export type ProcessMessageResult =
   | { type: 'block'; reason: 'no_active_plan'; message: string }
   | { type: 'block'; reason: 'plan_not_approved'; message: string }
   | { type: 'block'; reason: 'plan_mismatch'; message: string }
-  | { type: 'proceed'; intent: IntentClassification['category']; context?: 'trivial' | 'complex' };
+  | { type: 'proceed'; intent: IntentClassification['category']; context?: 'trivial' | 'lightweight' | 'complex' };
 
 export function processMessage(
   message: string,
@@ -588,17 +639,24 @@ export function processMessage(
 
   if (intent.category === 'implement') {
     const index = planIndex !== undefined ? planIndex : readPlanIndex();
+    const route = classifyPlannerRoute(message);
 
     // Trivial tasks don't need a plan
-    if (classifyComplexity(message) === 'trivial') {
+    if (route.route === 'trivial') {
       return { type: 'proceed', intent: intent.category, context: 'trivial' };
     }
 
-    // Complex tasks: auto-create a plan if none exists
+    // Lightweight tasks can use the built-in planner fast path.
     if (!index || index.activePlanId === null) {
-      if (index) {
-        createAutoPlan({ goal: message, source: 'user' }, index.projectDir);
+      if (route.route === 'builtin') {
+        const root = index?.projectDir ? findProjectRoot(index.projectDir) : findProjectRoot();
+        if (root) {
+          createBuiltinPlan({ goal: message, source: 'user' }, root);
+        }
+        return { type: 'proceed', intent: intent.category, context: 'lightweight' };
       }
+
+      // Complex tasks stay on the current planner path.
       return { type: 'proceed', intent: intent.category, context: 'complex' };
     }
 
