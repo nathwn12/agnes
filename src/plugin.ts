@@ -1,4 +1,4 @@
-import type { Plugin } from '@opencode-ai/plugin';
+import { tool, type Plugin } from '@opencode-ai/plugin';
 import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -60,8 +60,8 @@ function buildStructuredBootstrap(planner?: PlannerRoutingContext): string {
     if (workspaceRoot) {
       index = readPlanIndex(workspaceRoot);
     }
-  } catch {
-    // non-fatal
+  } catch (e) {
+    console.warn('[agnes] failed to read plan index:', e);
   }
 
   const shell = detectShell();
@@ -164,8 +164,8 @@ export const AgnesPlugin: Plugin = async () => {
             }
           }
         }
-      } catch {
-        // non-fatal
+      } catch (e) {
+        console.warn('[agnes] failed to build plan context:', e);
       }
 
       const bootstrap = buildStructuredBootstrap(plannerState);
@@ -195,8 +195,8 @@ export const AgnesPlugin: Plugin = async () => {
           rememberCompactionState(sessionID, decision.state);
           compactionAdvisory = decision.advisory;
         }
-      } catch {
-        // non-fatal
+      } catch (e) {
+        console.warn('[agnes] failed to evaluate compaction policy:', e);
       }
       if (compactionAdvisory) {
         fullBootstrap += '\n\n' + compactionAdvisory + '\n';
@@ -213,6 +213,25 @@ export const AgnesPlugin: Plugin = async () => {
         type: 'text',
         text: fullBootstrap,
       });
+    },
+
+    tool: {
+      agnes_delegate: tool({
+        description: 'Invoke an AGNES skill subagent to perform a task. The model should load the named skill and execute the given task description.',
+        args: {
+          skill: tool.schema.string().describe('The skill name to invoke (e.g. "builder", "explorer", "planner")'),
+          task: tool.schema.string().describe('The task description for the subagent to execute'),
+        },
+        async execute(args) {
+          return {
+            output: `[AGNES: Delegated to skill "${args.skill}"]
+
+Task: ${args.task}
+
+Load the ${args.skill} skill and carry out the task above.`,
+          };
+        },
+      }),
     },
   };
 };

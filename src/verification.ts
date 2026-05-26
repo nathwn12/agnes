@@ -93,27 +93,32 @@ function hasCompletionSignal(text: string): boolean {
   }
 }
 
-export const promiseComplianceGate: Gate = {
-  id: 'promise-compliance',
-  name: 'Promise Compliance',
-  description: 'Checks that output contains a completion signal (<promise> or <agnes:message>) before allowing completion',
-  isBlocking: true,
-  run: async () => {
-    const start = Date.now();
-    const errors: string[] = [];
-    const output = process.env.AGNES_LAST_OUTPUT || '';
-    if (!hasCompletionSignal(output)) {
-      errors.push('Output does not contain a completion signal (<promise> or <agnes:message>)');
-    }
-    return {
-      gateId: 'promise-compliance',
-      status: errors.length === 0 ? 'PASS' : 'FAIL',
-      evidence: { errors, command: 'check-completion-signal', exitCode: errors.length === 0 ? 0 : 1, output },
-      timestamp: new Date().toISOString(),
-      durationMs: Date.now() - start,
-    };
-  },
-};
+export function createPromiseComplianceGate(getOutput?: () => string): Gate {
+  const outputFn = getOutput ?? (() => process.env.AGNES_LAST_OUTPUT ?? '');
+  return {
+    id: 'promise-compliance',
+    name: 'Promise Compliance',
+    description: 'Checks that output contains a completion signal (<promise> or <agnes:message>) before allowing completion',
+    isBlocking: true,
+    run: async () => {
+      const start = Date.now();
+      const errors: string[] = [];
+      const output = outputFn();
+      if (!hasCompletionSignal(output)) {
+        errors.push('Output does not contain a completion signal (<promise> or <agnes:message>)');
+      }
+      return {
+        gateId: 'promise-compliance',
+        status: errors.length === 0 ? 'PASS' : 'FAIL',
+        evidence: { errors, command: 'check-completion-signal', exitCode: errors.length === 0 ? 0 : 1, output },
+        timestamp: new Date().toISOString(),
+        durationMs: Date.now() - start,
+      };
+    },
+  };
+}
+
+export const promiseComplianceGate: Gate = createPromiseComplianceGate();
 
 export const planExistsGate: Gate = {
   id: 'plan-exists',

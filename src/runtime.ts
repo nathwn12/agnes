@@ -82,7 +82,8 @@ function persistSessions(projectRoot?: string): void {
     fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
     fs.renameSync(tmp, filePath);
   } catch {
-    // Persistence must never break runtime.
+    // purposefully ignored: fs.write/rename can fail (permissions, disk full, race on tmp).
+    // Session state is ephemeral — loss is recoverable from next successful persist.
   }
 }
 
@@ -99,7 +100,8 @@ function loadSessions(projectRoot?: string): void {
       }
     }
   } catch {
-    // Load must never break runtime.
+    // purposefully ignored: fs.readFile/JSON.parse can fail (corrupt file, empty, race).
+    // Sessions are best-effort — missing data just starts fresh.
   }
 }
 
@@ -395,7 +397,8 @@ function autoBlockPlan(projectRoot: string | undefined, attempts: number, strugg
       projectRoot: root,
     });
   } catch {
-    // Auto-block must never break message transformation.
+    // purposefully ignored: plan ops can fail (missing index, race, deleted plans).
+    // Auto-block failure is non-fatal — caller handles retry without plan state.
   }
 }
 
@@ -421,7 +424,8 @@ function persistToPlan(
       projectRoot: root,
     });
   } catch {
-    // State persistence must never break message transformation.
+    // purposefully ignored: updatePlanStatus can fail (no index, missing plan, race).
+    // Plan state sync is best-effort — next wave re-reads from disk.
   }
 }
 
