@@ -2,6 +2,37 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.16.1 (2026-05-26)
+
+### Fixed
+
+- **Auto-block trigger on zero-output attempts**: `recordAttempt()` now fires the auto-block mechanism reliably when consecutive non-completion attempts produce no output — previously the condition silently short-circuited when `lastSubagentOutput` was empty. (verified: runtime.test.ts)
+- **Bootstrap block ordering**: Structured blocks now appear in deterministic, model-agnostic order across all provider paths — eliminated interleaved provider blocks that violated DS V4 structured format expectations. (verified: bootstrap.test.ts)
+- **Orchestrator boundary self-audit**: Main-context boundary checks now consistently flag planning thoughts before they reach user-facing output — catches latent violations that previously slipped through on first-tick executions. (verified: orchestrator self-audit gate)
+
+## 0.16.0 (2026-05-26)
+
+### Added
+
+- **Real subagent delegation via Bun.spawn**: Replaced in-process handler stubs with actual Bun.spawn-based process forking. Subagents launch as isolated Bun processes with stdin/stdout JSON message protocol, full tool registration, and structured completion signaling via the `agnes:message` protocol. (verified: integration tests, plans 005–007)
+- **Concurrency mutex**: `SubagentManager` serializes subagent launches with a per-session mutex — prevents overlapping subagent processes from corrupting shared `.agnes/` state files. (verified: runtime.test.ts)
+- **Observability metrics**: `SubagentMetrics` captures per-subagent wall-clock time, tool call count, and output token estimates — surfaced in plan summaries and struggle diagnostics for debugging subagent behavior. (verified: runtime.test.ts)
+- **Subagent workspace path validation**: Workspace paths are validated against real filesystem boundaries before subagent process launch — prevents subagents from escaping the project root directory. (verified: runtime.test.ts)
+- **Full structured protocol enforcement**: All subagent communication uses typed `agnes:message` JSON messages with Zod schema validation — legacy `<promise>DONE</promise>` regex fallback removed from subagent message paths.
+
+### Changed
+
+- **Subagent lifecycle management**: `executeSubagent()` now manages the full process lifecycle — spawn, message exchange, timeout enforcement, and clean process termination. Replaced the old `subagentHandlerStub()` that returned `BLOCKED` for every task. (verified: runtime.test.ts)
+- **Release maintenance**: Bumped package metadata and README version badge to 0.16.0.
+
+### Removed
+
+- **Legacy subagent stub**: Removed `subagentHandlerStub()` and all `BLOCKED`-result dead-code paths from the runtime loop — subagents always execute as real processes now. (verified: `bun run typecheck`)
+
+### Fixed
+
+- **Subagent timeout propagation**: The configured timeout value now correctly reaches the Bun.spawn process via `Bun.spawn({ timeout })` — previously all subagents launched with the default infinite timeout regardless of caller-specified argument. (verified: runtime.test.ts, plan-007)
+
 ## 0.15.0 (2026-05-25)
 
 ### Added
