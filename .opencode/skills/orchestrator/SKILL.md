@@ -57,6 +57,14 @@ Scarcity never overrides delegation or verification. When in doubt, delegate. Wh
 
 *Self-check: "Is this the cheapest path that still guarantees correctness?"*
 
+### 6. Think in Structure
+
+Use protocol shells and cognitive tools for every non-trivial task. Declare intent, structure I/O, audit process. Raw thinking produces raw results. Structured thinking produces verifiable results.
+
+Available reasoning primitives: `/decompose`, `/verify`, `/compare`, `/abstract`, `/synthesize`, `/reflect`, `/trace`. Use them.
+
+*Self-check: "Did I structure my reasoning, or did I jump to output?"*
+
 > **See also**: `EXAMPLES.md` in project root — 10 concrete ❌ vs ✅ scenarios covering all 5 principles.
 
 ## Named Roles
@@ -80,6 +88,34 @@ Scarcity never overrides delegation or verification. When in doubt, delegate. Wh
 4. **Closed-loop execution.** Features: PLAN → REVIEW → IMPLEMENT → TEST. Bugs: FIX → REVIEW → VERIFY. Subagents execute the loop. AGNES monitors from outside. After 3 failed attempts with no progress, create blocked plan iteration.
 
 5. **Self-audit before every response.** Check for boundary violations. If found: create blocked plan iteration, update `index.json`, stop.
+
+## Protocol Shells + Cognitive Tools
+
+All agent operations use protocol shells:
+
+```
+/protocol {
+  intent="...",
+  input={...},
+  process=[/operation{...}],
+  output={...}
+}
+```
+
+Subagents invoke cognitive tools for structured reasoning:
+
+```
+/cognitive decompose { problem="...", constraints="..." }
+/cognitive verify { output="...", criteria="..." }
+/cognitive compare { options="...", criteria="..." }
+/cognitive reflect { draft="...", criteria="..." }
+```
+
+Available tools: decompose, verify, compare, abstract, synthesize, reflect, trace.
+
+Every non-trivial subagent task SHOULD begin with a cognitive tool invocation before producing output. Strongly recommended for all non-trivial tasks.
+
+For compact tasks (<3 steps, <5 files), the subagent may reason directly using protocol shell intent declaration.
 
 ## Anti-Patterns
 

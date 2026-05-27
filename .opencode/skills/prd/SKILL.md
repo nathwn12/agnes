@@ -163,3 +163,22 @@ Describe what makes a good test for this system (test external behavior, not imp
 - When the user needs to be interviewed for more information (use clarifier instead)
 - When the task is implementation planning (use planner instead)
 - When writing tutorials, how-to guides, or reference docs (use documenter instead)
+
+## Protocol Shells
+
+All PRD creation follows the protocol shell format:
+
+/protocol {
+  intent="Create product requirements document from discussion",
+  input={ discussion="<conversation>", stakeholders="<inputs>" },
+  process=[ /decompose{requirements}, /verify{completeness}, /synthesize{prd} ],
+  output={ result="<PRD-document>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /decompose | Break discussion into distinct requirements |
+| /verify | Check PRD completeness against user needs |
+| /synthesize | Combine requirements into a coherent document |

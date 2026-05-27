@@ -192,3 +192,22 @@ Closes #[issue]
 - Code has not been reviewed (for team projects where review is required)
 - Destructive operations without typed confirmation from the user
 - Work is incomplete or experimental — use keep or continue developing
+
+## Protocol Shells
+
+All ship operations follow the protocol shell format:
+
+/protocol {
+  intent="Verify and ship completed work",
+  input={ changes="<scope>", checks="<verification-gates>" },
+  process=[ /verify{quality-gates}, /verify{regression}, /synthesize{readiness} ],
+  output={ result="<ship-decision>", evidence="<gate-results>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /verify | Check each quality gate with explicit evidence |
+| /synthesize | Combine gate results into a ship/no-ship decision |
+| /reflect | Self-critique readiness claim before final output |

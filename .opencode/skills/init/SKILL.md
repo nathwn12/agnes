@@ -188,3 +188,22 @@ This project uses AGNES, a swarm orchestrator that routes tasks across fused ski
 - The project is not meant to work with AGNES (no swarm orchestration needed)
 - Only a single skill or subagent is needed without the full AGNES workflow
 - The project already has a complete AGNES setup verified by the quality criteria
+
+## Protocol Shells
+
+All project setup follows the protocol shell format:
+
+/protocol {
+  intent="Initialize or update AGNES in a project",
+  input={ project="<target-directory>", config="<user-preferences>" },
+  process=[ /decompose{setup-steps}, /verify{config}, /synthesize{setup-report} ],
+  output={ result="<setup-status>", files="<created-or-updated>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /decompose | Break setup into independent configuration steps |
+| /verify | Check each configuration for correctness |
+| /synthesize | Combine setup results into a status report |

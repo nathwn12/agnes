@@ -248,3 +248,22 @@ Reviewer: "Implement proper metrics tracking with database, date filters, CSV ex
 ## When NOT to Use
 
 No code review feedback, purely stylistic feedback, or reviewer not open to technical discussion.
+
+## Protocol Shells
+
+All feedback processing follows the protocol shell format:
+
+/protocol {
+  intent="Evaluate and act on code review feedback",
+  input={ feedback="<review-comments>", original="<code-diff>" },
+  process=[ /verify{validity}, /compare{alternatives}, /synthesize{action-plan} ],
+  output={ result="<accepted-or-declined>", actions="<changes-to-make>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /verify | Check each feedback item for technical validity |
+| /compare | Evaluate alternative fixes when feedback suggests one |
+| /synthesize | Combine accepted feedback into an action plan |

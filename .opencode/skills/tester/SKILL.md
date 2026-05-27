@@ -125,3 +125,22 @@ Test Suites: 2 passed, 2 total
 - When the implementation is not yet complete or still in flux
 - When the project has no test framework set up
 - For one-off exploratory prototypes where test harness overhead exceeds value
+
+## Protocol Shells
+
+All test operations follow the protocol shell format:
+
+/protocol {
+  intent="Run and verify test suite for changed code",
+  input={ scope="<changed-files>", suite="<test-target>" },
+  process=[ /decompose{cases}, /verify{pass}, /synthesize{report} ],
+  output={ result="<pass-fail-details>", artifacts="<reports>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /decompose | Map changed files to affected test cases |
+| /verify | Check test output against expected pass criteria |
+| /synthesize | Combine results into a regression report |

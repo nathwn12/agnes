@@ -207,3 +207,22 @@ Passing tests, type checks, lint, and build. Spec compliance and code quality co
 - Sequential dependencies required
 - Exploratory — findings inform next direction
 - Cross-cutting refactors needing combined context
+
+## Protocol Shells
+
+All build operations follow the protocol shell format:
+
+/protocol {
+  intent="Implement approved plan sub-task",
+  input={ task="<plan-sub-task>", constraints="<scope>", files="<target-files>" },
+  process=[ /decompose{breakdown}, /implement{changes}, /verify{output} ],
+  output={ result="<implementation>", evidence="<test-output>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /decompose | Break plan sub-task into independent file-level changes |
+| /verify | Check implementation matches spec before requesting review |
+| /reflect | Self-critique draft before submitting for review |

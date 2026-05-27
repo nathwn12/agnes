@@ -114,3 +114,22 @@ Retro document at `.agnes/learnings/YYYY-MM-DD-retro.md` in the following format
 - Mid-task when focus is required (schedule for a natural break)
 - For trivial or single-commit work without meaningful patterns to extract
 - When the user explicitly declines a retro
+
+## Protocol Shells
+
+All retrospectives follow the protocol shell format:
+
+/protocol {
+  intent="Reflect on work patterns and capture learnings",
+  input={ period="<sprint-or-feature>", events="<what-happened>" },
+  process=[ /abstract{patterns}, /reflect{improvements}, /synthesize{actions} ],
+  output={ result="<retro-notes>", actions="<follow-up-items>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /abstract | Extract patterns from completed work |
+| /reflect | Self-critique process for improvement areas |
+| /synthesize | Combine observations into actionable follow-ups |

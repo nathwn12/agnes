@@ -8,6 +8,7 @@ import { resolveSkillName } from './schema.js';
 import { detectShell } from './shell.js';
 import { parse as yamlParse, stringify as yamlDump } from 'yaml';
 import type { CompactionPolicyState } from './compaction.js';
+import { COGNITIVE_TOOLS } from './protocol.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -280,6 +281,27 @@ export function buildProtocolBlock(): string {
   }));
 }
 
+export function buildCognitiveToolsBlock(): string {
+  const toolSummaries = Object.values(COGNITIVE_TOOLS).map(t => ({
+    id: t.id,
+    intent: t.intent,
+    input_fields: t.inputFields,
+    output: t.outputDescription,
+  }));
+
+  return wrapStructured('cognitive_tools', yamlDump({
+    type: 'cognitive_tools',
+    tools: toolSummaries,
+    invocation_format: '/cognitive <tool_id> { intent="...", field1="...", field2="..." }',
+    protocol_shell_format: `/protocol {
+  intent="...",
+  input={ field1="<type>", field2="<type>" },
+  process=[ /operation{param="value"} ],
+  output={ result="<type>" }
+}`,
+  }));
+}
+
 // ── Skill registry (compact, auto-discovered from frontmatter) ─────────────
 
   const SKILL_SUGGEST_NEXT: Record<string, string[]> = {
@@ -362,6 +384,7 @@ export function buildBootstrap(context: BootstrapContext): string {
     buildShellBlock(context.shell),
     buildExecutionContextBlock(context.exec),
     buildProtocolBlock(),
+    buildCognitiveToolsBlock(),
     buildSkillRegistryBlock(),
   ];
   return blocks.filter(Boolean).join("\n");

@@ -141,3 +141,22 @@ Accepted | Proposed | Deprecated
 - For bug fixes or refactoring that don't change user-facing behavior or architecture
 - When documentation already exists and is current (no staleness)
 - When the project has no users or consumers (internal-only experimental code)
+
+## Protocol Shells
+
+All documentation operations follow the protocol shell format:
+
+/protocol {
+  intent="Create or update documentation for shipped work",
+  input={ feature="<description>", audience="<who-reads>" },
+  process=[ /decompose{sections}, /verify{clarity}, /synthesize{docs} ],
+  output={ result="<documentation>", files="<created-or-updated>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /decompose | Break documentation into audience-appropriate sections |
+| /verify | Check documentation for accuracy and completeness |
+| /reflect | Self-critique draft before publishing |

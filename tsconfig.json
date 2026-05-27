@@ -9,7 +9,7 @@
     "declaration": false,
     "sourceMap": false,
     "skipLibCheck": true,
-    "types": ["node"],
+    "types": ["node", "bun-types"],
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },

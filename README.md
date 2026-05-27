@@ -1,9 +1,9 @@
 <h1 align="center">AGNES — OpenCode Native Plugin</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.16.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.17.0-blue" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
-  <img src="https://img.shields.io/badge/skills-30-orange" alt="30 skills">
+  <img src="https://img.shields.io/badge/skills-25-orange" alt="25 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
 </p>
 
@@ -38,7 +38,7 @@ Restart OpenCode.
 
 ---
 
-## The 5 Principles
+## The 6 Principles
 
 | # | Principle | Meaning |
 |---|-----------|---------|
@@ -47,6 +47,7 @@ Restart OpenCode.
 | 3 | **The 1% Rule** | If even 1% chance a skill applies, invoke it. Wrong invocation is free. |
 | 4 | **Verify or Void** | Run the command, read the output, then speak. Format: `[Step] → verify: [check]` |
 | 5 | **Spend Like It's Yours** | Cheapest sufficient path first. Context is a budget. |
+| 6 | **Think in Structure** | Use protocol shells and cognitive tools. Declare intent, structure I/O, audit process. |
 
 See [EXAMPLES.md](EXAMPLES.md) for behavioral examples of each principle.
 
@@ -65,6 +66,37 @@ Default flow:
 8. REFLECT → documenter → retro
 
 Side branches: Design (brandkit→prototype), Debug (debugger→griller), Process (triage), Meta (skillwriter)
+
+---
+
+## Protocol Shells + Cognitive Tools
+
+AGNES enforces structured reasoning through two integrated mechanisms:
+
+**Protocol Shells** — a declarative format every agent operation follows:
+
+```
+/protocol {
+  intent="Clear purpose statement",
+  input={ field1="<type>", field2="<type>" },
+  process=[ /operation{param="value"} ],
+  output={ result="<type>" }
+}
+```
+
+**Cognitive Tools** — 7 internal reasoning primitives subagents invoke as thought-protocols:
+
+| Tool | Purpose |
+|------|---------|
+| `/decompose` | Break problem into independent sub-problems |
+| `/verify` | Check output against criteria with evidence |
+| `/compare` | Evaluate alternatives systematically |
+| `/abstract` | Extract patterns from specific instances |
+| `/synthesize` | Combine findings into coherent conclusions |
+| `/reflect` | Self-critique and improve output |
+| `/trace` | Walk through a process step-by-step |
+
+Both are injected into every subagent system prompt via `<structured type="cognitive_tools">` block. See [AGENTS.md](AGENTS.md) for full reference.
 
 ---
 
@@ -115,7 +147,7 @@ Bootstrap injects structured identity blocks every session. System prompt source
 bun run bundle        # bundle to .opencode/plugins/agnes.js
 bun run lint          # lint source
 bun run typecheck     # type safety gate
-bun test              # 427+ tests
+bun test              # 443+ tests
 ```
 
 ---

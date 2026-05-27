@@ -190,3 +190,22 @@ Bug report with root cause (one sentence), reproduction steps, fix reference, an
 - Bug is in a third-party dependency with no workaround — report upstream instead
 - If after 3 rounds of narrowing the root cause is still unclear, handoff to griller for adversarial debugging
 - User is asking for architectural improvement, not a specific bug diagnosis
+
+## Protocol Shells
+
+All debugging follows the protocol shell format:
+
+/protocol {
+  intent="Find root cause of reported bug or failure",
+  input={ symptom="<error-or-behavior>", reproduction="<steps>" },
+  process=[ /decompose{hypotheses}, /trace{execution}, /verify{root-cause} ],
+  output={ result="<root-cause>", evidence="<stack-trace-or-log>", fix="<proposed-change>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /decompose | Break failure into independent hypotheses |
+| /trace | Walk execution path step-by-step to divergence point |
+| /verify | Check that hypothesized root cause explains all symptoms |

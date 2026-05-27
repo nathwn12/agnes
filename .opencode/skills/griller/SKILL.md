@@ -212,3 +212,22 @@ After 3 hypotheses are proven wrong:
 - When the bug cannot be reproduced at least 60% of the time after exhausting non-deterministic techniques — move on rather than spinning
 - When the necessary architecture understanding or reproduction environment is unavailable (use explorer or setup tooling first)
 - When the user expects a quick fix without systematic investigation — the griller is methodical by design
+
+## Protocol Shells
+
+All deep debugging follows the protocol shell format:
+
+/protocol {
+  intent="Stress-test hypotheses for a stubborn bug",
+  input={ hypotheses="<attempted-fixes>", symptoms="<remaining-failures>" },
+  process=[ /decompose{assumptions}, /trace{edge-cases}, /compare{explanations} ],
+  output={ result="<root-cause>", eliminated="<ruled-out-hypotheses>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /decompose | Break assumptions into testable sub-hypotheses |
+| /trace | Walk each execution path until divergence |
+| /compare | Evaluate competing explanations against all symptoms |

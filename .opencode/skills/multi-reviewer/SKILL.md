@@ -438,4 +438,23 @@ Findings:
 3. ...
 
 **Overall Verdict**: APPROVE|REVISE|REJECT
+
+## Protocol Shells
+
+All multi-axis reviews follow the protocol shell format:
+
+/protocol {
+  intent="Review plan or spec across multiple axes",
+  input={ document="<plan-or-spec>", axes="<review-dimensions>" },
+  process=[ /decompose{axes}, /verify{each-axis}, /synthesize{verdict} ],
+  output={ result="<review-scores>", blockers="<must-fix-items>", recommendations="<should-fix>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /decompose | Break review into independent evaluation axes |
+| /verify | Check each axis against its criteria with evidence |
+| /synthesize | Combine axis scores into a go/no-go verdict |
 ```

@@ -175,3 +175,22 @@ Two document types written to the project:
 - Prefer the fewest steps that still make execution clear.
 - Preserve explicit acceptance criteria, edge cases, and out-of-scope limits when present.
 - Do not convert speculative implementation ideas into binding requirements.
+
+## Protocol Shells
+
+All plan creation follows the protocol shell format:
+
+/protocol {
+  intent="Create implementation plan from requirements",
+  input={ requirements="<spec>", constraints="<boundaries>" },
+  process=[ /decompose{steps}, /compare{routes}, /synthesize{plan} ],
+  output={ result="<plan-NNN.yaml>", dependencies="<order>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /decompose | Break requirements into independent implementation steps |
+| /compare | Evaluate alternative implementation routes |
+| /synthesize | Combine steps into a coherent ordered plan |

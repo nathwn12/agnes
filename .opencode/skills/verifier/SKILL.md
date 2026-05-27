@@ -165,3 +165,22 @@ When running verification commands, prefer:
 - When designing or writing tests — use tester instead
 - During initial project scaffolding before a CI pipeline is configured
 - When the task is to investigate and fix test failures rather than gate a completion claim
+
+## Protocol Shells
+
+All verification operations follow the protocol shell format:
+
+/protocol {
+  intent="Verify code change meets correctness and quality criteria",
+  input={ change="<diff-or-file>", criteria="<verification-checks>" },
+  process=[ /verify{correctness}, /verify{regression}, /synthesize{verdict} ],
+  output={ result="<pass-fail>", evidence="<specific-evidence>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /decompose | Break verification into independent checks |
+| /verify | Check each criterion with specific evidence from output |
+| /synthesize | Combine check results into a verified/blocked verdict |

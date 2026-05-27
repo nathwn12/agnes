@@ -245,3 +245,195 @@ export function buildTaskMessage(params: {
     constraints: params.constraints || { no_shared_edits: true },
   });
 }
+
+// ── Protocol Shells ─────────────────────────────────────────────────────────
+
+export interface ProtocolOperation {
+  operation: string;
+  params: Record<string, string>;
+}
+
+export interface ProtocolShell {
+  intent: string;
+  input: Record<string, string>;
+  process: ProtocolOperation[];
+  output: Record<string, string>;
+}
+
+export interface ProtocolShellParseError {
+  error: string;
+  input: string;
+}
+
+export function formatProtocolShell(ps: ProtocolShell): string {
+  const processLines = ps.process.map(op => {
+    const paramsStr = Object.entries(op.params)
+      .map(([k, v]) => `${k}="${v}"`)
+      .join(', ');
+    return `    /${op.operation}{${paramsStr}}`;
+  }).join(',\n');
+
+  return [
+    `/protocol {`,
+    `  intent="${ps.intent}"`,
+    `  input={${Object.entries(ps.input).map(([k, v]) => `${k}="${v}"`).join(', ')}}`,
+    `  process=[`,
+    processLines,
+    `  ],`,
+    `  output={${Object.entries(ps.output).map(([k, v]) => `${k}="${v}"`).join(', ')}}`,
+    `}`,
+  ].join('\n');
+}
+
+export function parseProtocolShell(input: string): ProtocolShell | ProtocolShellParseError {
+  const trimmed = input.trim();
+  if (!trimmed.startsWith('/protocol')) {
+    return { error: 'Must start with /protocol', input };
+  }
+
+  const intentMatch = trimmed.match(/intent="([^"]+)"/);
+  if (!intentMatch) {
+    return { error: 'Missing required intent field', input };
+  }
+
+  const inputMatch = trimmed.match(/input=\{(.+?)\}/);
+  const outputMatch = trimmed.match(/output=\{(.+?)\}/);
+
+  const parseFields = (raw: string | undefined): Record<string, string> => {
+    if (!raw) return {};
+    const result: Record<string, string> = {};
+    const re = /(\w+)="([^"]*)"/g;
+    let m;
+    while ((m = re.exec(raw)) !== null) {
+      result[m[1]] = m[2];
+    }
+    return result;
+  };
+
+  const process: ProtocolOperation[] = [];
+  const opRe = /\/(\w+)\{([^}]*)\}/g;
+  let opMatch;
+  while ((opMatch = opRe.exec(trimmed)) !== null) {
+    const opName = opMatch[1];
+    if (opName === 'protocol') continue;
+    process.push({
+      operation: opName,
+      params: parseFields(opMatch[2]),
+    });
+  }
+
+  return {
+    intent: intentMatch[1],
+    input: parseFields(inputMatch ? inputMatch[1] : undefined),
+    process,
+    output: parseFields(outputMatch ? outputMatch[1] : undefined),
+  };
+}
+
+// ── Cognitive Tools ─────────────────────────────────────────────────────────
+
+export type CognitiveToolId =
+  | 'decompose'
+  | 'verify'
+  | 'compare'
+  | 'abstract'
+  | 'synthesize'
+  | 'reflect'
+  | 'trace';
+
+export interface CognitiveTool {
+  id: CognitiveToolId;
+  intent: string;
+  inputFields: string[];
+  outputDescription: string;
+  promptTemplate: string;
+}
+
+export const COGNITIVE_TOOLS: Record<CognitiveToolId, CognitiveTool> = {
+  decompose: {
+    id: 'decompose',
+    intent: 'Break a problem into independent sub-problems',
+    inputFields: ['problem', 'constraints'],
+    outputDescription: 'ordered list of sub-problems with independence claim',
+    promptTemplate: `Given this problem and constraints, break it into the smallest independent sub-problems that can be solved separately. For each: name, scope, independence proof, and estimated complexity.`,
+  },
+  verify: {
+    id: 'verify',
+    intent: 'Check output against a set of criteria with evidence',
+    inputFields: ['output', 'criteria'],
+    outputDescription: 'pass/fail per criterion with specific evidence',
+    promptTemplate: `Check the output against each criterion. For each: pass or fail, specific evidence from the output, and a confidence level (high/medium/low).`,
+  },
+  compare: {
+    id: 'compare',
+    intent: 'Evaluate alternative solutions systematically',
+    inputFields: ['options', 'criteria'],
+    outputDescription: 'ranked alternatives with per-criterion score and reasoning',
+    promptTemplate: `Compare the options against each criterion. Score each 0-10. Provide per-criterion reasoning. Rank with aggregate score and explain the tiebreaker logic.`,
+  },
+  abstract: {
+    id: 'abstract',
+    intent: 'Extract general patterns from specific instances',
+    inputFields: ['specifics', 'domain'],
+    outputDescription: 'generalized patterns with structural essence',
+    promptTemplate: `What patterns generalize across these specifics? Ignore surface differences. Extract the underlying structure. Name each pattern, describe its invariant properties, and give one counterexample that breaks it.`,
+  },
+  synthesize: {
+    id: 'synthesize',
+    intent: 'Combine findings into a coherent integrated conclusion',
+    inputFields: ['findings', 'goal'],
+    outputDescription: 'integrated conclusion with contradiction resolution',
+    promptTemplate: `Combine the following findings into a conclusion that serves the goal. Resolve contradictions explicitly. Fill knowledge gaps with labeled assumptions. Flag confidence per claim.`,
+  },
+  reflect: {
+    id: 'reflect',
+    intent: 'Self-critique and produce an improved output',
+    inputFields: ['draft', 'criteria'],
+    outputDescription: 'improved draft with a change log explaining what changed and why',
+    promptTemplate: `Critique the draft against each criterion. Identify 3 weakest points. Produce an improved version addressing each weakness. End with a change log: what changed, why, and what tradeoffs were accepted.`,
+  },
+  trace: {
+    id: 'trace',
+    intent: 'Walk through a process step-by-step to find the root cause',
+    inputFields: ['process_description', 'failure_observation'],
+    outputDescription: 'step-by-step trace with root cause hypothesis at each decision point',
+    promptTemplate: `Walk through the process from start to the failure point. At each step: what was expected, what actually happened, and what branch was taken. When the path diverges from expected, flag it. Produce root cause hypothesis with supporting evidence chain.`,
+  },
+};
+
+export function getCognitiveTool(id: string): CognitiveTool | null {
+  const tool = COGNITIVE_TOOLS[id as CognitiveToolId];
+  return tool || null;
+}
+
+export function formatCognitiveToolInvocation(toolId: CognitiveToolId, inputs: Record<string, string>): string {
+  const tool = COGNITIVE_TOOLS[toolId];
+  if (!tool) return '';
+  const inputStr = Object.entries(inputs)
+    .map(([k, v]) => `  ${k}="${v.replace(/"/g, '\\"')}"`)
+    .join('\n');
+  return [
+    `/cognitive ${toolId} {`,
+    `  intent="${tool.intent}"`,
+    inputStr,
+    `}`,
+  ].join('\n');
+}
+
+export function findCognitiveToolCalls(text: string): Array<{ toolId: CognitiveToolId; inputs: Record<string, string> }> {
+  const calls: Array<{ toolId: CognitiveToolId; inputs: Record<string, string> }> = [];
+  const re = /\/cognitive\s+(\w+)\s*\{([^}]*)\}/g;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    const toolId = match[1] as CognitiveToolId;
+    if (!COGNITIVE_TOOLS[toolId]) continue;
+    const inputRe = /(\w+)="([^"]*)"/g;
+    const inputs: Record<string, string> = {};
+    let im;
+    while ((im = inputRe.exec(match[2])) !== null) {
+      inputs[im[1]] = im[2];
+    }
+    calls.push({ toolId, inputs });
+  }
+  return calls;
+}

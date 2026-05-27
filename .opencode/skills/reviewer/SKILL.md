@@ -128,3 +128,22 @@ The following do NOT warrant a finding:
 ## When NOT to Use
 
 N/A — This skill is always applicable when code changes need review before shipping.
+
+## Protocol Shells
+
+All code reviews follow the protocol shell format:
+
+/protocol {
+  intent="Review code diff against correctness and maintainability criteria",
+  input={ diff="<code-changes>", scope="<task-boundary>" },
+  process=[ /verify{correctness}, /verify{style}, /synthesize{findings} ],
+  output={ result="<review-findings>", blockers="<issues-to-fix>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /verify | Check code against correctness, security, and style criteria |
+| /compare | Evaluate alternative implementations |
+| /synthesize | Combine findings into a review summary with severity |

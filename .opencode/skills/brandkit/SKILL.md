@@ -157,3 +157,22 @@ If the user wants competitive research: use web search to find top products in t
 - No visual assets or mockups are required
 - Design direction does not affect architecture decisions
 - User wants code implementation, not design exploration
+
+## Protocol Shells
+
+All brand design follows the protocol shell format:
+
+/protocol {
+  intent="Create a visual identity system for a new project",
+  input={ project="<description>", vibe="<aesthetic-direction>" },
+  process=[ /decompose{assets}, /compare{palettes}, /synthesize{guidelines} ],
+  output={ result="<design-system>", assets="<deliverables>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /decompose | Break brand identity into independent design elements |
+| /compare | Evaluate palette and typography alternatives |
+| /synthesize | Combine design elements into consistent guidelines |

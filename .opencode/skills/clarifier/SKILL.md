@@ -169,3 +169,22 @@ Once clarified, route to the appropriate next skill:
 - During execution or BUILD phase — this skill is for THINK phase only
 - When the user just needs direct implementation with no design decisions needed
 - When the issue is purely operational (e.g., "run this command") with no ambiguity
+
+## Protocol Shells
+
+All clarification operations follow the protocol shell format:
+
+/protocol {
+  intent="Resolve ambiguity in user request",
+  input={ request="<original>", unknowns="<gaps>" },
+  process=[ /decompose{gaps}, /trace{assumptions}, /synthesize{questions} ],
+  output={ result="<clarified-requirements>", assumptions="<documented>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /decompose | Break ambiguity into specific unknowns |
+| /trace | Trace assumptions through their implications |
+| /synthesize | Combine gaps into precise clarifying questions |

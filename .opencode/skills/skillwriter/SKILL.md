@@ -151,3 +151,22 @@ Close loopholes before shipping:
 - **Pure informational content**: If the material is reference-only with no behavioral guardrails, consider a reference document instead of a skill.
 - **Already covered**: If an existing skill already addresses the failure mode, extend it rather than creating a new one.
 - **Final landing**: This skill produces the candidate only; shipper handles the final shipping — do not use this skill for the deployment step.
+
+## Protocol Shells
+
+All skill creation follows the protocol shell format:
+
+/protocol {
+  intent="Create or improve an AGNES skill",
+  input={ gap="<what's-missing>", domain="<subject-area>" },
+  process=[ /decompose{sections}, /reflect{quality}, /verify{completeness} ],
+  output={ result="<SKILL.md>", evidence="<test-with-skill>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /abstract | Extract skill patterns from existing examples |
+| /reflect | Self-critique skill against quality criteria |
+| /verify | Check skill completeness and clarity |

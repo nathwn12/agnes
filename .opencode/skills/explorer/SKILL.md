@@ -153,3 +153,22 @@ When 3+ independent areas need investigation:
 - Do not use when the codebase is already well-understood (proceed to planner)
 - Do not use when the task is purely implementation (use builder)
 - Do not modify any files
+
+## Protocol Shells
+
+All codebase exploration follows the protocol shell format:
+
+/protocol {
+  intent="Research codebase to answer specific questions",
+  input={ question="<what-to-find>", scope="<directory-or-pattern>" },
+  process=[ /decompose{queries}, /compare{findings}, /synthesize{answer} ],
+  output={ result="<findings>", evidence="<file-references>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /decompose | Break research question into sub-queries per area |
+| /abstract | Extract patterns from scattered code |
+| /synthesize | Combine file-level findings into an answer |

@@ -489,6 +489,113 @@ describe('isValidAgnesMessage', () => {
   });
 });
 
+import {
+  formatProtocolShell,
+  parseProtocolShell,
+  formatCognitiveToolInvocation,
+  findCognitiveToolCalls,
+  getCognitiveTool,
+} from './protocol.js';
+import type { ProtocolShell, ProtocolShellParseError } from './protocol.js';
+
+describe('formatProtocolShell', () => {
+  test('round-trips through parseProtocolShell', () => {
+    const shell: ProtocolShell = {
+      intent: 'Test task',
+      input: { task: 'test', scope: 'unit' },
+      process: [
+        { operation: 'decompose', params: { by: 'feature' } },
+        { operation: 'verify', params: { against: 'spec' } },
+      ],
+      output: { result: 'pass-fail' },
+    };
+
+    const formatted = formatProtocolShell(shell);
+    const parsed = parseProtocolShell(formatted);
+
+    if ('error' in parsed) throw new Error(`Parse error: ${parsed.error}`);
+    expect(parsed.intent).toBe(shell.intent);
+    expect(parsed.input).toEqual(shell.input);
+    expect(parsed.process).toEqual(shell.process);
+    expect(parsed.output).toEqual(shell.output);
+  });
+
+  test('minimal protocol shell', () => {
+    const shell: ProtocolShell = {
+      intent: 'Minimal task',
+      input: {},
+      process: [],
+      output: {},
+    };
+
+    const formatted = formatProtocolShell(shell);
+    const parsed = parseProtocolShell(formatted);
+
+    if ('error' in parsed) throw new Error(`Parse error: ${parsed.error}`);
+    expect(parsed.intent).toBe('Minimal task');
+    expect(parsed.input).toEqual({});
+    expect(parsed.process).toEqual([]);
+    expect(parsed.output).toEqual({});
+  });
+});
+
+describe('parseProtocolShell', () => {
+  test('returns error for missing intent', () => {
+    const result = parseProtocolShell('/protocol { input={x="1"}, process=[], output={} }');
+    expect('error' in result).toBe(true);
+    if ('error' in result) {
+      expect(result.error).toContain('intent');
+    }
+  });
+
+  test('returns error for non-protocol input', () => {
+    const result = parseProtocolShell('not a protocol shell');
+    expect('error' in result).toBe(true);
+  });
+});
+
+describe('formatCognitiveToolInvocation', () => {
+  test('formats decompose tool correctly', () => {
+    const result = formatCognitiveToolInvocation('decompose', { problem: 'fix bug', constraints: 'keep API' });
+    expect(result).toContain('/cognitive decompose');
+    expect(result).toContain('fix bug');
+    expect(result).toContain('keep API');
+  });
+
+  test('returns empty for unknown tool', () => {
+    const result = formatCognitiveToolInvocation('unknown' as any, {});
+    expect(result).toBe('');
+  });
+});
+
+describe('findCognitiveToolCalls', () => {
+  test('finds cognitive tool calls in text', () => {
+    const text = 'First do /cognitive decompose { problem="X", constraints="Y" } then /cognitive verify { output="Z", criteria="W" }';
+    const calls = findCognitiveToolCalls(text);
+    expect(calls.length).toBe(2);
+    expect(calls[0].toolId).toBe('decompose');
+    expect(calls[1].toolId).toBe('verify');
+  });
+
+  test('returns empty for text without calls', () => {
+    const calls = findCognitiveToolCalls('just regular text');
+    expect(calls.length).toBe(0);
+  });
+});
+
+describe('getCognitiveTool', () => {
+  test('returns tool by id', () => {
+    const tool = getCognitiveTool('decompose');
+    expect(tool).not.toBeNull();
+    expect(tool?.intent).toContain('independent');
+  });
+
+  test('returns null for unknown tool', () => {
+    const tool = getCognitiveTool('nonexistent');
+    expect(tool).toBeNull();
+  });
+});
+
 describe('generateMessageId', () => {
   test('returns a UUID string', () => {
     const id = generateMessageId();

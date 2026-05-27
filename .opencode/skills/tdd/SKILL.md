@@ -133,3 +133,22 @@ Each RED→GREEN→REFACTOR cycle produces:
 - Prototyping to discover design rather than verify it
 - Legacy code without test infrastructure that cannot support a test-first workflow
 - One-off scripts with no maintenance burden
+
+## Protocol Shells
+
+All TDD operations follow the protocol shell format:
+
+/protocol {
+  intent="Build feature test-first with regression coverage",
+  input={ feature="<description>", spec="<requirements>" },
+  process=[ /decompose{cases}, /implement{test}, /implement{code}, /verify{pass} ],
+  output={ result="<passing-suite>", coverage="<coverage-report>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /decompose | Break feature into test cases (happy path, edge, error) |
+| /verify | Check test coverage against requirements |
+| /reflect | Review test quality before implementation |

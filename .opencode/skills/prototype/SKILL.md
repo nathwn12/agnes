@@ -187,3 +187,22 @@ Throwaway code answering exactly one question. LOGIC branch produces a cleanly s
 - When generalisation is the goal (solve exactly ONE question, not all of them)
 - When prototype code should be promoted directly to production — rewrite with proper architecture first
 - When the question is already answered — don't prototype for curiosity's sake
+
+## Protocol Shells
+
+All prototype operations follow the protocol shell format:
+
+/protocol {
+  intent="Explore design space before committing to implementation",
+  input={ question="<what-to-validate>", constraints="<boundaries>" },
+  process=[ /decompose{variations}, /compare{tradeoffs}, /synthesize{recommendation} ],
+  output={ result="<prototype>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /decompose | Break the design into independent validation axes |
+| /compare | Evaluate alternative approaches against criteria |
+| /abstract | Extract general patterns from prototype results |

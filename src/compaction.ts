@@ -15,6 +15,7 @@ export interface CompactionPolicyState {
   lastAction: CompactionAction;
   lastReason: string | null;
   lastTriggeredAt: string | null;
+  attractors?: Attractor[];
 }
 
 export interface CompactionDecision {
@@ -116,6 +117,12 @@ export function evaluateCompactionPolicy(input: {
 
   const discretionaryFloor = input.discretionaryFloor ?? DEFAULT_DISCRETIONARY_COMPACTION_FLOOR;
 
+  let attractors: Attractor[] = previous?.state.attractors || [];
+  if (tokenCount > 1000) {
+    const fragments = input.promptText.split(/[.?!]\s+/).filter(f => f.trim().length > 20);
+    attractors = updateAttractors(attractors, fragments);
+  }
+
   if (tokenCount >= hardLimit) {
     action = 'alert';
     reason = `Approximate context is ${formatTokens(tokenCount)} tokens, at or above the ${formatTokens(hardLimit)} token hard limit.`;
@@ -134,13 +141,14 @@ export function evaluateCompactionPolicy(input: {
     lastAction: action,
     lastReason: action === 'none' ? null : reason,
     lastTriggeredAt: action === 'none' ? (previous?.state.lastTriggeredAt ?? null) : now,
+    attractors: attractors.length > 0 ? attractors : undefined,
   };
 
   return {
     action,
     reason,
     state,
-    advisory: buildCompactionAdvisory(action, reason),
+    advisory: buildCompactionAdvisory(action, reason, attractors.length > 0 ? attractors : undefined),
   };
 }
 
@@ -160,24 +168,30 @@ export function getCompactionState(sessionID: string): CompactionPolicyState | n
   return entry.state;
 }
 
-export function buildCompactionAdvisory(action: CompactionAction, reason: string): string {
+export function buildCompactionAdvisory(action: CompactionAction, reason: string, attractors?: Attractor[]): string {
   if (action === 'none') return '';
+
+  let residueLine = '';
+  if (attractors && attractors.length > 0) {
+    const top = attractors.slice(0, 3).map(a => a.label).join(', ');
+    residueLine = `\nActive concepts: ${top}`;
+  }
 
   if (action === 'compact') {
     return [
       '## Compaction Recommended',
-      reason,
+      reason + residueLine,
       'Compact now and preserve the active plan, recent decisions, and unresolved blockers.',
     ].join('\n');
   }
 
   if (action === 'alert') {
-    return ['## Compaction Required', reason, 'Use `/compact` or `/summarize` now before adding more work.'].join('\n');
+    return ['## Compaction Required', reason + residueLine, 'Use `/compact` or `/summarize` now before adding more work.'].join('\n');
   }
 
   return [
     '## Compaction Advisory',
-    reason,
+    reason + residueLine,
     'You are approaching the compaction threshold. Use `/compact` or `/summarize` soon.',
   ].join('\n');
 }
@@ -201,6 +215,10 @@ export function buildCompactionContext(state: CompactionPolicyState): string {
 }
 
 export function buildCompactionBlock(state: CompactionPolicyState): string {
+  const top = state.attractors?.slice(0, 5).map(a => ({
+    label: a.label,
+    strength: Number(a.strength.toFixed(2)),
+  }));
   return `<structured type="compaction">\n${yamlStringify({
     type: 'compaction',
     token_count: state.tokenCount,
@@ -209,5 +227,109 @@ export function buildCompactionBlock(state: CompactionPolicyState): string {
     last_action: state.lastAction,
     last_reason: state.lastReason,
     last_triggered_at: state.lastTriggeredAt,
+    ...(top && top.length > 0 ? { attractors: top } : {}),
   })}</structured>`;
+}
+
+// ── Semantic Attractors & Symbolic Residue ──────────────────────────────────
+
+export interface Attractor {
+  id: string;
+  label: string;
+  strength: number;
+  lastReinforced: number;
+  evidence: string[];
+}
+
+export interface SymbolicResidue {
+  attractors: Attractor[];
+  decisions: string[];
+  blockers: string[];
+  activeContext: string;
+}
+
+export function buildResidueSummary(residue: SymbolicResidue): string {
+  const parts: string[] = [];
+
+  if (residue.attractors.length > 0) {
+    const top = residue.attractors
+      .sort((a, b) => b.strength - a.strength)
+      .slice(0, 5)
+      .map(a => `${a.label} (strength:${a.strength.toFixed(2)})`);
+    parts.push(`Active attractors: ${top.join(', ')}`);
+  }
+
+  if (residue.decisions.length > 0) {
+    parts.push(`Decisions: ${residue.decisions.join('; ')}`);
+  }
+
+  if (residue.blockers.length > 0) {
+    parts.push(`Blockers: ${residue.blockers.join('; ')}`);
+  }
+
+  if (residue.activeContext) {
+    parts.push(`Context: ${residue.activeContext}`);
+  }
+
+  return parts.join(' | ');
+}
+
+export function updateAttractors(
+  existing: Attractor[],
+  newFragments: string[],
+  decayFactor: number = 0.9,
+): Attractor[] {
+  const now = Date.now();
+  const merged = new Map<string, Attractor>();
+
+  for (const a of existing) {
+    merged.set(a.id, {
+      ...a,
+      strength: a.strength * decayFactor,
+    });
+  }
+
+  const conceptRe = /\b([A-Z][a-z]+(?:[A-Z][a-z]+)+)\b/g;
+  for (const frag of newFragments) {
+    const concepts = frag.match(conceptRe) || [];
+    for (const concept of concepts) {
+      const existingAttractor = merged.get(concept);
+      if (existingAttractor) {
+        existingAttractor.strength = Math.min(1, existingAttractor.strength + 0.2);
+        existingAttractor.lastReinforced = now;
+        existingAttractor.evidence.push(frag.slice(0, 100));
+      } else {
+        merged.set(concept, {
+          id: concept,
+          label: concept,
+          strength: 0.5,
+          lastReinforced: now,
+          evidence: [frag.slice(0, 100)],
+        });
+      }
+    }
+  }
+
+  const pruned = Array.from(merged.values())
+    .filter(a => a.strength > 0.1)
+    .sort((a, b) => b.strength - a.strength);
+
+  return pruned;
+}
+
+export function extractResidue(
+  messages: MessageLike[],
+  existingAttractors: Attractor[],
+  knownDecisions?: string[],
+  knownBlockers?: string[],
+): SymbolicResidue {
+  const text = collectMessageText(messages);
+  const fragments = text.split(/[.?!]\s+/).filter(f => f.trim().length > 20);
+
+  return {
+    attractors: updateAttractors(existingAttractors, fragments),
+    decisions: knownDecisions || [],
+    blockers: knownBlockers || [],
+    activeContext: text.split('\n').slice(-5).join(' ').slice(0, 300),
+  };
 }

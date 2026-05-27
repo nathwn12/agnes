@@ -120,3 +120,22 @@ Write to `.agnes/architecture/YYYY-MM-DD-<topic>-deepening.md`
 - The codebase is scheduled for replacement or deprecation
 - Only cosmetic, formatting, or trivial changes are needed without structural impact
 - No access to the project's domain glossary or decision records to ground the work
+
+## Protocol Shells
+
+All architectural analysis follows the protocol shell format:
+
+/protocol {
+  intent="Analyze codebase for structural improvements",
+  input={ codebase="<target>", concern="<coupling|testability|cohesion>" },
+  process=[ /abstract{patterns}, /compare{alternatives}, /synthesize{recommendation} ],
+  output={ result="<architecture-report>", files="<refactoring-candidates>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /abstract | Extract coupling patterns from multiple modules |
+| /compare | Evaluate refactoring alternatives against criteria |
+| /synthesize | Combine observations into actionable recommendations |

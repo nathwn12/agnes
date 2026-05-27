@@ -226,3 +226,22 @@ After every 5 completed tasks, the agent should:
 - For one-off tasks with no expectation of repetition
 - When the pattern is already covered by an existing AGNES skill
 - For secrets, credentials, or project-specific sensitive information
+
+## Protocol Shells
+
+All instinct operations follow the protocol shell format:
+
+/protocol {
+  intent="Capture and apply cross-session learning patterns",
+  input={ pattern="<observed-behavior>", context="<project-state>" },
+  process=[ /abstract{pattern}, /verify{applicability}, /synthesize{instinct} ],
+  output={ result="<learned-pattern>", confidence="<score>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /abstract | Extract reusable patterns from repeated behavior |
+| /verify | Check pattern applicability to current context |
+| /synthesize | Combine observations into a ranked instinct list |

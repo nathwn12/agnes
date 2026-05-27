@@ -155,3 +155,22 @@ When an enhancement is marked **wontfix**, archive the decision so future reques
 - Issues already in ready-for-agent with a valid agent brief
 - Issues requiring immediate human judgement (design decisions, product calls, security reviews) — route directly to ready-for-human
 - Issues confirmed outside the project's scope
+
+## Protocol Shells
+
+All triage operations follow the protocol shell format:
+
+/protocol {
+  intent="Route and prioritize incoming issue or request",
+  input={ issue="<description>", context="<project-state>" },
+  process=[ /decompose{type}, /compare{priority}, /synthesize{routing} ],
+  output={ result="<triage-decision>", label="<routing-destination>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /decompose | Break issue into bug/feature/question components |
+| /compare | Evaluate priority against impact and urgency |
+| /synthesize | Combine analysis into a routing recommendation |

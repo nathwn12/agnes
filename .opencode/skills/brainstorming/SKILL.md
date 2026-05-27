@@ -177,3 +177,22 @@ Once the design is approved, route to planner for implementation planning. Do NO
 - When the only ambiguity is terminology or scope — that's clarifier's job
 - During BUILD or SHIP phase — this skill is for THINK phase only
 - When the user has already decided on approach and just needs execution
+
+## Protocol Shells
+
+All brainstorming follows the protocol shell format:
+
+/protocol {
+  intent="Explore design space and generate ideas before committing",
+  input={ prompt="<creative-brief>", domain="<subject-area>" },
+  process=[ /decompose{dimensions}, /abstract{patterns}, /compare{variations} ],
+  output={ result="<explored-options>", recommendation="<direction>" }
+}
+
+## Cognitive Tools
+
+| Tool | When |
+|------|------|
+| /decompose | Break the creative brief into independent exploration axes |
+| /abstract | Extract patterns from reference examples |
+| /compare | Evaluate creative directions against criteria |

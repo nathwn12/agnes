@@ -159,3 +159,56 @@ Overhead for zero tools needed.
 "4."
 Pre-flight check: "Can I answer this with no tools?" Yes.
 ```
+
+---
+
+### 11. Protocol Shells — Declaring agent intent
+
+❌ **Bad:**
+```
+I'm going to look at the codebase and find auth issues.
+```
+(No structure. No I/O declaration. No audit trail.)
+
+✅ **Correct:**
+```
+/protocol {
+  intent="Audit auth middleware for token handling bugs",
+  input={ scope="src/auth/", concerns="token expiry, role checks, error handling" },
+  process=[
+    /explore{target="src/auth/*.ts"},
+    /verify{against="auth-spec"},
+    /synthesize{findings}
+  ],
+  output={ result="audit-report", blockers="critical-issues" }
+}
+```
+Every agent operation declares intent upfront. Process steps are named, parameterized, and auditable.
+
+---
+
+### 12. Cognitive Tools — Structured reasoning
+
+❌ **Bad:**
+```
+Let me think about this bug... Maybe it's a race condition? Or maybe it's a null pointer?
+```
+(Unstructured speculation. No method. No traceable process.)
+
+✅ **Correct:**
+```
+/cognitive trace {
+  intent="Find root cause of intermittent 503",
+  process_description="Request→Auth→RateLimit→Handler→Response",
+  failure_observation="503 on ~2% requests, no consistent pattern"
+}
+/cognitive decompose {
+  problem="Intermittent 503 errors in production",
+  constraints="No consistent reproduction, must not increase latency"
+}
+/cognitive verify {
+  output="Root cause is rate limiter counter race",
+  criteria="Explains all symptoms, has testable hypothesis, has fix path"
+}
+```
+Cognitive tools enforce structured thinking. Each invocation has explicit inputs, a reasoning template, and a defined output. No speculation without method.
