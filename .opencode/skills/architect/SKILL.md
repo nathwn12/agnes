@@ -7,27 +7,25 @@ use_when: "Codebase feels hard to change, modules are tightly coupled, need to f
 version: 1.1
 ---
 
-## Use When
+# Architect
 
-Codebase feels hard to change, modules are tightly coupled, need to find refactoring opportunities that improve testability and AI-navigability.
+**Tradeoff:** Architectural deepening cuts change-cost long-term but costs velocity now — invest only in modules with high churn or high caller-count.
 
 ## Core Concept
 
-Surface architectural friction and propose **deepening opportunities** — refactors that turn shallow modules into deep ones, aiming for testability and AI-navigability. A module that passes the deletion test should be kept; one that fails should be deepened or merged.
-
-Do not introduce a port/interface until at least two implementations are justified. One adapter = hypothetical seam. Two adapters = real seam. Callers and tests cross the same seam. Tests should use the same interface as production callers, not bypass it.
+Surface architectural friction and propose **deepening opportunities** — refactors that turn shallow modules into deep ones, aiming for testability and AI-navigability.
 
 ### The Deletion Test
 
-Imagine deleting the module entirely. If complexity vanishes → it was a **pass-through** (shallow, not earning its keep). If complexity reappears spread across N callers → it was **deep**, earning its keep. This filters out noise before any design work begins.
+Delete the module. Complexity vanishes? **Pass-through** (shallow, not earning its keep). Complexity reappears spread across N callers? **Deep**, earning its keep.
 
 ### Seam Rule
 
-One adapter = hypothetical seam. Two adapters = real seam. Do not introduce a port/interface until at least two implementations are justified. A single-adapter seam is just indirection.
+One adapter = hypothetical seam. Two adapters = real seam. No port/interface until at least two implementations justified.
 
 ### The Interface Is the Test Surface
 
-Callers and tests cross the same seam. Tests should use the same interface as production callers, not bypass it. If you want to test past the interface, the module is probably the wrong shape. Old unit tests on shallow modules become waste once tests at the deepened module's interface exist — delete them.
+Callers and tests cross the same seam. Tests use the same interface as production callers. Old unit tests on shallow modules become waste once tests at deepened module's interface exist — delete them.
 
 ## Precise Vocabulary
 
@@ -44,98 +42,125 @@ Use these 8 terms. Avoid: component, service, API, boundary (imprecise).
 | Leverage | How many callers benefit from a single change; what callers get from depth |
 | Locality | Changes, bugs, and knowledge concentrate in one place rather than spreading across callers |
 
-Depth is a property of the interface, not the implementation. A deep module can have internal seams (private to its implementation, used by its own tests) as well as the external seam at its interface.
+Depth is a property of the interface, not the implementation.
 
 ## Context Requirements
 
-- Access to the project's domain glossary (`CONTEXT.md`) for precise shared vocabulary
-- Existing Architecture Decision Records (`.agnes/adr/`) to understand prior decisions and avoid redundant design loops
+- Project domain glossary (`CONTEXT.md`) for precise shared vocabulary
+- Existing Architecture Decision Records (`.agnes/adr/`) to avoid redundant design loops
 - Full codebase read access for friction-point exploration and deletion test application
 
 ## Workflow
 
 ### 1. Explore
 
-Read `CONTEXT.md` glossary + ADRs first. Use subagent to walk codebase noting friction points. Apply deletion test to candidate modules. Explore organically — don't follow rigid heuristics. Note where understanding one concept requires bouncing between many small modules, where modules are shallow (interface nearly as complex as implementation), where pure functions were extracted just for testability but real bugs hide in how they're called, and where tightly-coupled modules leak across their seams.
+Read `CONTEXT.md` glossary + ADRs. Use subagent to walk codebase noting friction points. Apply deletion test to candidate modules. Note where understanding requires bouncing between many small modules, where modules are shallow, where pure functions extracted just for testability but real bugs hide in how they're called, where tightly-coupled modules leak across seams. → verify: shallow/deep classification clear per candidate
+
+**Output:** Candidate module list with deletion-test verdicts.
 
 ### 2. Present Candidates
 
-Numbered list with: files, problem, solution in plain English, benefits in terms of locality and leverage. Use `CONTEXT.md` vocabulary. Do NOT propose interfaces yet. Each candidate includes recommendation strength: Strong, Worth exploring, or Speculative.
+Numbered list with: files, problem, solution in plain English, benefits in terms of locality and leverage. Use `CONTEXT.md` vocabulary. Do NOT propose interfaces yet. Each candidate includes recommendation strength: Strong, Worth exploring, or Speculative. → verify: each candidate has strength label
+
+**Output:** Prioritized candidate list ready for grilling.
 
 ### 3. Grilling Loop
 
-Walk design tree with user. Side effects: update `CONTEXT.md`, offer ADRs when user rejects a candidate with load-bearing reason. Only offer ADRs when the reason would actually prevent re-suggesting the same thing — skip ephemeral reasons ("not worth it right now") and self-evident ones.
+Walk design tree with user. Side effects: update `CONTEXT.md`, offer ADRs when user rejects a candidate with load-bearing reason. Skip ephemeral reasons ("not worth it right now") and self-evident ones. Explore alternative interfaces via the Interface Design pattern. Name a deepened module after a concept not in `CONTEXT.md`? Add the term there. Sharpening a fuzzy term? Update inline. → verify: vocabulary decisions captured in `CONTEXT.md`
 
-Explore alternative interfaces via the Interface Design pattern below. Naming a deepened module after a concept not in `CONTEXT.md`? Add the term to `CONTEXT.md` right there. Sharpening a fuzzy term during conversation? Update `CONTEXT.md` inline.
+**Output:** Refined candidates + updated glossary + ADRs for load-bearing rejections.
 
 ### 4. Interface Design: Design It Twice
 
-1. Frame the problem space — write a user-facing explanation of constraints, dependencies, and dependency category (in-process, local-substitutable, remote-but-owned, true-external)
-2. Spawn 3+ parallel sub-agents with different design constraints:
-   - **Agent 1:** Minimise interface (smallest possible surface area, 1-3 entry points max)
-   - **Agent 2:** Maximise flexibility (support many use cases and extension)
-   - **Agent 3:** Optimise for most common caller (make the default case trivial)
+1. Frame problem space — user-facing explanation of constraints, dependencies, and dependency category (in-process, local-substitutable, remote-but-owned, true-external)
+2. Spawn 3+ parallel subagents with different design constraints:
+   - **Agent 1:** Minimise interface (1-3 entry points max)
+   - **Agent 2:** Maximise flexibility
+   - **Agent 3:** Optimise for most common caller
    - **Agent 4:** Ports & Adapters (if cross-seam dependency)
-3. Each agent outputs: interface (types, methods, params plus invariants), usage example, what the implementation hides, dependency strategy, trade-offs
-4. Present designs sequentially, then compare by depth, locality, and seam placement
-5. Give your own recommendation — be opinionated, the user wants a strong read not a menu
+3. Each outputs: interface (types, methods, params + invariants), usage example, what implementation hides, dependency strategy, trade-offs
+4. Present sequentially, compare by depth, locality, seam placement → verify: each design has documented tradeoffs
+5. Give opinionated recommendation — strong read, not a menu
+
+**Output:** Interface design with comparison and recommendation.
 
 ### 5. Deepening Execution
 
 Classify each candidate's dependencies to determine testing strategy:
-- **In-process** (pure computation, no I/O): Merge the modules, test through the new interface. No adapter needed.
-- **Local-substitutable** (PGLite, in-memory FS): Deepen with the stand-in. Seam stays internal.
-- **Remote but owned** (microservices, internal APIs): Define a port at the seam. Production gets an HTTP/gRPC adapter; tests use in-memory.
-- **True external** (Stripe, Twilio): Take as injected port; tests provide mock adapter.
+- **In-process** (pure computation, no I/O): Merge modules, test through new interface. No adapter.
+- **Local-substitutable** (PGLite, in-memory FS): Deepen with stand-in. Seam stays internal.
+- **Remote but owned** (microservices, internal APIs): Define port at seam. Production gets HTTP/gRPC adapter; tests use in-memory.
+- **True external** (Stripe, Twilio): Inject port; tests provide mock adapter.
 
-Old unit tests on shallow modules become waste once tests at the deepened module's interface exist — delete them. Write new tests at the deepened module's interface. Tests must survive internal refactors — they describe behaviour, not implementation.
+Delete old shallow-module tests. Write new tests at deepened module's interface. → verify: new tests pass, old deleted tests removed from codebase
 
-## Tool Requirements
+**Output:** Deepened modules + updated tests + any new ADRs.
 
-- File read access for codebase exploration and CONTEXT.md / ADR review
-- grep for pattern-based searching across the codebase
-- Subagent (task) spawning for parallel codebase exploration and interface design
-- write for creating deepening documents and ADR proposals
-- edit for updating CONTEXT.md in response to design decisions
-- question for interactive grilling and design tree navigation
-- skill loading for supplementary skills (e.g., planner, documenter)
+```
+[codebase] → [explore] → [candidates] → [grill] → [design] → [execute] → [deeper modules]
+                                                  ↑        │
+                                                  └─ reject┘
+```
+
+## Tools
+
+| Tool | Phase(s) | Input | Output |
+|------|----------|-------|--------|
+| read (source files) | Explore | File paths | Friction points |
+| grep | Explore | Pattern | Matching code locations |
+| subagent (task) | Explore, Design | Task scope | Parallel analyses / interface designs |
+| write | Execute | Deepening document content | `.agnes/architecture/YYYY-MM-DD-<topic>-deepening.md` |
+| edit | Grill, Execute | CONTEXT.md / ADR changes | Updated glossary / new ADR |
+| question | Grill | Design questions | User decisions |
+| skill (planner, documenter) | Execute | Skill name | Supplementary domain guidance |
+
+## Examples
+
+| Scenario | Phase(s) | Approach |
+|----------|----------|----------|
+| Payment processing spans 6 files, 3 callers duplicate retry logic | Explore → Candidates | Apply deletion test, identify shallow orchestrator module, propose merge |
+| Auth module has mock interface but only one implementation | Design | Apply Seam Rule — remove mock until second adapter emerges |
+| Reporting module requires reading 5 tiny files to trace one feature | Explore → Execute | Identify cohesion gap, merge into deeper ReportEngine, test through new interface |
+| Team debates cache abstraction vs direct Redis calls | Design | Spawn 4 design agents: minimal surface, flexible, caller-optimised, ports-and-adapters. Compare by depth and locality |
 
 ## Output
 
-Write to `.agnes/architecture/YYYY-MM-DD-<topic>-deepening.md`
+`.agnes/architecture/YYYY-MM-DD-<topic>-deepening.md`
 
 ## Quality Criteria
 
-- Deepening candidates are evaluated via the Deletion Test before being proposed
-- Interfaces follow the Seam Rule: no ports introduced until two implementations are justified
-- Test surface aligns with the public interface, not with implementation details
-- Precise Vocabulary terms used consistently; vague terms (component, service, API, boundary) avoided
-- ADRs are created for any load-bearing rejection of a candidate or design decision
-- `CONTEXT.md` is updated to reflect decisions and vocabulary refinements from the grilling loop
-- Dependency categories are classified before deepening execution begins
-
-## When NOT to Use
-
-- The team is not ready to invest in architectural refactoring or interface design work
-- The codebase is scheduled for replacement or deprecation
-- Only cosmetic, formatting, or trivial changes are needed without structural impact
-- No access to the project's domain glossary or decision records to ground the work
+- [ ] Deepening candidates evaluated via Deletion Test before being proposed → verify: shallow/deep verdict present per candidate
+- [ ] Interfaces follow Seam Rule: no ports until two implementations justified → verify: each proposed interface has ≤1 or ≥2 adapters documented
+- [ ] Test surface aligns with public interface, not implementation details → verify: no tests import private/package-internals
+- [ ] Precise Vocabulary used consistently; vague terms (component, service, API, boundary) absent → verify: grep for banned terms in deliverables
+- [ ] ADRs created for load-bearing candidate rejections or design decisions → verify: rejection rationale captured in standalone ADR
+- [ ] `CONTEXT.md` updated to reflect decisions and vocabulary refinements from grilling loop → verify: diff shows glossary changes inline
+- [ ] Dependency categories classified before deepening execution begins → verify: every candidate has dependency category label
 
 ## Protocol Shells
 
 All architectural analysis follows the protocol shell format:
 
+```
 /protocol {
   intent="Analyze codebase for structural improvements",
   input={ codebase="<target>", concern="<coupling|testability|cohesion>" },
   process=[ /abstract{patterns}, /compare{alternatives}, /synthesize{recommendation} ],
   output={ result="<architecture-report>", files="<refactoring-candidates>" }
 }
+```
 
 ## Cognitive Tools
 
-| Tool | When |
-|------|------|
-| /abstract | Extract coupling patterns from multiple modules |
-| /compare | Evaluate refactoring alternatives against criteria |
-| /synthesize | Combine observations into actionable recommendations |
+| Tool | When | Use |
+|------|------|-----|
+| /abstract | Explore | Extract coupling patterns from multiple modules |
+| /compare | Design | Evaluate refactoring alternatives against depth, locality, seam placement |
+| /synthesize | Execute | Combine observations into actionable recommendations |
+
+## When NOT to Use
+
+- Team not ready to invest in architectural refactoring or interface design work
+- Codebase scheduled for replacement or deprecation
+- Only cosmetic, formatting, or trivial changes without structural impact
+- No access to project's domain glossary or decision records

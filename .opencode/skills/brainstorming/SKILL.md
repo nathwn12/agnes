@@ -7,192 +7,192 @@ use_when: "Ambiguous creative direction, no clear implementation path, need to e
 version: 1.0.0
 ---
 
-## Use When
+# brainstorming
 
-Ambiguous creative direction, no clear implementation path, need to explore design space before committing, before any feature work that isn't purely mechanical.
+**Tradeoff:** Thorough exploration costs time upfront but prevents expensive wrong-direction rework.
 
 ## Core Concept
 
-Collaborative exploration that turns fuzzy ideas into concrete designs through structured forcing questions and iterative proposal cycles. Brainstorming **generates** a creative/design space — it does not resolve ambiguity in an existing description (that is the clarifier's job).
+Collaborative exploration that turns fuzzy ideas into concrete designs through forcing questions and iterative proposal cycles. Brainstorming **generates** a creative/design space — it does not resolve ambiguity in existing descriptions (that is the clarifier's job).
 
-**Brainstorming** = explore creative/design space when no clear path exists. Propose approaches, generate alternatives, reframe the problem. The output is a design ready for planning.
+**Brainstorming** = explore creative/design space when no clear path exists. Propose approaches, generate alternatives, reframe problems. Output: a design ready for planning.
 
-**Clarifier** = resolve existing ambiguity in a given description. Socratic questioning, terminology sharpening, glossary-first challenges. The output is a clarified task description.
+**Clarifier** = resolve ambiguity in given descriptions. Output: a clarified task description.
 
 Brainstorming asks "what should we build?" Clarifier asks "what exactly did you mean?"
 
-A **hard gate** enforces that no implementation begins until the user has approved the written design.
+Hard gate: no implementation begins until user has approved the written design.
 
 ## Precise Vocabulary
 
 | Term | Definition |
 |------|------------|
-| Forcing Question | A question designed to reframe assumptions and reveal hidden constraints before solution generation begins |
+| Forcing Question | A question to reframe assumptions and reveal hidden constraints before solution generation |
 | Design Space | The set of possible approaches, architectures, and trade-offs for a given problem |
 | Premise | An assumption underpinning the current approach that must be validated |
-| Narrowest Wedge | The smallest version of the idea that delivers real value — the minimal viable expression |
-| Wedge First | Ship the narrowest useful version; expand from strength rather than pre-building infrastructure |
+| Narrowest Wedge | The smallest version of the idea that delivers real value |
+| Wedge First | Ship the narrowest useful version; expand from strength |
 
-## Forcing Questions
+## Context Requirements
 
-Ask these **one at a time**. Push until the answer is specific, concrete, and grounded in evidence rather than hypothesis. Comfort means you haven't pushed deep enough.
-
-### Q1: Problem Reality
-
-**Ask:** "What's the strongest evidence that this is actually a problem someone has — not hypothetical, but a real pain someone experiences today?"
-
-**Push until you hear:** Specific behavior. Someone actively working around it. Time or money currently being spent because of it.
-
-### Q2: Status Quo
-
-**Ask:** "What are people doing right now to solve this — even badly? What does that workaround cost them?"
-
-**Push until you hear:** A specific workflow. Hours wasted. Tools duct-taped together. A real cost to maintaining the status quo.
-
-### Q3: Target Clarity
-
-**Ask:** "Who needs this most? What's their context, their constraints, their day-to-day? What gets them promoted or fired?"
-
-**Push until you hear:** A specific human, not a category. A role with real consequences tied to the problem.
-
-### Q4: Narrowest Wedge
-
-**Ask:** "What's the smallest version of this that would deliver real value? What could ship this week?"
-
-**Push until you hear:** One feature. One workflow. Something scoped in days, not months.
-
-### Q5: Surprise
-
-**Ask:** "What existing solutions have you watched people use? What surprised you about how they actually behave?"
-
-**Push until you hear:** A specific contradiction between expectation and reality. Something the data didn't predict.
-
-### Q6: Future-Fit
-
-**Ask:** "If the world changes in 3 years — and it will — does this become more valuable or less?"
-
-**Push until you hear:** A specific thesis about how the landscape shifts and why this idea rides that wave, not just "AI keeps getting better."
+- Read/grep/glob access to project files for context gathering → verify: patterns and constraints identified
+- Write access to `.agnes/specs/` for design documents → verify: file written non-empty
+- Task routing to planner skill for implementation handoff
 
 ## Workflow
 
 ### 1. Explore Context
 
-Before proposing anything, ground yourself:
-- Check project files, docs, recent commits
-- Understand existing patterns and conventions
-- Identify related components, utilities, or prior art
+Ground yourself before proposing anything:
+- Check project files, docs, recent commits → verify: existing patterns and prior art documented
+- Identify related components, utilities, or prior art → verify: constraints from current architecture noted
+
+**Output:** Context inventory — what exists, what patterns apply, what constraints bind the design.
 
 ### 2. Run Forcing Questions
 
-Assess scope first: if the request spans multiple independent subsystems, flag this immediately. Don't refine details of a project that needs decomposition first.
+Assess scope first. If request spans multiple independent subsystems, flag for decomposition — don't refine a project that needs breaking up first.
 
-For appropriately-scoped projects, ask forcing questions **one at a time**. Use the Q1-Q6 set above. Smart-skip any question whose answer is already clear from context.
+Ask forcing questions **one at a time** from the set below. Smart-skip any question whose answer is already clear from context. → verify: each answered question has specific, concrete evidence, no hypotheticals accepted.
+
+**Q1 — Problem Reality:** "What's the strongest evidence this is a real problem someone has — not hypothetical?" Push until: specific behavior, active workaround, time/money currently spent.
+
+**Q2 — Status Quo:** "What are people doing right now to solve this? What does that workaround cost them?" Push until: specific workflow, hours wasted, tools duct-taped together, real cost of status quo.
+
+**Q3 — Target Clarity:** "Who needs this most? What's their context, constraints, day-to-day?" Push until: a specific human with real consequences, not a category.
+
+**Q4 — Narrowest Wedge:** "What's the smallest version that would deliver real value? What could ship this week?" Push until: one feature, one workflow, scoped in days not months.
+
+**Q5 — Surprise:** "What existing solutions have you watched people use? What surprised you about their actual behavior?" Push until: specific contradiction between expectation and reality.
+
+**Q6 — Future-Fit:** "If the world changes in 3 years, does this become more valuable or less?" Push until: specific thesis about landscape shift, not "AI keeps getting better."
+
+**Output:** Answered forcing questions with specific evidence — all vague/hypothetical responses flagged.
 
 ### 3. Challenge Premises
 
-Before proposing solutions, crystallize the assumptions:
-- Is this the right problem to solve?
+Before proposing solutions, crystallize assumptions. For each premise, state it clearly and get user confirmation:
+- Is this the right problem to solve? → verify: premise stated and user confirmed
 - What happens if we do nothing?
 - What existing code partially solves this?
-- For each premise, state it clearly and get user confirmation
+
+**Output:** Validated premise list — confirmed assumptions the design rests on.
 
 ### 4. Propose 2-3 Approaches
 
-For each approach include:
-- **Summary**: One sentence describing the approach
-- **Effort**: Rough sizing (hours/days)
-- **Risk**: Low / Med / High
-- **Pros**: 2-3 specific advantages
-- **Cons**: 2-3 specific trade-offs
+Each approach includes Summary, Effort (hours/days), Risk (Low/Med/High), Pros (2-3), Cons (2-3).
 
-One approach must be the **minimal viable** (fewest files, smallest diff). Another must be the **ideal architecture** (best long-term trajectory). The third can be a **creative/lateral** path.
+One approach must be **minimal viable** (fewest files, smallest diff). Another must be **ideal architecture** (best long-term trajectory). Third can be **creative/lateral** path. → verify: approaches span viable/ideal/creative — no coverage gaps.
 
-Recommend one approach with clear rationale. Let the user choose.
+Recommend one approach with rationale. Let user choose. → verify: user has selected an approach.
+
+**Output:** 2-3 structured proposals with recommendation.
 
 ### 5. Present Design
 
-Once the approach is chosen, present the design in sections scaled to their complexity:
-- Architecture, components, data flow
+Once approach chosen, present design in sections scaled to complexity:
+- Architecture, components, data flow → verify: each section gets user approval before next
 - Key interfaces and boundaries
 - Error handling and edge cases
 - Testing strategy
 
-Ask after each section whether it matches expectations. Go back and revise if needed.
+**Output:** Section-by-section approved design.
 
 ### 6. Write Design Document
 
-Save the approved design to a durable location:
-- Write to `.agnes/specs/YYYY-MM-DD-<topic>-design.md` or the project's established spec location
-- The design doc is the handoff artifact — it feeds into planner for implementation planning
+Save approved design: `.agnes/specs/YYYY-MM-DD-<topic>-design.md` or project's established spec location. → verify: file exists, non-empty, follows project conventions
+
+Design doc is the handoff artifact — feeds into planner for implementation planning.
+
+**Output:** Written design document.
 
 ### 7. Spec Self-Review
 
-Before declaring complete:
-1. **Placeholder scan**: No "TBD", "TODO", incomplete sections, or vague requirements
-2. **Internal consistency**: No contradictions between sections
-3. **Scope check**: Focused enough for a single implementation plan
-4. **Ambiguity check**: All decisions explicit — no "figure out later" clauses
+1. **Placeholder scan:** No "TBD", "TODO", incomplete sections, vague requirements → verify: zero placeholders
+2. **Internal consistency:** No contradictions between sections → verify: cross-reference all claims
+3. **Scope check:** Fits a single implementation plan → verify: fits one planner cycle
+4. **Ambiguity check:** All decisions explicit — no "figure out later" clauses → verify: every open question resolved
+
+**Output:** Self-reviewed spec passing all four checks.
 
 ### 8. User Reviews Spec
 
-Present the spec to the user for approval. If changes requested, revise and re-run self-review. Only proceed once approved.
+Present spec for approval. Changes requested → revise and re-run self-review. → verify: user has explicitly approved the written spec
+
+**Output:** User-approved design.
 
 ### 9. Handoff to Planner
 
-Once the design is approved, route to planner for implementation planning. Do NOT skip straight to implementation.
+Route approved design to planner for implementation planning. Do NOT skip to implementation.
 
-## Key Principles
+**Output:** Design routed to planner subagent.
 
-- **One question at a time.** Never overwhelm with multiple questions in one message.
-- **Force specificity.** Vague answers get pushed — "users" is not an answer, "Sarah at Acme Corp" is.
-- **Propose, don't prescribe.** Always present 2-3 approaches with trade-offs before settling.
-- **Incremental validation.** Get approval on each design section before moving to the next.
-- **Wedge first.** The smallest version that delivers real value is more important than the full vision.
-- **YAGNI ruthlessly.** Cut unnecessary features from all designs. Everything not explicitly needed is scope creep.
-- **Design for isolation.** Each unit should have one clear purpose, well-defined interfaces, and be independently testable.
+## Flow Diagram
 
-## Tool Requirements
+```
+[ambiguous request] → [explore context] → [run forcing questions] → [challenge premises]
+                                                                          │
+                                                                          ▼
+[handoff to planner] ← [user approves] ← [self-review] ← [write design] ← [propose approaches]
+                           ▲                                      │
+                           └────── [changes requested] ←──────────┘
+```
 
-- **read / grep / glob** — explore project context, existing patterns, prior art
-- **write** — save design documents to project specs directory
-- **task** — route approved design to planner for implementation planning
+## Tools
+
+| Tool | Phase(s) | Input | Output |
+|------|----------|-------|--------|
+| read / grep / glob | Explore Context | Project files, docs, commits | Context inventory |
+| write | Write Design Document | Approved design decisions | `.agnes/specs/<date>-<topic>-design.md` |
+| task (subagent) | Handoff to Planner | Approved design doc | Planner task routed |
+
+## Examples
+
+| Scenario | Approach | Key Forcing Question |
+|----------|----------|---------------------|
+| New feature | Minimal wedge → ideal architecture | Q4: Narrowest Wedge |
+| Redesign component | Challenge premises → compare approaches | Q2: Status Quo, Q5: Surprise |
+| Architecture decision | Propose 3 with trade-off matrix | Q1: Problem Reality, Q3: Target Clarity |
+| Exploratory project | Full Q1-Q6 cycle → design doc | Q6: Future-Fit |
 
 ## Output
 
 - Written design document at `.agnes/specs/YYYY-MM-DD-<topic>-design.md`
 - User-approved design with clear approach selection
-- Handoff to planner skill for implementation planning
+- Handoff to planner for implementation planning
 
 ## Quality Criteria
 
-- **Hard Gate**: No implementation until design is approved. The gate passes only when: design passes self-review checklist, user has explicitly approved the written spec, all premises are validated.
-- **Scope check**: Each spec must fit a single implementation plan. If it doesn't, decompose into sub-projects first.
-- **Forcing question depth**: Every Q1-Q6 answered with specificity — no vague or hypothetical responses accepted without flagging.
-- **Approach diversity**: Minimum 2 approaches, ideally 3, covering minimal viable + ideal architecture + creative/lateral.
-
-## When NOT to Use
-
-- When the task is already precisely specified with no creative or design decisions needed (use direct implementation instead)
-- When the task is purely operational ("run this command", "fix this typo")
-- When the only ambiguity is terminology or scope — that's clarifier's job
-- During BUILD or SHIP phase — this skill is for THINK phase only
-- When the user has already decided on approach and just needs execution
+- **[Hard Gate]** → verify: No implementation until design is approved. Passes only when: design passes self-review, user explicitly approved written spec, all premises validated.
+- **[Scope Check]** → verify: Each spec fits a single implementation plan. If not, decompose into sub-projects first.
+- **[Forcing Question Depth]** → verify: Every Q1-Q6 answered with specificity — no vague or hypothetical responses accepted without flagging.
+- **[Approach Diversity]** → verify: Minimum 2 approaches, ideally 3, covering minimal viable + ideal architecture + creative/lateral.
 
 ## Protocol Shells
 
 All brainstorming follows the protocol shell format:
 
+```
 /protocol {
   intent="Explore design space and generate ideas before committing",
   input={ prompt="<creative-brief>", domain="<subject-area>" },
   process=[ /decompose{dimensions}, /abstract{patterns}, /compare{variations} ],
   output={ result="<explored-options>", recommendation="<direction>" }
 }
+```
 
 ## Cognitive Tools
 
 | Tool | When |
 |------|------|
-| /decompose | Break the creative brief into independent exploration axes |
+| /decompose | Break creative brief into independent exploration axes |
 | /abstract | Extract patterns from reference examples |
 | /compare | Evaluate creative directions against criteria |
+
+## When NOT to Use
+
+- Task already precisely specified with no creative or design decisions (use direct implementation)
+- Task is purely operational ("run this command", "fix this typo")
+- Only ambiguity is terminology or scope — that's clarifier's job
+- During BUILD or SHIP phase — this skill is for THINK phase only
+- User has already decided on approach and just needs execution

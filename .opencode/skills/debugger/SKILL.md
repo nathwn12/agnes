@@ -4,202 +4,162 @@ name: debugger
 description: 'User says "this is broken, help me figure out why", error reports without clear root cause, performance regressions needing investigation.'
 phase: "DEBUG"
 use_when: "User says \"this is broken, help me figure out why\", error reports without clear root cause, performance regressions needing investigation."
-version: 1.1
+version: 1.2
 ---
 
-## Use When
-
-User says "this is broken, help me figure out why", error reports without clear root cause, performance regressions needing investigation.
+**Tradeoff:** Systematic debugging catches root causes reliably but slower than guessing. Skip trivial single-file bugs with obvious fixes.
 
 ## Core Concept
 
-**The Iron Law:** NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST. Symptom fixes are failure. Random fixes waste time and create new bugs. Quick patches mask underlying issues.
-
-Structured 7-step collaborative debugging loop: Reproduce → Explore → Hypothesise → Ask → Instrument → Narrow → Document. The user is a partner at every decision point — hypotheses are presented for guidance, findings are shared immediately, and no step advances without user awareness.
+**Iron Law:** No fixes without root cause investigation. Symptom fixes fail.
+7-step loop: Reproduce → Explore → Hypothesise → Ask → Instrument → Narrow → Fix + Document. User partner at every decision point.
 
 ## Precise Vocabulary
 
-- **Hypothesis**: A falsifiable, specific, ranked statement about the root cause. Must name the module and define how to disprove it.
-- **Instrumentation**: Targeted logging or assertions with tagged markers (e.g. `[DEBUG-a4f2]`) for easy cleanup.
-- **Narrowing**: Sequential elimination of hypotheses by instrumenting one variable at a time.
-- **Reproduction**: Confirming the bug with the user's exact steps, input, environment, and expected vs actual behavior.
-- **Root Cause**: The minimal underlying fault — one sentence. Never fix at the symptom — trace backward to the original trigger.
-- **Falsifiable**: Can be proven wrong by a specific experiment. If you cannot state the prediction, the hypothesis is a vibe — discard or sharpen it.
-- **Feedback Loop**: A fast, deterministic, agent-runnable pass/fail signal for the bug. The most important debugging tool.
-- **Defense-in-Depth**: Adding validation at every layer data passes through to make the bug structurally impossible.
-- **Bisection**: Systematic narrowing by halving the search space (commit range, input dataset, timing window).
+- **Hypothesis**: Falsifiable, ranked statement naming module with disproof method.
+- **Instrumentation**: Targeted logging/assertions with tagged markers (e.g. `[DEBUG-a4f2]`).
+- **Narrowing**: Sequential elimination of hypotheses, one variable at a time.
+- **Reproduction**: Confirming bug with exact steps, input, environment, expected vs actual.
+- **Root Cause**: Minimal underlying fault — one sentence. Trace to original trigger.
+- **Falsifiable**: Provable wrong by specific experiment.
+- **Feedback Loop**: Fast deterministic agent-runnable pass/fail signal.
+- **Defense-in-Depth**: Validation at every layer data passes through.
+- **Bisection**: Systematic narrowing by halving search space.
 
 ## Context Requirements
 
-- Access to source code and relevant files
-- Git history for recent changes (`git log --oneline -20`)
-- Error logs, stack traces, or console output
+- Source code access, git history, error logs, stack traces
 - Ability to run code and add instrumentation
-- User availability to answer clarifying questions (one at a time)
+- User availability for clarifying questions (one at a time)
 
 ## Workflow
 
-### Phase 0: Build a Feedback Loop (Critical)
+### Phase 0: Build Feedback Loop (Critical)
 
-Before any hypothesis or fix, build a fast, deterministic, agent-runnable pass/fail signal for the bug. Spend disproportionate effort here. If you have a good loop, bisection, hypothesis-testing, and instrumentation all consume it. If you don't, no amount of staring at code will save you.
+Before any hypothesis or fix, build fast deterministic agent-runnable pass/fail signal.
 
-Ways to construct one (try in this order):
-1. **Failing test** at whatever seam reaches the bug — unit, integration, e2e
-2. **Curl / HTTP script** against a running dev server
-3. **CLI invocation** with fixture input, diff stdout against known-good snapshot
-4. **Headless browser script** (Playwright) — drives UI, asserts on DOM/console/network
-5. **Replay captured trace** — save real request/payload/event to disk, replay through isolated code path
-6. **Throwaway harness** — minimal subset of system exercising the bug path with a single function call
-7. **Property / fuzz loop** — 1000 random inputs to find the failure mode
-8. **Bisection harness** — automate "boot at state X, check, repeat" for git bisect run
-9. **Differential loop** — run same input through old vs new version, diff outputs
+Methods (try order): 1. Failing test at seam  2. Curl/HTTP script  3. CLI with fixture  4. Headless browser  5. Replay captured trace  6. Throwaway harness  7. Property/fuzz loop (1000 inputs)  8. Bisection harness  9. Differential loop (old vs new).
 
-**Iterate on the loop itself.** Once you have one, ask: Can I make it faster? Can I make the signal sharper? Can I make it more deterministic? A 30-second flaky loop is barely better than nothing. A 2-second deterministic loop is a debugging superpower.
-
-**For non-deterministic bugs:** Goal is not a clean repro but a higher reproduction rate. Loop the trigger 100x, parallelise, add stress, inject sleeps. A 50%-flake bug is debuggable; 1% is not.
-
-**When you genuinely cannot build a loop:** Stop and say so explicitly. List what you tried. Ask the user for: access to whatever environment reproduces it, a captured artifact (HAR file, log dump, core dump), or permission to add temporary production instrumentation.
-
-Do not proceed to Phase 1 until you have a loop you believe in.
+→ verify: Loop deterministic, runs <10s. Non-deterministic: loop 100x, parallelise. Can't build? Ask for reproducing environment, captured artifact (HAR/log dump/core dump), or temp production instrumentation.
 
 ### Phase 1: Reproduce
 
-Run the loop. Watch the bug appear. Confirm:
-- [ ] The loop produces the failure mode the user described — not a different failure nearby
-- [ ] Failure is reproducible across multiple runs (or at high enough rate for non-deterministic)
-- [ ] Exact symptom captured (error message, wrong output, timing) so later phases can verify the fix
+Run loop. Confirm user-described failure mode, reproducible, exact symptom. → verify: Bug reproduces consistently.
 
 ### Phase 2: Explore
 
-Look at relevant code, recent changes, and error logs:
-- Check recent commits: `git log --oneline -20`
-- Read the relevant source files
-- Look for error logs, stack traces, or console output
-- Check for known issues or recent dependency changes
-- Use explorer patterns to understand the affected area
-- For multi-component systems: add diagnostic instrumentation at each component boundary before proposing fixes. Log what enters and exits each component. Verify environment/config propagation. Gather evidence showing WHERE it breaks, then investigate that specific component.
+Examine code, recent changes (`git log --oneline -20`), error logs, stack traces. Multi-component: add diagnostic instrumentation at each boundary first. Find WHERE it breaks.
 
-**Root cause tracing:** Bugs often manifest deep in the call stack. Trace backward through the call chain until you find the original trigger. Ask: What code directly causes this? What called that? What value was passed? Where did that value come from? Keep tracing up until you find the source. Fix at source, not at symptom. If you can't trace manually, add stack trace instrumentation: `console.error('DEBUG:', { directory, cwd, stack: new Error().stack })`.
+**Root cause tracing:** Bugs manifest deep in call stack. Trace backward to original trigger. Fix at source. If manual trace fails: `console.error('DEBUG:', { directory, cwd, stack: new Error().stack })`.
+
+→ verify: State component/module where fault originates.
 
 ### Phase 3: Hypothesise
 
-Generate **3-5 ranked hypotheses before testing any of them**. Single-hypothesis generation anchors on the first plausible idea. Each hypothesis must be falsifiable: state the prediction it makes.
-
-Format: "If <X> is the cause, then <changing Y> will make the bug disappear."
-
-Each hypothesis must be:
-- Specific — "the X module" not "somewhere in the code"
-- Falsifiable — "changing Y will make the bug disappear"
-- Ranked — by likelihood, not wishful thinking
-
-Show the ranked list to the user before testing. They often have domain knowledge that re-ranks instantly ("we just deployed a change to #3").
+Generate **3-5 ranked hypotheses before testing any**. Each falsifiable: "If <X> is cause, then <changing Y> makes bug disappear." Must be Specific (module), Falsifiable (testable), Ranked (by likelihood). Show user before testing. → verify: Clear testable prediction per hypothesis.
 
 ### Phase 4: Ask User
 
-Present hypotheses to the user. One question at a time — never two. Let them guide which to test first.
-
-> "Here are my top hypotheses. Which should I start with? Or do you have a different theory?"
-
-Don't block on it — proceed with your ranking if the user is AFK.
+Present hypotheses. **One question at a time.** User guides testing order. Proceed if AFK. → verify: User acknowledged first hypothesis.
 
 ### Phase 5: Instrument
 
-Add targeted logging or assertions, one variable at a time. Each probe must map to a specific prediction from Phase 3. Change one variable at a time.
+Add targeted logging/assertions, one variable at a time. Each probe maps to a hypothesis. Preference: Debugger/REPL > targeted logs boundaries > never "log everything and grep".
 
-Tool preference:
-1. **Debugger / REPL inspection** — one breakpoint beats ten logs
-2. **Targeted logs** at the boundaries that distinguish hypotheses
-3. Never "log everything and grep"
+**Tag every debug log** with unique prefix (e.g. `[DEBUG-a4f2]`). Cleanup = one grep. **Performance regressions:** Baseline measurement first.
 
-**Tag every debug log** with a unique prefix, e.g. `[DEBUG-a4f2]`. Cleanup at the end becomes a single grep. Untagged logs survive; tagged logs die.
-
-**For performance regressions:** Establish a baseline measurement (timing harness, `performance.now()`, profiler, query plan) first, then bisect. Logs are usually wrong for performance. Measure first, fix second.
+→ verify: Instrumentation maps to one hypothesis. Logs tagged.
 
 ### Phase 6: Narrow
 
-Share findings, ask the next question, repeat until root cause found. Use the narrowing process to eliminate hypotheses. After each instrumentation round, verify the finding before moving on.
-
-If after 3 rounds of narrowing the root cause is still unclear, STOP. Count how many fixes you've attempted. If < 3, return to Phase 2 with new information. If ≥ 3, stop and question the architecture — 3+ failed fixes with no progress indicates a structural problem, handoff to griller for adversarial debugging.
+Share findings, repeat until root cause found. Eliminate hypotheses sequentially. 3 rounds no root cause? <3 fixes → return Phase 2. ≥3 → handoff to griller. → verify: Each round eliminates ≥1 hypothesis.
 
 ### Phase 7: Fix + Regression Test
 
-Write the regression test **before the fix** — but only if there is a correct seam for it. A correct seam is one where the test exercises the real bug pattern as it occurs at the call site.
+Write regression test **before fix** — only if correct seam exists.
 
-If a correct seam exists:
-1. Turn the minimised repro into a failing test at that seam
-2. Watch it fail
-3. Apply the fix (ONE change at a time — no bundled refactoring)
-4. Watch it pass
-5. Re-run the Phase 0 feedback loop against the original scenario
-6. Run the full test suite to verify no regressions
+If seam exists:
+1. Repro → failing test → verify: fails
+2. Apply fix (ONE change) → verify: passes
+3. Re-run Phase 0 loop → verify: bug gone
+4. Full test suite → verify: no regressions
 
-If no correct seam exists, that itself is the finding. Note it and flag for architecture improvement later.
+**No correct seam?** Flag for architecture improvement.
 
-**Defense-in-depth:** After fixing, trace the data flow and add validation at every layer data passes through: entry point validation (reject obviously invalid input), business logic validation (ensure data makes sense for this operation), environment guards (prevent dangerous operations in specific contexts), and debug instrumentation (capture context for forensics). Make the bug structurally impossible, not just fixed.
+**Defense-in-depth:** After fix, add validation at every layer. Make bug structurally impossible.
+
+→ verify: Fix minimal, test covers bug pattern, defense-in-depth applied.
 
 ### Phase 8: Document
 
-Record root cause and reproduction steps:
 ```markdown
 ## Bug: [Title]
-
 ### Root Cause
 [One sentence]
-
 ### Reproduction
-1. Step 1
-2. Step 2
-
+1. Step 1 | 2. Step 2
 ### Fix
-[Description or reference to the fix PR/commit]
-
+[PR/commit ref]
 ### Defense Added
-[What validation layers were added to prevent recurrence]
+[Validation layers preventing recurrence]
 ```
 
-Also note: what would have prevented this bug? If the answer involves architectural change (no good test seam, tangled callers, hidden coupling), hand off to the architect skill.
+What would have prevented this? Hand off to architect.
+→ verify: All `[DEBUG-...]` tags cleaned. Bug report with one-sentence root cause.
 
-## Tool Requirements
+## Flow Diagram
 
-- **git**: Check recent commits and changes, bisect regression windows
-- **logging**: Add tagged instrumentation markers for targeted debugging
-- **explorer**: Use explorer patterns to understand affected code areas
-- **hypothesis-testing**: Propose and rank falsifiable hypotheses by probability
-- **feedback-loop**: Build and iterate on a fast deterministic pass/fail signal
-- **griller**: Handoff for adversarial debugging when 3+ narrowing rounds yield no progress
+```
+[symptom] → [feedback loop] → [reproduce] → [explore] → [hypothesise] → [ask user] → [instrument] → [narrow] → [fix + test] → [document]
+                  │                                                                        │          │
+                  └─────────────────────────────────────────────────────────────────────────┘          │
+                                                                                             ↑ failed   │
+                                                                                             └───────────┘ → [architecture finding]
+```
 
-## Output
+## Tools
 
-Bug report with root cause (one sentence), reproduction steps, fix reference, and defense-in-depth summary. Clean up all `[DEBUG-...]` instrumentation before declaring done.
+| Tool | Phase | Input | Output |
+|------|-------|-------|--------|
+| `git` | P1-P3, P7 | commit range, files | diff, blame, bisect window |
+| `logging` | P5-P6 | hypothesis prediction | tagged markers `[DEBUG-XXXX]` |
+| debugger/REPL | P5 | breakpoint | variable state, stack trace |
+| explorer | P2 | affected module | code paths, boundary evidence |
+| griller | P6 (≥3 fails) | narrowing history | adversarial root cause |
+
+## Examples
+
+| Scenario | Without | With Debugger |
+|----------|---------|---------------|
+| Auth 401 after deploy | Guess at config | Curl loop → narrow to token expiry → fix |
+| List renders no data | Log entire response | Boundary check: component → API → DB — missing column |
+| Build fails only on CI | Reinstall node_modules | `git bisect` → pin package 3 commits back |
 
 ## Quality Criteria
 
-- Feedback loop built and iterated before any hypotheses or fixes
-- One question asked at a time — never two
-- Each hypothesis is specific, falsifiable, and ranked by likelihood
-- Debug logs tagged with unique markers for cleanup
-- User is consulted at every decision point before proceeding
-- Findings shared immediately after each instrumentation round
-- Regression test written before fix (when a correct seam exists)
-- Defense-in-depth validation added at every layer after fixing
-- All tagged instrumentation removed before completion
+- Feedback loop built before hypotheses/fixes → verify
+- One question at a time → verify
+- Each hypothesis specific, falsifiable, ranked → verify
+- Debug logs tagged with unique markers → verify
+- User consulted at every decision point → verify
+- Regression test before fix (when seam exists) → verify
+- Defense-in-depth at every layer after fix → verify
+- All tagged instrumentation removed → verify
 
-## When NOT to Use
+## Skip When
 
-- No reproduction steps available and user cannot provide them
-- Bug is in a third-party dependency with no workaround — report upstream instead
-- If after 3 rounds of narrowing the root cause is still unclear, handoff to griller for adversarial debugging
-- User is asking for architectural improvement, not a specific bug diagnosis
+- No reproduction steps and user cannot provide them
+- Bug in third-party dependency with no workaround — report upstream
+- 3 rounds narrowing no root cause — handoff to griller
+- User asking for architectural improvement, not specific bug
 
 ## Protocol Shells
 
-All debugging follows the protocol shell format:
-
 /protocol {
-  intent="Find root cause of reported bug or failure",
+  intent="Find root cause",
   input={ symptom="<error-or-behavior>", reproduction="<steps>" },
   process=[ /decompose{hypotheses}, /trace{execution}, /verify{root-cause} ],
-  output={ result="<root-cause>", evidence="<stack-trace-or-log>", fix="<proposed-change>" }
+  output={ result="<root-cause>", evidence="<stack-or-log>", fix="<proposed-change>" }
 }
 
 ## Cognitive Tools
@@ -208,4 +168,4 @@ All debugging follows the protocol shell format:
 |------|------|
 | /decompose | Break failure into independent hypotheses |
 | /trace | Walk execution path step-by-step to divergence point |
-| /verify | Check that hypothesized root cause explains all symptoms |
+| /verify | Check hypothesized root cause explains all symptoms |

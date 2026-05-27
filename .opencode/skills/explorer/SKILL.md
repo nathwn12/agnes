@@ -7,168 +7,139 @@ use_when: "Understanding an unfamiliar codebase, researching dependencies before
 version: 1.0
 ---
 
-## Use When
+# explorer
 
-Understanding an unfamiliar codebase, researching dependencies before planning, debugging (first phase investigation), needing architecture overview.
-
-**Always read-only.** Never modifies files.
+**Tradeoff:** Systematic investigation costs more tool calls upfront but prevents downstream bugs from incorrect architecture assumptions.
 
 ## Core Concept
 
-Read-only, systematic investigation of codebases, dependencies, and architectures. The skill produces structured findings reports that map modules, identify patterns, trace data flows, and document interfaces — without ever modifying files. It operates in four modes (Codebase Exploration, Dependency Research, Zoom Out, Parallel Exploration) depending on the investigation depth and breadth needed.
+Read-only codebase investigation. Produces structured findings reports mapping modules, patterns, data flows, interfaces. Four modes: Codebase Exploration, Dependency Research, Zoom Out, Parallel Exploration.
+
+**Discipline:** glob first, grep second, read last, deepen only on gaps. No edits. No side-effect commands. Batch independent searches. Ignore node_modules/dist/build/.git/cache unless asked. Return exact `file:line` refs. No preamble, no postamble.
 
 ## Precise Vocabulary
 
 | Term | Meaning |
 |------|---------|
-| Codebase Exploration | Reading file structure, finding patterns, understanding architecture |
-| Dependency Research | Investigating unfamiliar libraries — vendor check, source inspection, cross-reference |
-| Zoom Out | Going up a layer of abstraction to show the big picture and relationships |
-| Parallel Exploration | Dispatching independent investigations across multiple subagents simultaneously |
-| Module | A discrete unit of code (file, directory, package) with a defined responsibility |
-| Interface | The public API surface of a module (exports, types, function signatures) |
-| Data Flow | The path data takes through the system from source to transformation to sink |
-| Entry Point | Top-level invocation points (main, handlers, routes, event listeners) |
-| Caller | Code that depends on or invokes a given module or function |
-| Findings Report | Structured markdown document synthesizing exploration results |
-
-### @explorer Discipline
-
-The explorer is a read-only research role. It follows a strict shallow-first protocol:
-
-1. **Glob first** — find relevant files by pattern before reading anything
-2. **Grep second** — search for specific patterns rather than reading entire files
-3. **Read last** — read only the specific files and sections needed to answer the question
-4. **Stop when answered** — do not explore beyond what's needed to confirm the answer
-
-Rules:
-- NEVER edit files. Explorer is read-only by definition.
-- NEVER run bash commands that produce side effects (builds, installs, modifications).
-- Batch independent searches and reads when possible.
-- Ignore noisy directories (node_modules, dist, build, .git, cache) unless explicitly asked.
-- Summarize findings with exact file:line references.
-- Return only what was asked. No preamble, no postamble, no suggestions.
+| Codebase Exploration | Read structure, find patterns, understand architecture |
+| Dependency Research | Investigate unfamiliar libs — vendor check, source inspect, cross-ref |
+| Zoom Out | Step up abstraction for big picture and relationships |
+| Parallel Exploration | Dispatch independent investigations across subagents |
+| Module | Discrete code unit with defined responsibility |
+| Interface | Public API surface (exports, types, signatures) |
+| Data Flow | Path data takes from source to transform to sink |
+| Entry Point | Top-level invocation (main, handlers, routes, listeners) |
+| Caller | Code depending on a given module |
+| Findings Report | Structured markdown synthesizing results |
 
 ## Context Requirements
 
-- Project file structure and directory layout
-- Domain glossary vocabulary (check `CONTEXT.md`, `AGENTS.md`)
-- Configuration files (package.json, tsconfig, etc.)
-- Existing test patterns and conventions
-- When doing dependency research: access to vendored or cached dependency source
+Project structure, domain glossary (CONTEXT.md/AGENTS.md), config files (package.json/tsconfig), test conventions, dependency source access.
 
 ## Workflow
 
-### 0. Scarcity: Shallow-first Exploration
-
-Before any deep read, start with the cheapest sufficient path:
-- **glob** the directory structure to understand layout
-- **grep** for specific patterns, terms, or interfaces
-- **read** only files that matched — start with signatures, definitions, and imports
-- **deepen** only when unresolved questions remain
-
-This is the default. Full-file reads are the exception, not the rule.
+### 0. Scarcity
+Glob structure → grep patterns → read matched files (signatures/definitions) → deepen on gaps.
+→ verify: glob hits identify layout. grep hits match targets. no gaps remain.
+**Output:** Cheapest-path file list.
 
 ### 1. Codebase Exploration
-
-Read file structure, find patterns, understand architecture:
-- Use project's domain glossary vocabulary (check CONTEXT.md, AGENTS.md)
-- Map relevant modules and their relationships
-- Identify key interfaces, data flows, and entry points
-- Read configuration files (package.json, tsconfig, etc.)
-- Examine test patterns and conventions
-- Apply shallow-first: glob → grep → selective read → deepen only if needed
+Map modules using domain glossary. ID interfaces, data flows, entry points. Read configs. Examine tests.
+→ verify: each module has interface. data flows traced source→sink. test strategy understood.
+**Output:** Module map with interfaces, data flows, entry points.
 
 ### 2. Dependency Research
-
-When a library or dependency is unfamiliar:
-- Check if the dependency is already vendored or cached locally
-- Inspect the dependency's source for usage patterns
-- Cross-reference API usage against local code
-- Identify version constraints and compatibility issues
+Check vendored/cached. Inspect source usage. Cross-ref API vs local. Check versions.
+→ verify: source found or absent confirmed. external calls mapped. no version conflicts.
+**Output:** Dependency assessment — source, version, usage, compatibility.
 
 ### 3. Zoom Out
+Step up abstraction: "Module X part of system Y connecting Z." Count callers. Trace flows. Produce caller map.
+→ verify: every module has caller count and relationships documented.
+**Output:** Architecture relationship map with caller/callee graph.
 
-Go up a layer of abstraction to provide the big picture:
-- "This module is part of the X system, which connects to Y and Z"
-- "There are 3 callers of this function: A, B, and C"
-- "The data flows from source → transform → sink with these transformations"
+### 4. Parallel
+For 3+ independent areas: ID non-overlapping domains → dispatch subagent per domain → each returns findings → synthesize unified report.
+→ verify: no domain overlap. unique scope per subagent. no contradictions.
+**Output:** Unified synthesis of domain findings.
 
-Produce a map of all relevant modules and their callers.
+## Flow Diagram
 
-### 4. Parallel Exploration
+```
+[request] → [0: scarcity] → [mode select] → [1|2|3|4] → [findings report]
+                                ↑ incomplete data │
+                                └──────────────────┘
+```
 
-When 3+ independent areas need investigation:
-- Identify discrete, non-overlapping domains
-- Dispatch one subagent per domain via `ag_delegate`
-- Each subagent receives: domain name, relevant file paths, specific questions
-- Each returns structured findings
-- Synthesize results into a unified report
+## Tools
 
-## Tool Requirements
+| Tool | Phase(s) | Input | Output |
+|------|----------|-------|--------|
+| `glob` | 0-4 | Pattern | Matching paths |
+| `grep` | 0-4 | Regex | Matches with line refs |
+| `read` | 0-4 | File path | File content |
+| `task` | 4 | Domain specs | Structured findings |
+| `ag_delegate` | 4 | Subagent per domain | Per-domain reports |
 
-| Tool | Usage |
-|------|-------|
-| `read` | Exploring file structure and content |
-| `grep` | Finding patterns, usages, and cross-references |
-| `glob` | Locating files by pattern |
-| `task` | Running parallel exploration of independent domains |
-| `ag_delegate` | Dispatching subagents per domain during parallel exploration |
+## Examples
+
+| Scenario | Without | With |
+|----------|---------|------|
+| New codebase | Random reads, misses modules | Glob→grep→read, structured map |
+| Unfamiliar dep | Docs hail-mary | Vendor check + source inspect + cross-ref |
+| Architecture overview | Linear reads, loses context | Zoom-out + caller maps + data flows |
+| Multi-area | Sequential, O(n) | Parallel, O(1) wall time |
 
 ## Output
 
 ```markdown
 ## Exploration Report
-
 ### Overview
-[One-paragraph summary of findings]
+[Summary]
 
 ### Key Findings
-1. **[Module name]** — [what it does, key interfaces]
-2. **[Pattern found]** — [where and how it's used]
-3. **[Architecture note]** — [relationships, data flow]
+1. **[Module]** — [what, interfaces]
+2. **[Pattern]** — [where/how used]
+3. **[Architecture]** — [relationships, flows]
 
 ### Files Examined
-- `path/to/file.ts` — [relevance]
-- `path/to/file2.ts` — [relevance]
+- `path/file.ts` — [relevance]
 
 ### Recommendations
-[If this was pre-planning, what should the plan consider?]
+[For pre-planning: what to consider]
 ```
 
 ## Quality Criteria
 
-- All findings are backed by file evidence (no speculation)
-- Every module mapped includes its key interfaces and relationships
-- Clear distinction between observed facts and interpreted recommendations
-- Report uses the canonical Findings Report format
-- Files examined section lists every file consulted
-- No files were modified during exploration
-- Parallel explorations are synthesized into a single coherent report
-- Shallow-first path was used: glob → grep → selective read → deepen only on unresolved questions
-- No unnecessary full-file reads — every read was justified by a search hit or explicit need
+- → verify: Findings backed by file evidence
+- → verify: every module mapped includes interfaces
+- → verify: facts vs recommendations clearly distinguished
+- → verify: uses Findings Report format
+- → verify: Files Examined lists all consulted files
+- → verify: no files modified
+- → verify: parallel explorations unified
+- → verify: shallow-first path used
+- → verify: no unnecessary full-file reads
 
 ## When NOT to Use
 
-- Do not use when the codebase is already well-understood (proceed to planner)
-- Do not use when the task is purely implementation (use builder)
-- Do not modify any files
+Codebase well-understood → planner. Pure implementation → builder. Never modify files.
 
 ## Protocol Shells
 
-All codebase exploration follows the protocol shell format:
-
+```text
 /protocol {
-  intent="Research codebase to answer specific questions",
-  input={ question="<what-to-find>", scope="<directory-or-pattern>" },
-  process=[ /decompose{queries}, /compare{findings}, /synthesize{answer} ],
-  output={ result="<findings>", evidence="<file-references>" }
+  intent="Research codebase to answer questions",
+  input={ question="<what>", scope="<dir>" },
+  process=[ /decompose, /compare, /synthesize ],
+  output={ result="<findings>", evidence="<refs>" }
 }
+```
 
 ## Cognitive Tools
 
 | Tool | When |
 |------|------|
-| /decompose | Break research question into sub-queries per area |
+| /decompose | Break question into sub-queries |
 | /abstract | Extract patterns from scattered code |
-| /synthesize | Combine file-level findings into an answer |
+| /synthesize | Combine findings into answer |

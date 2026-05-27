@@ -7,27 +7,23 @@ use_when: "Requirements are clear, before any implementation begins, needs archi
 version: 1.0
 ---
 
-## Use When
-
-Requirements are clear, before any implementation begins, needs architecture decisions documented.
+**Tradeoff:** Formal design docs prevent rework but cost upfront time — skip when task is trivial (≤3 steps, no ambiguity).
 
 ## Core Concept
 
-The planner skill transforms clarified requirements into structured design documents and actionable implementation plans. It enforces a disciplined workflow: explore context, propose approaches with trade-offs, design incrementally with user approval per section, produce a formal spec and plan, self-review for quality, and gate on user approval before any implementation begins.
+Transform clarified requirements into structured design docs + actionable impl plans. Enforces: explore context → propose approaches → design incrementally (approval per section) → spec + plan → self-review → user gate.
 
 ## Precise Vocabulary
 
-- **Spec** — A structured design document in `.agnes/specs/` covering architecture, data model, component tree, data flow, API surface, error handling, and testing strategy.
-- **Implementation Plan** — An ordered task list in `.agnes/plans/` where each task is a single action (2-5 minutes) with exact code and file paths.
-- **ADR** — Architecture Decision Record; past decisions that constrain current design choices.
-- **Vertical Slice** — An independently completable issue that adds user-visible value.
-- **Task Granularity** — Each task is one action taking 2-5 minutes, with complete code and exact file paths.
+- **Spec** — `.agnes/specs/` doc covering architecture, data model, component tree, data flow, API surface, error handling, testing strategy.
+- **Implementation Plan** — `.agnes/plans/` ordered task list. Each task = one action (2-5 min) with exact code + file paths.
+- **ADR** — Architecture Decision Record; past decisions constraining current design.
+- **Vertical Slice** — Independently completable issue adding user-visible value.
 
 ### Requirement IDs
 
-Every plan includes a Requirements Snapshot with stable requirement IDs (R1, R2, R3...) that sub-tasks reference. This replaces the need for a separate task.md file.
+Every plan includes a Requirements Snapshot with stable IDs (R1, R2, R3...). Sub-tasks reference these via `requirementIds`.
 
-Format in plan-NNN.yaml:
 ```yaml
 requirements:
   - id: R1
@@ -35,47 +31,38 @@ requirements:
     source: "Source file or document"
 ```
 
-Each sub-task in the plan includes a `requirementIds` field listing which requirements it satisfies. This provides traceability from requirements through implementation to verification.
-
 ## Context Requirements
 
 Requires codebase context before planning:
-- Insufficient context triggers a call to explorer first
-- Existing specs in `.agnes/specs/` must be read
-- ADRs must be checked for past architecture decisions
-- File layout and conventions must be understood
+- Insufficient context → call explorer first
+- Read existing specs in `.agnes/specs/`
+- Check ADRs for past decisions
+- Understand file layout + conventions
 
 ## Workflow
 
 ### 1. Explore Project Context
+Understand codebase before planning. → verify: can you list existing specs, ADRs, and file layout?
 
-Understand the existing codebase before planning:
-- If context is insufficient, call explorer first
-- Read existing specs in `.agnes/specs/`
-- Check ADRs for past architecture decisions
-- Understand file layout and conventions
+**Output:** Context summary ready for design decisions.
 
 ### 2. Propose 2-3 Approaches
+Present options with trade-offs + recommendation. → verify: each approach has summary, pros, cons, effort estimate.
 
-Present options with trade-offs and a recommendation:
-- Each approach has: summary, pros, cons, estimated effort
 - Include code sketches for critical decisions
-- Recommend one approach with rationale
-- Let the user choose before proceeding
+- Recommend one with rationale
+- Let user choose before proceeding
+
+**Output:** Chosen approach with rationale.
 
 ### 3. Present Design In Sections
+Get approval per section before moving on:
+- Architecture overview → data model → component/module tree → data flow → API surface → error handling → testing strategy
+→ verify: user approved current section before moving to next.
 
-Get approval per section before moving to the next:
-- Architecture overview
-- Data model / types
-- Component / module tree
-- Data flow
-- API surface
-- Error handling
-- Testing strategy
+**Output:** Fully approved design section-by-section.
 
 ### 4. Write Spec
-
 Output: `.agnes/specs/YYYY-MM-DD-<topic>-design.md`
 
 Structure:
@@ -83,109 +70,113 @@ Structure:
 # <Feature> — Design Spec
 
 ## Overview
-[One paragraph]
-
 ## Architecture
-[Diagram or description]
-
 ## Data Model
-[Types, interfaces, schemas]
-
 ## Implementation
-[Key modules, files to create/modify]
-
 ## Testing Strategy
-[What to test and how]
-
 ## Open Questions
-[Anything unresolved]
 ```
+
+→ verify: all sections complete, no placeholder text.
+
+**Output:** Design spec document.
 
 ### 5. Write Implementation Plan
-
 Output: `.agnes/plans/YYYY-MM-DD-<feature>.md`
 
-Structure:
-```markdown
-# <Feature> — Implementation Plan
+Each task: one action (2-5 min), complete code, exact file paths. → verify: every file path exists or is creation-marked, every task has complete code.
 
-## Tasks
-1. **[Task name]** — `path/to/file.ts`
-   - What to do in 2-5 minutes
-   - Exact code or approach
-2. ...
-```
-
-**Task granularity:** Each task is one action (2-5 minutes). Complete code in every step. Exact file paths always.
+**Output:** Implementation plan with granular tasks.
 
 ### 6. Self-Review
+- **Placeholder scan**: No "TODO", "FIXME", or incomplete sections → verify: zero placeholders found.
+- **Consistency**: All referenced files/functions exist or will be created → verify: cross-reference every path.
+- **Scope**: No scope creep → verify: every task belongs to feature.
+- **Ambiguity**: All decisions explicit, nothing deferred → verify: no "figure out later" language.
 
-Check the plan for:
-- **Placeholder scan**: No "TODO", "FIXME", or incomplete sections
-- **Consistency**: All referenced files and functions exist or will be created
-- **Scope**: Does every task belong? No scope creep?
-- **Ambiguity**: Are all decisions explicit? No "figure out later"?
+**Output:** Clean, reviewed plan.
 
 ### 7. User Review Gate
+Present spec + plan. Do NOT proceed to impl until user explicitly approves. → verify: user said "go ahead" or equivalent.
 
-Present the spec and plan to the user. Do NOT proceed to implementation until the user explicitly approves.
+**Output:** Signed-off plan ready for execution.
 
 ### 8. Break Into Issues
+If using issue tracker: decompose into vertical-slice issues. → verify: each issue independently completable, adds user-visible value, ordered by dependency.
 
-If using an issue tracker, decompose into vertical-slice issues:
-- Each issue is independently completable
-- Each issue adds user-visible value
-- Order by dependency: foundational first
+**Output:** List of vertical-slice issues.
 
-## Tool Requirements
+## Flow Diagram
 
-- **read** — Explore existing specs, ADRs, codebase files, and conventions
-- **write** — Create spec and plan documents
-- **task** — Delegate context-gathering to subagents when insufficient
-- **skill** — Invoke explorer when deeper codebase research is needed
+```
+Requirements
+     │
+     ▼
+[1. Explore Context] ──→ verify: specs/ADRs/layout known
+     │
+     ▼
+[2. Propose Approaches] ──→ verify: 2-3 options with tradeoffs
+     │
+     ▼ (user chooses)
+[3. Design Per Section] ──→ verify: approved per section
+     │
+     ▼
+[4. Write Spec] ──→ verify: no placeholders
+     │
+     ▼
+[5. Write Plan] ──→ verify: granular tasks, exact paths
+     │
+     ▼
+[6. Self-Review] ──→ verify: clean + consistent
+     │
+     ▼
+[7. User Gate] ──→ verify: explicit approval
+     │
+     ▼
+[8. Break Into Issues] ──→ verify: vertical slices ordered
+```
+
+## Tools
+
+| Tool | Phase(s) | Input | Output |
+|------|----------|-------|--------|
+| read | 1, 3, 4, 5, 6 | Specs, ADRs, codebase files | Context for design decisions |
+| write | 4, 5 | Design outline, task list | Spec + plan documents |
+| task | 1 | Context-gathering request | Codebase research results |
+| skill | 1 | Explorer invocation | Deeper codebase understanding |
+
+## Examples
+
+| Scenario | Plan Format | Sections | Output |
+|----------|-------------|----------|--------|
+| New feature (complex) | Full spec + plan | Architecture, data model, API, testing, error handling | `.agnes/specs/*.md` + `.agnes/plans/*.md` |
+| Simple feature (≤3 steps) | Short plan | Just tasks, no spec | `.agnes/plans/*.md` |
+| Refactor | Plan only | Before/after, migration steps | `.agnes/plans/*.md` |
+| Library/API design | Spec only | API surface, data flow, error handling | `.agnes/specs/*.md` |
+| Exploratory (no impl) | None | Skip — no formal planning needed | N/A |
 
 ## Output
 
-Two document types written to the project:
-
-1. **Design Spec** at `.agnes/specs/YYYY-MM-DD-<topic>-design.md` — covers overview, architecture, data model, implementation modules, testing strategy, and open questions.
-
-2. **Implementation Plan** at `.agnes/plans/YYYY-MM-DD-<feature>.md` — ordered list of granular tasks (2-5 minutes each) with exact code and file paths, and a placeholder/polish pass at the end.
+1. **Design Spec** at `.agnes/specs/YYYY-MM-DD-<topic>-design.md`
+2. **Implementation Plan** at `.agnes/plans/YYYY-MM-DD-<feature>.md`
 
 ## Quality Criteria
 
-- **Placeholder scan**: No "TODO", "FIXME", or incomplete sections remain
-- **Consistency**: All referenced files and functions exist or are explicitly marked for creation
-- **Scope**: Every task belongs to the feature; no scope creep
-- **Ambiguity**: All decisions are explicit; nothing deferred to "figure out later"
-
-## When NOT to Use
-
-- When requirements are unclear or still being explored (use clarifier first)
-- When no implementation will follow the planning phase
-- When architecture decisions do not need formal documentation
-- When the task is purely exploratory with no design decisions to make
-
-### Proportionality Rules
-
-- Do not create formal plans for purely advisory, exploratory, or review-only requests.
-- Keep the plan proportional to the task size and risk.
-- For simple tasks (≤3 steps, no ambiguity), use a short plan with only the necessary steps.
-- For complex or high-risk tasks, include dependencies, risks, validation, and rollout considerations.
-- Prefer the fewest steps that still make execution clear.
-- Preserve explicit acceptance criteria, edge cases, and out-of-scope limits when present.
-- Do not convert speculative implementation ideas into binding requirements.
+- **No placeholders**: Scan for "TODO", "FIXME", incomplete sections → verify: zero matches.
+- **Consistency**: All referenced files/functions exist or will be created → verify: cross-reference every path.
+- **Scope**: Every task belongs to feature; no scope creep → verify: each task ties to requirement.
+- **Ambiguity**: All decisions explicit; nothing deferred → verify: no "figure out later" language.
 
 ## Protocol Shells
 
-All plan creation follows the protocol shell format:
-
+```
 /protocol {
   intent="Create implementation plan from requirements",
   input={ requirements="<spec>", constraints="<boundaries>" },
   process=[ /decompose{steps}, /compare{routes}, /synthesize{plan} ],
   output={ result="<plan-NNN.yaml>", dependencies="<order>" }
 }
+```
 
 ## Cognitive Tools
 
@@ -194,3 +185,20 @@ All plan creation follows the protocol shell format:
 | /decompose | Break requirements into independent implementation steps |
 | /compare | Evaluate alternative implementation routes |
 | /synthesize | Combine steps into a coherent ordered plan |
+
+## When NOT to Use
+
+- Requirements unclear or being explored (use clarifier first)
+- No implementation follows planning phase
+- Architecture decisions don't need formal docs
+- Purely exploratory with no design decisions
+
+### Proportionality Rules
+
+- No formal plans for advisory, exploratory, or review-only requests
+- Keep plan proportional to task size + risk
+- Simple tasks (≤3 steps, no ambiguity) → short plan, only necessary steps
+- Complex/high-risk tasks → include dependencies, risks, validation, rollout
+- Prefer fewest steps that still make execution clear
+- Preserve acceptance criteria, edge cases, out-of-scope limits when present
+- Don't convert speculative ideas into binding requirements

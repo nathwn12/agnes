@@ -1,90 +1,135 @@
 ---
 id: skillwriter
 name: skillwriter
-description: 'Creating a brand-new AGNES skill, editing/improving an existing skill, closing a gap identified during retro, or when an agent demonstrably behaves wrongly without documented guidance.'
+description: 'Use when creating a brand-new AGNES skill, editing/improving an existing skill, closing a gap identified during retro, or when an agent demonstrably behaves wrongly without documented guidance.'
 phase: "REFLECT / META"
 use_when: "Creating a brand-new AGNES skill, editing/improving an existing skill, closing a gap identified during retro, or when an agent demonstrably behaves wrongly without documented guidance."
-version: 1.0
+version: 1.1
 ---
-## Use When
 
-Creating a brand-new AGNES skill, editing/improving an existing skill, closing a gap identified during retro, or when an agent demonstrably behaves wrongly without documented guidance.
+# skillwriter
+
+**Tradeoff:** Structure vs speed. Pressure-first (RED) prevents scope creep and loopholes but costs upfront write time. Skip scenarios on trivial typos only. On any behavior-altering change, write them. When uncertain, RED.
 
 ## Core Concept
 
 > **NO SKILL WITHOUT A FAILING TEST FIRST**
 
-This applies to new skills AND edits to existing skills. If you can't describe a scenario where the agent behaves wrongly without the skill, you don't know what the skill should enforce. Writing the scenario IS the analysis. Everything else is decoration.
+Applies to new skills AND edits. Can't describe a scenario where agent behaves wrongly without the skill → don't know what to enforce. Writing the scenario IS the analysis.
 
 ## Precise Vocabulary
 
 | Term | Definition |
 |------|------------|
-| **RED** | Phase where pressure scenarios are written before any skill code exists |
-| **GREEN** | Phase where minimal skill is written to address only the pressure scenarios |
-| **REFACTOR** | Phase where loopholes are closed and the skill is bulletproofed |
-| **Pressure scenario** | Concrete test case capturing one specific failure mode the skill must prevent |
-| **Rationalization** | An excuse an agent might use to bypass the skill's rules |
-| **Skill type** | Classification of skills: discipline-enforcing, technique, pattern, reference |
-| **Verb-first gerund naming** | Skills named after the ACTION not the THING (e.g. skillwriter not skill-creation) |
+| **RED** | Phase: write pressure scenarios before skill code exists |
+| **GREEN** | Phase: write minimal skill addressing only pressure scenarios |
+| **REFACTOR** | Phase: close loopholes, bulletproof |
+| **Pressure scenario** | Concrete test case for one specific failure mode |
+| **Rationalization** | Excuse an agent might use to bypass rules |
+| **Skill type** | Classification: discipline-enforcing, technique, pattern, reference |
+| **Verb-first gerund** | Named after ACTION not THING (skillwriter not skill-creation) |
 
 ## Context Requirements
 
-- Access to `.opencode/skills/<name>/` directory structure for creating skill packages
-- Existing skill files to study for naming and formatting conventions
-- Real observed agent failures or test outputs to ground pressure scenarios
-- Understanding of agent behavior patterns and common rationalizations
-- This skill produces the candidate skill package; shipper handles final landing
+- `.opencode/skills/<name>/` directory for skill packages
+- Existing skills to study naming/formatting conventions
+- Real agent failures or test outputs to ground scenarios
+- This skill produces candidate; shipper handles final landing
 
 ## Workflow
 
 ### RED — Write Pressure Scenarios
 
-Create 3-5 concrete scenarios in `.opencode/skills/<name>/tests/pressure-scenarios.md`.
-
-Each scenario captures one specific failure mode the skill must prevent:
+[RED] Create 3-5 concrete scenarios in `.opencode/skills/<name>/tests/pressure-scenarios.md`. → verify: each has prompt, observed bad behavior, why wrong, verification command
 
 ```
-## Scenario N: <descriptive name>
+## Scenario N: <name>
 
-**Prompt:** "What the user says to the agent"
-**Observed behavior:** What the agent does WITHOUT the skill (actual bad output)
-**Why it's wrong:** The specific harm or deficiency
-**Verification:** How to confirm the skill fixes this (command to run, output to check)
+**Prompt:** "What user says"
+**Observed behavior:** What agent does WITHOUT skill
+**Why it's wrong:** Specific harm or deficiency
+**Verification:** Command + expected output
 ```
 
-Rules:
-- A good scenario: specific prompt → specific bad behavior → specific reason it's wrong
-- Do NOT write hypotheticals. Use real prompts and real bad outputs from your own testing or observation.
-- If you can't produce 3 real failures, you don't understand the problem well enough to write a skill.
+[RED] Use real prompts and bad outputs, no hypotheticals. → verify: each scenario is grounded in observation
+[RED] Can't produce 3 real failures → stop, don't understand problem well enough. → verify: minimum 3 scenarios written
+
+**Phase output:** `tests/pressure-scenarios.md` with 3-5 verified scenarios
 
 ### GREEN — Write Minimal Skill
 
-Address ONLY the failures in your pressure scenarios. Do not add speculative rules.
+[GREEN] Address ONLY the failures in pressure scenarios. → verify: no speculative rules beyond scenario coverage
 
-- Follow the AGNES SKILL.md format (YAML frontmatter + markdown sections)
-- Include: frontmatter, core concept, workflow/phases, key rules, anti-patterns table
-- Target <200 words for frequently-loaded skills, <500 words for all others
-- After writing, run each pressure scenario against the skill and verify compliance
-- Document the verification result
+- AGNES SKILL.md format: YAML frontmatter + markdown sections
+- Include: core concept, workflow/phases, key rules, anti-patterns table
+- Target: <200 words (frequent-load), <500 words (all others). → verify: word count under limit
+- [GREEN] Run each pressure scenario against skill, verify compliance. → verify: all scenarios pass
+- Document verification results
+
+**Phase output:** `SKILL.md` (draft) with verified scenario compliance
 
 ### REFACTOR — Bulletproof
 
-Close loopholes before shipping:
+[REFACTOR] Close loopholes before shipping. → verify: every rationalization has explicit counter
 
-1. **Identify rationalizations** agents use to bypass the skill — document in the anti-patterns table
-2. **Add explicit counters** for each rationalization
-3. **Spirit vs letter** — if an agent could follow every rule literally yet violate the intent, add clarifying rules
-4. **Re-run** all pressure scenarios; repeat until bulletproof
+1. Identify rationalizations → document in anti-patterns table
+2. Add explicit counters per rationalization
+3. Spirit vs letter — if literal compliance violates intent, add clarifying rules
+4. [REFACTOR] Re-run all pressure scenarios. → verify: all pass after bulletproofing
+5. Repeat until bulletproof
 
-## Tool Requirements
+**Phase output:** Bulletproof `SKILL.md` with filled anti-patterns table
 
-- **read** — to study existing skills and pressure scenarios
-- **write** — to create new skill files and pressure scenarios
-- **edit** — to modify existing skills during GREEN and REFACTOR phases
-- **bash** — to run verification commands against pressure scenarios
-- **glob** — to locate skill files and test directories
-- **grep** — to search for patterns in existing skills
+```
+                    ┌─────────────────┐
+                    │  Gap identified │
+                    └────────┬────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │  RED: Write 3-5 │
+                    │  pressure       │──── verify: specific, real, verifiable
+                    │  scenarios      │
+                    └────────┬────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │  GREEN: Write   │
+                    │  minimal skill  │──── verify: covers all scenarios, no extras
+                    └────────┬────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │  REFACTOR:      │
+                    │  bulletproof    │──── verify: rationalizations countered,
+                    └────────┬────────┘       all scenarios pass
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │  Ship candidate │──→ shipper handles final landing
+                    └─────────────────┘
+```
+
+## Tools
+
+| Tool | Phase(s) | Input | Output |
+|------|----------|-------|--------|
+| read | RED, GREEN, REFACTOR | Existing skills, scenarios | Convention knowledge, gap analysis |
+| write | GREEN, REFACTOR | Skill content | SKILL.md, pressure-scenarios.md |
+| edit | GREEN, REFACTOR | Existing SKILL.md | Updated SKILL.md |
+| bash | RED, GREEN, REFACTOR | Verification commands | Pass/fail per scenario |
+| glob | RED, GREEN | Directory patterns | File locations |
+| grep | RED, GREEN | Pattern searches | Cross-skill references |
+
+## Examples
+
+| If | Then | Verify |
+|----|------|--------|
+| Agent ignores coding conventions | Write scenario with specific violation, cover in rules | Scenario passes → skill fixes behavior |
+| Existing skill has known loophole | Add scenario for loophole, write minimal fix | All old + new scenarios pass |
+| Retro identified agent behavior gap | 3 scenarios from real retro output, write skill | Retro scenario set passes |
+| Typo fix only, no behavior change | Skip RED, edit directly | No scenarios needed |
+| Agent rationalizes around rule | Add rationalization + counter in anti-patterns table | Rationalization countered explicitly |
 
 ## Output
 
@@ -95,78 +140,75 @@ Close loopholes before shipping:
     └── pressure-scenarios.md
 ```
 
-## Quality Criteria
+## Quality
 
 ### Skill Types
 
 | Type | Flexibility | Example | Format |
 |------|------------|---------|--------|
-| **Discipline-enforcing** | Rigid — MUST follow exactly | verifier, this skill | Iron Laws, hard gates |
-| **Technique** | Flexible — follow steps, adapt to context | debugger, prototype | Numbered workflow |
-| **Pattern** | Open — apply principles, not procedures | architect | Heuristics, questions |
+| **Discipline-enforcing** | Rigid — MUST follow exactly | verifier, skillwriter | Iron Laws, hard gates |
+| **Technique** | Flexible — follow steps, adapt | debugger, prototype | Numbered workflow |
+| **Pattern** | Open — apply principles, not procs | architect | Heuristics, questions |
 | **Reference** | Passive — look up as needed | skill registry | Tables, checklists |
 
-### Bulletproofing Techniques
+### Bulletproofing → verify: all techniques applied before shipping
 
-1. **Close every loophole explicitly**: "Applies to X AND Y" not "Applies to X"
-2. **Address spirit vs letter**: "Violating the spirit of these rules is violating the rules"
-3. **Build the rationalization table**: common excuses mapped to counters
-4. **Red flags**: watch for "should", "probably", "I'll check later"
-5. **Even 1% rule**: If a pressure scenario has even 1% chance of recurring, address it
+1. Close every loophole explicitly: "Applies to X AND Y" not "Applies to X"
+2. Address spirit vs letter: "Violating spirit = violating rules"
+3. Build rationalization table: common excuses → counters
+4. Red flags: "should", "probably", "I'll check later"
+5. Even 1% rule: >1% chance of recurrence → address it
 
-### Anti-Pattern Table
+### Anti-Patterns → verify: each rationalization has matching counter
 
 | Rationalization | Counter |
 |-----------------|---------|
-| "I already know what the skill should say" | Write the pressure scenarios first or stop |
-| "I'm just fixing a typo, not changing the skill" | Typos don't change behavior. Is this actually a behavior change? If yes, RED first. |
-| "The pressure scenarios are obvious, I don't need to write them down" | Writing them IS the analysis. Obvious scenarios miss subtle failure modes. |
-| "This skill is close enough, I'll just edit it inline" | Inline edits without scenarios produce scope creep and loopholes. Branch + test. |
-| "I tested this in my head" | Head tests pass every time. Run actual commands. |
-| "The old scenarios still pass, I don't need to re-run" | Run them again. Fresh verification or it didn't happen. |
+| "I already know what skill should say" | Write scenarios first or stop |
+| "Just fixing a typo, not changing behavior" | Typos don't change behavior. Behavior change → RED first. |
+| "Scenarios are obvious, no need to write" | Writing IS the analysis. Obvious misses subtle modes. |
+| "I'll edit inline without scenarios" | Inline edits → scope creep + loopholes. Branch + test. |
+| "I tested in my head" | Head tests always pass. Run actual commands. |
+| "Old scenarios still pass, no re-run needed" | Fresh verification or it didn't happen. |
 
 ### CSO (Claude Search Optimization)
 
-- The `description` field MUST say "Use when..." NOT "What it does"
-- Agents discover skills by matching descriptions against current task
-- A description that summarises workflow causes the agent to skip reading the full skill
-- Good: "Use when you need to investigate a failing test in a CI pipeline"
-- Bad: "Investigates failing tests by reading logs, reproducing locally, and bisecting"
+- `description` MUST say "Use when..." NOT "What it does" → verify: frontmatter starts with "Use when"
+- Agents discover skills by matching descriptions to task
+- Description summarizing workflow → agent skips reading full skill
 
-### Token Efficiency
+### Token Efficiency → verify: word count under target
 
-- Frequently-loaded skills: target <200 words
-- All others: target <500 words
-- Every word must justify its existence. Cut filler. No greeting, no preamble.
+- Frequent-load skills: <200 words
+- Others: <500 words
+- Every word justifies existence. Cut filler.
 
-### Active Naming
+### Active Naming → verify: name is verb-first gerund
 
 - Verb-first gerunds: skillwriter (not skill-creation)
-- Names describe the ACTION, not the THING
-- Existing examples: clarifier, explorer, shipper
-
-## When NOT to Use
-
-- **No observable failure pattern**: If you cannot produce at least 3 real-world scenarios where an agent behaves wrongly without the skill, do not write it.
-- **Pure informational content**: If the material is reference-only with no behavioral guardrails, consider a reference document instead of a skill.
-- **Already covered**: If an existing skill already addresses the failure mode, extend it rather than creating a new one.
-- **Final landing**: This skill produces the candidate only; shipper handles the final shipping — do not use this skill for the deployment step.
+- Names describe ACTION, not THING
 
 ## Protocol Shells
 
-All skill creation follows the protocol shell format:
-
+```
 /protocol {
   intent="Create or improve an AGNES skill",
   input={ gap="<what's-missing>", domain="<subject-area>" },
   process=[ /decompose{sections}, /reflect{quality}, /verify{completeness} ],
   output={ result="<SKILL.md>", evidence="<test-with-skill>" }
 }
+```
 
 ## Cognitive Tools
 
 | Tool | When |
 |------|------|
 | /abstract | Extract skill patterns from existing examples |
-| /reflect | Self-critique skill against quality criteria |
-| /verify | Check skill completeness and clarity |
+| /reflect | Self-critique against quality criteria |
+| /verify | Check completeness and clarity |
+
+## When NOT to Use
+
+- **No observable failure**: Can't produce 3 scenarios where agent behaves wrongly → don't write skill
+- **Pure reference**: Material is reference-only, no behavioral guardrails → use reference doc
+- **Already covered**: Existing skill addresses failure mode → extend it
+- **Final landing**: This produces candidate; shipper handles shipping → don't deploy here

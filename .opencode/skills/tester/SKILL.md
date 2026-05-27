@@ -7,128 +7,138 @@ use_when: "After builder completes implementation. When user reports bugs (write
 version: 1.0
 ---
 
-## Use When
+# tester
 
-After builder completes implementation. When user reports bugs (write regression test first). Before shipping (final test gate). For test coverage audits.
+**Tradeoff:** Fast validation vs. thorough coverage. Regression tests prove bugs stay fixed but slow iteration. Integration tests catch cross-module bugs at higher maintenance cost. Type tests prevent category errors on generic code.
 
 ## Core Concept
 
-Systematic testing discipline across five test type hierarchies — unit, integration, edge case, regression, and type tests — with QA patterns and coverage gap analysis to ensure comprehensive coverage.
+Five-test hierarchy — unit, integration, edge case, regression, type — with coverage gap analysis. Systematic discipline, not firefighting.
 
 ## Precise Vocabulary
 
-- **Unit Tests**: Behavior at function/component level, tested in isolation with mocked dependencies.
-- **Integration Tests**: Cross-module interactions at integration points like API routes, database calls, and service layers.
-- **Edge Cases**: Boundary conditions including empty states, maximum values, error paths, concurrency, and type coercion.
-- **Regression Tests**: Tests that prove bugs stay fixed — written before the fix, they must fail before the fix and pass after.
-- **Type Tests**: Verification of TypeScript types using `expectTypeOf` or similar, covering type errors and inference.
-- **Coverage Gap**: Areas lacking test coverage, tracked by module with risk level assessment.
-- **QA Patterns**: Systematic approaches including coverage maps and "What Could Break?" analysis.
+- **Unit Tests**: Function/component level, isolated with mocked deps.
+- **Integration Tests**: Cross-module at API routes, DB calls, service layers.
+- **Edge Cases**: Boundaries — empties, max values, error paths, concurrency, type coercion.
+- **Regression Tests**: Written before fix, fail before, pass after.
+- **Type Tests**: `expectTypeOf` verification of TS types, inference, and error surfaces.
+- **Coverage Gap**: Areas lacking coverage, tracked by module with risk level.
+- **QA Patterns**: Coverage maps + "What Could Break?" analysis.
 
 ## Context Requirements
 
-- Project's existing test framework and conventions
-- The modules or components being tested
-- Bug reproduction steps (for regression tests)
-- Understanding of what assumptions the code makes
+- Project test framework and conventions
+- Modules/components under test
+- Bug repro steps (regression)
+- Assumptions the code makes
 
 ## Workflow
 
-### 1. Systematic Test Coverage Map
-
-Before writing tests, map what needs coverage:
+### 1. Coverage Map
+Map modules to test types needed:
 
 | Module | Unit | Integration | Edge Cases |
 |--------|------|-------------|------------|
 | auth   | ✓    | ✓          | token expiry, invalid tokens |
 | api    | ✓    | ✗          | rate limiting, pagination |
 
-### 2. Unit Tests
+→ `verify:` Each module has at least unit coverage mapped.
 
-Behavior at function/component level:
-- Test each public function or component in isolation
-- Mock dependencies (use existing test patterns)
-- Cover: happy path, error cases, boundary values
-- Follow project's existing test framework and conventions
+### 2. Unit Tests
+Test each public function/component in isolation with mocked deps. Cover happy path, error cases, boundary values. Follow project conventions.
+
+→ `verify:` All public functions have unit test cases.
+→ `verify:` Mock usage matches project patterns.
 
 ### 3. Integration Tests
+Test cross-module at integration points. Use real/in-memory implementations where practical.
 
-Cross-module interactions:
-- Test that modules work together correctly
-- Focus on integration points: API routes, database calls, service layers
-- Use real or in-memory implementations where practical
+→ `verify:` Each API route has integration test.
+→ `verify:` DB/service layer interactions covered.
 
-### 4. Edge Case Discovery
+### 4. Edge Cases
+Systematic boundaries: empty states, max values, error paths, concurrency, type coercion.
 
-Systematically find boundary conditions:
-- Empty states (null, undefined, empty arrays, empty strings)
-- Maximum values (large inputs, pagination limits)
-- Error paths (network failures, auth failures, validation errors)
-- Concurrency (race conditions, parallel requests)
-- Type coercion (unexpected types, mixed types)
+→ `verify:` Empty/null/undefined handled per function.
+→ `verify:` Error paths exercised.
+→ `verify:` Type coercion inputs tested.
 
 ### 5. Regression Tests
+Write test reproducing the bug before fixing. Must fail before fix, pass after. Keep minimal.
 
-Tests that prove bugs stay fixed:
-- Before fixing a bug, write a test that reproduces it
-- The test must fail before the fix and pass after
-- Keep regression tests as simple as possible
+→ `verify:` Test fails on original code.
+→ `verify:` Test passes on fixed code.
+→ `verify:` Test is simplest possible reproduction.
 
 ### 6. Type Tests
+For complex generic code: verify types with `expectTypeOf`. Test type errors on invalid usage and correct inference on valid usage.
 
-For complex generic code:
-- Use `expectTypeOf` or similar to verify TypeScript types
-- Test that type errors appear for invalid usage
-- Test that type inference works correctly for valid usage
+→ `verify:` Generic function types surface errors for invalid args.
+→ `verify:` Inference produces expected types for valid usage.
 
 ### 7. "What Could Break?" Analysis
+For each change: what assumptions, what breaks those assumptions, what changes in deps, what prod scenarios differ from tests.
 
-For each change, ask:
-- What assumptions does this code make?
-- What happens when those assumptions are wrong?
-- What could change in dependent modules?
-- What production scenarios might differ from tests?
+→ `verify:` Assumptions documented per module.
+→ `verify:` Dep analysis complete.
 
-### 8. Coverage Gap Reporting
+### 8. Coverage Gap Report
+Total tests written, coverage by module, gaps with risk levels, recommendations.
 
-After testing, report:
-- Total tests written
-- Coverage by module
-- Gaps found and their risk level
-- Recommendations for future test improvements
+→ `verify:` Every module has risk-assessed coverage entry.
 
-## Tool Requirements
+## Flow
 
-- Project's existing test framework
-- Type testing utilities (expectTypeOf or equivalent) for type tests
+```
+Coverage Map → Unit Tests → Integration Tests → Edge Cases
+                         ↓
+               Regression Tests (per bug)
+                         ↓
+                  Type Tests (generics)
+                         ↓
+           ┌─ "What Could Break?" Analysis
+           ↓
+      Coverage Gap Report
+```
+
+## Tools
+
+| Tool | Phase(s) | Input | Output |
+|------|----------|-------|--------|
+| test runner | all | test files | pass/fail counts |
+| expectTypeOf | type tests | generic types | type assertion result |
+| coverage tool | report | run results | coverage % by module |
+
+## Examples
+
+| Scenario | Test Type | Approach |
+|----------|-----------|----------|
+| Auth token expiry | Unit + Edge | Mock timer, test boundary |
+| API pagination page size | Integration | Hit endpoint, verify shape |
+| Fix: rate limit overflow | Regression | Write failing test, fix, verify |
+| Generic `useList` hook | Type | expectTypeOf invalid/valid usage |
 
 ## Output
-
-When tests pass, capture the actual output:
 
 ```
 PASS  tests/auth.test.ts (12 tests)
 PASS  tests/api.test.ts (8 tests)
 Test Suites: 2 passed, 2 total
+Coverage: auth=100%, api=85%
+Gaps: db layer (medium risk)
 ```
 
-## Quality Criteria
+## Quality
 
-- All tests pass (unit, integration, edge case, regression, type)
-- Regression tests fail before the fix and pass after
-- Every module has coverage mapped with identified gaps
-- Coverage gaps documented with risk assessment
-
-## When NOT to Use
-
-- When there is no code to test (pure design, planning, or documentation tasks)
-- When the implementation is not yet complete or still in flux
-- When the project has no test framework set up
-- For one-off exploratory prototypes where test harness overhead exceeds value
+→ `verify:` All tests pass (unit, integration, edge, regression, type).
+→ `verify:` Regression tests fail before fix, pass after.
+→ `verify:` Every module has coverage map with identified gaps.
+→ `verify:` Coverage gaps documented with risk assessment.
+→ `verify:` "What Could Break?" analysis completed.
 
 ## Protocol Shells
 
-All test operations follow the protocol shell format:
+All test operations follow protocol shell format:
 
 /protocol {
   intent="Run and verify test suite for changed code",
@@ -143,4 +153,11 @@ All test operations follow the protocol shell format:
 |------|------|
 | /decompose | Map changed files to affected test cases |
 | /verify | Check test output against expected pass criteria |
-| /synthesize | Combine results into a regression report |
+| /synthesize | Combine results into regression report |
+
+## When NOT to Use
+
+- No code to test (pure design/planning/docs)
+- Implementation incomplete or in flux
+- No test framework set up
+- One-off exploratory prototypes where harness overhead exceeds value

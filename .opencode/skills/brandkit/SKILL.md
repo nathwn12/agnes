@@ -4,170 +4,210 @@ name: brandkit
 description: 'Starting a new project with no design system, redesigning existing UI, needing visual assets for marketing or docs, before planner if design direction affects architecture.'
 phase: "DESIGN"
 use_when: "Starting a new project with no design system, redesigning existing UI, needing visual assets for marketing or docs, before planner if design direction affects architecture."
-version: 1.1
+version: 1.2
 ---
 
-## Use When
+# Brand Kit
 
-Starting a new project with no design system, redesigning existing UI, needing visual assets for marketing or docs, before planner if design direction affects architecture.
+**Tradeoff:** Rich brand identity costs design time upfront but prevents costly course corrections and inconsistent UI later.
 
 ## Core Concept
 
-Brand Kit is a complete visual identity system encompassing logo design, color palettes, typography, spacing, and UI mockups. Every element is intentional, consistent, accessible, scalable, and on-brand — a single system with no ad-hoc decisions. Treat the design system as source of truth: every screen, every component, every interaction derives from it.
+Complete visual identity system — logo, color, typography, spacing, motion, UI mockups. Every element intentional, consistent, accessible, scalable, on-brand. Single source of truth: every screen, component, interaction derives from it.
 
-**Posture:** Design consultant, not form wizard. Propose a complete coherent system, explain why it works, and invite the user to adjust. Ask clarifying questions one at a time. Before any implementation work, present the full design and get user approval.
+**Posture:** Design consultant, not form wizard. Propose coherent system, explain rationale, invite adjustment. One question at a time. Present full design for approval before implementation work.
 
 ## Precise Vocabulary
 
-- **Design System**: Complete set of visual standards and components defining a brand's look and feel
-- **Logo Concepting**: Generating multiple logo directions — monogram, icon, wordmark, combination mark — aligned to brand values
-- **Color Palette**: Primary, secondary, accent colors; light/dark modes; semantic colors (success, warning, error, info); WCAG 2.1 AA compliant
-- **Typography**: Heading font (display/editorial), body font (reading/UI), monospace font (code/data), with a 6-8 size type scale and defined usage
-- **Spacing System**: 4px or 8px base unit with scale (xs, sm, md, lg, xl, xxl) and component padding/margin guidelines
-- **Design-Shotgun**: Generating multiple visual variants simultaneously for comparison and structured feedback
-- **Taste Profile**: Persistent record of approved and rejected design decisions across sessions
-- **Memorable Thing**: The one thing a user should remember after first seeing the product — every design decision serves this
+- **Design System**: Complete set of visual standards and components defining brand look/feel
+- **Logo Concepting**: Generating logo directions — monogram, icon, wordmark, combination mark — aligned to brand values
+- **Color Palette**: Primary/secondary/accent colors; light/dark modes; semantic colors (success, warning, error, info); WCAG 2.1 AA compliant
+- **Typography**: Heading font (display/editorial), body font (reading/UI), monospace font (code/data), 6-8 size type scale with usage rules
+- **Spacing System**: 4px or 8px base unit, scale (xs-sm-md-lg-xl-xxl), padding/margin guidelines
+- **Design-Shotgun**: Generate multiple visual variants simultaneously for comparison and structured feedback
+- **Taste Profile**: Persistent record of approved/rejected design decisions across sessions
+- **Memorable Thing**: The one thing user should remember — every design decision serves this
 
 ## Context Requirements
 
 - Project name and domain
-- Brand values and positioning (if available)
+- Brand values and positioning
 - Target audience
 - Existing brand assets (if any)
-- Design direction preferences or constraints
-- Access to DESIGN.md if it exists (update rather than overwrite)
+- Design constraints or preferences
+- Access to DESIGN.md if exists (update, not overwrite)
 
 ## Workflow
 
 ### Phase 0: Product Context
 
-Ask one question that covers everything. Pre-fill what you can infer from the codebase. Confirm what the product is, who it's for, project type (web app, dashboard, marketing site, editorial, internal tool). Ask the **memorable thing** question: "What's the one thing you want someone to remember after they see this product for the first time?" Write it down — every subsequent design decision serves this.
+One question covering everything. Pre-fill from codebase. Confirm: product, audience, project type (web app/dashboard/marketing/editorial/internal tool). Ask the memorable thing: "What's the one thing you want someone to remember after first seeing this?"
+
+→ verify: product, audience, type, and memorable thing captured
+
+**Output:** Product context and memorable thing statement.
 
 ### Phase 1: Brand System Design
 
-Create the complete design system:
-
-**Logo Concepting and Exploration:**
-- Generate multiple logo concepts with different directions
-- Symbolic meaning aligned with brand values
-- Consider: monogram, icon, wordmark, combination mark
+**Logo Concepting:**
+- Generate multiple concepts — monogram, icon, wordmark, combination mark
+- Symbolic meaning tied to brand values
+→ verify: each logo direction traces to a specific brand value
 
 **Color Palette:**
 - Primary, secondary, accent colors
-- Light and dark modes
+- Light + dark modes
 - Semantic colors (success, warning, error, info)
-- Ensure WCAG 2.1 AA contrast ratios minimum
-- Define color usage rules, not just hex values
+- WCAG 2.1 AA contrast minimum
+- Usage rules, not just hex values
+→ verify: every proposed text/background pair passes WCAG AA
 
 **Typography:**
 - Heading font (display/editorial) with rationale
 - Body font (reading/UI) with rationale
 - Monospace font (code/data) with rationale
-- Type scale: 6-8 sizes with defined usage context
-- Line height and letter-spacing per size
+- Type scale: 6-8 sizes with usage context
+- Line height + letter-spacing per size
+→ verify: font pair works across headings, body text, and UI elements
 
 **Spacing System:**
 - 4px or 8px base unit
-- Defined spacing scale (xs, sm, md, lg, xl, xxl)
-- Component padding and margin guidelines
-- Grid column/row gap standards
+- Spacing scale (xs-sm-md-lg-xl-xxl)
+- Component padding/margin guidelines
+- Grid gap standards
+→ verify: spacing scale applied consistently to 3+ component types
 
 **Motion & Interaction:**
-- Transition durations and easing curves
+- Transition durations + easing curves
 - Hover, focus, active, loading states
 - Micro-interaction patterns
+→ verify: interaction states mapped to easing curves
+
+**Output:** DESIGN.md with complete brand system specification.
 
 ### Phase 2: Design Exploration (Design-Shotgun)
 
-Generate and iterate on visual variants:
-- Propose 2-3 distinct creative directions with trade-offs and your recommendation
-- Each variant must use a different font family, color palette, and layout approach
-- Use anti-convergence rule: if two variants feel like siblings, one failed
-- Create a comparison board for structured feedback
-- Iterate based on user preferences
-- Apply UX principles: don't make me think, clicks don't matter thinking does, omit then omit again
+Generate and iterate visual variants:
+- Propose 2-3 distinct creative directions with trade-offs and recommendation
+- Each variant: different font family, color palette, layout approach
+- Anti-convergence: if two variants feel like siblings, one failed
+- Create comparison board for structured feedback
+- Iterate on user preferences
 - Design for scanning (billboards at 60mph), not reading
+→ verify: variants are visually distinct with no sibling feels
+
+**Output:** Selected design direction with comparison artifact.
 
 ### Phase 3: UI/Image Generation
 
-Create visual assets:
-
 **Section-by-Section Mockups:**
 - One image per section (hero, features, testimonials, etc.)
-- Consistent palette across all sections
-- Composition variety: not always left-text/right-image
+- Consistent palette, composition variety
 - Varied hero scales: giant, mid, mini minimalist
+→ verify: images use approved color palette and typography
 
 **App Screen Concepts:**
 - Native mobile/desktop screen designs
 - Multi-screen flows showing user journeys
-- Device framing for presentation
-- 44px minimum touch targets for mobile
+- Device framing
+- 44px minimum touch targets
+→ verify: touch targets meet 44px minimum
 
 **Premium Mockups:**
 - Editorial quality
 - Minimalist, cinematic, or dark-tech aesthetic
-- Art-directed imagery with intentional composition
+- Art-directed composition with intentional focal point
+→ verify: each mockup has one clear focal point
+
+**Output:** Mockup images in `.agnes/design/mockups/`.
 
 ### Phase 4: Taste Memory
 
-Track approved and rejected design decisions across sessions. Before generating new variants, check for prior taste profile. Factor demonstrated preferences into generation — bias toward what the user has approved, avoid what they've rejected. Confidence decays 5% per week of inactivity.
+Track approved/rejected decisions across sessions. Before generating, check prior taste profile. Bias toward approved, avoid rejected. Confidence decays 5%/week of inactivity.
 
-When the current request contradicts a strong persistent signal, flag it: "Your taste profile strongly prefers minimal. You're asking for playful this time — proceed as one-off or update the profile?"
+When request contradicts strong signal: "Your profile strongly prefers minimal. You're asking for playful — proceed as one-off or update profile?"
+
+→ verify: taste profile consulted before generation
+
+**Output:** Updated taste profile.
 
 ### Phase 5: Research (Optional)
 
-If the user wants competitive research: use web search to find top products in their space. Analyze: fonts actually used, color palettes, layout approach, spacing density, aesthetic direction. Synthesize findings into three layers:
-- **Layer 1 (tried and true):** What patterns every product in this category shares
-- **Layer 2 (new and popular):** What's trending and emerging
-- **Layer 3 (first principles):** Where to deliberately break from category norms
+Web search for competitive landscape. Analyze: fonts, palettes, layout, spacing, aesthetic. Three layers:
+- **Layer 1 (tried and true):** Patterns every competitor shares
+- **Layer 2 (new and popular):** What's trending
+- **Layer 3 (first principles):** Where to deliberately break from norms
 
-**Eureka check:** If first-principles reasoning reveals a genuine design insight, name it explicitly and log it.
+If first-principles reveals a genuine insight, name and log it explicitly.
+→ verify: each layer has 2+ concrete examples
 
-## Tool Requirements
+**Output:** Competitive research synthesis.
 
-- Image generation (DALL-E, Midjourney, or equivalent)
-- Design tooling for mockups, prototypes, and comparison boards
-- Color palette analysis for WCAG contrast checking
-- Web search for competitive research
-- File read/write for DESIGN.md artifacts
+## Flow Diagram
+
+```
+[P0: Context] → [P1: Brand System] → [P2: Exploration] → [P3: UI Gen] → [Output]
+                     ↑ reject             ↑ reject            │
+                     └────────────────────┴────────────────────┘
+```
+
+P4 (Taste Memory) is cross-cutting — consulted every phase.
+P5 (Research) is optional — feeds into P1/P2.
+
+## Tools
+
+| Tool | Phase(s) | Input | Output |
+|------|----------|-------|--------|
+| Image generation (DALL-E, Midjourney) | 3, 2 | Design specs, approved direction | Mockup images, comparison boards |
+| Color palette analysis | 1 | Color proposals | WCAG compliance report |
+| Web search | 5 | Domain, competitors | Competitive analysis |
+| File read/write | All | Current DESIGN.md + assets | Updated DESIGN.md + new assets |
+
+## Examples
+
+| Request | Approach | Output |
+|---------|----------|--------|
+| "Design a fintech brand" | P0-1: trust cues → blue palette, serif headings | DESIGN.md, color system |
+| "Redesign dashboard UI" | P2: 3 layout variants → user picks → P3 mockups | Mockup images, taste profile |
+| "Marketing site visuals" | P3: section-by-section hero images | `.agnes/design/mockups/` |
+| "Logo for my startup" | P1: monogram + wordmark → P3: placed on mockups | Logo assets, brand guidelines |
 
 ## Output
 
-- `DESIGN.md` — Design system source of truth (always)
-- `.agnes/design/mockups/` — Generated mockup images, one per section
+- `DESIGN.md` — Design system source of truth
+- `.agnes/design/mockups/` — Mockup images, one per section
 - `.agnes/design/brand/` — Logo assets, brand guidelines
-- Color and font preview pages as HTML if needed
+- Color/font preview pages (HTML) if needed
 - Taste profile for cross-session design memory
 
 ## Quality Criteria
 
-- **Memorable thing serving:** Every element reinforces the one thing the user wants remembered
-- **Minimalist**: Clean, intentional, no decoration without purpose
-- **Consistent**: Single system, no ad-hoc decisions
-- **Accessible**: WCAG AA minimum, AAA preferred
-- **Scalable**: Works at every breakpoint
-- **On-brand**: Every element reinforces the brand
-- **Scan-friendly**: Visual hierarchy guides attention; clickable things look clickable
-- **No noise**: Eliminate shouting, disorganization, and clutter
+→ verify: every element traces back to the memorable thing
+→ verify: clean, intentional, no decoration without purpose
+→ verify: single design system, no ad-hoc decisions
+→ verify: WCAG AA minimum, AAA preferred
+→ verify: works at every breakpoint
+→ verify: every element reinforces brand
+→ verify: visual hierarchy guides attention; clickable things look clickable
+→ verify: no shouting, disorganization, or clutter
 
 ## When NOT to Use
 
-- Project already has a comprehensive design system needing only minor tweaks
-- No visual assets or mockups are required
-- Design direction does not affect architecture decisions
+- Project has comprehensive design system needing only minor tweaks
+- No visual assets or mockups required
+- Design direction doesn't affect architecture decisions
 - User wants code implementation, not design exploration
 
 ## Protocol Shells
 
-All brand design follows the protocol shell format:
-
+```
 /protocol {
-  intent="Create a visual identity system for a new project",
-  input={ project="<description>", vibe="<aesthetic-direction>" },
+  intent="Create a visual identity system",
+  input={ project="<desc>", vibe="<direction>" },
   process=[ /decompose{assets}, /compare{palettes}, /synthesize{guidelines} ],
   output={ result="<design-system>", assets="<deliverables>" }
 }
+```
 
 ## Cognitive Tools
 

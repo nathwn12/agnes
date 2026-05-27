@@ -4,8 +4,12 @@ name: verifier
 description: 'After any code change (called by builder), before claiming any task is complete, before shipper starts.'
 phase: "VERIFY"
 use_when: "After any code change (called by builder), before claiming any task is complete, before shipper starts. Also when a Definition of Done contract with evidence-backed assertions must be verified before completion can be claimed."
-version: 1.1
+version: 1.2
 ---
+
+# Verifier
+
+**Tradeoff:** Thorough gate sequence (typecheck → lint → test → build → promise scan) catches regressions but costs time. Skipping gates speeds up iteration but risks shipping broken code. Run full gate before any completion claim. Shallow-first within each gate — prefer `--quiet`/JSON output, escalate to full output only on failure.
 
 ## Use When
 
@@ -15,85 +19,65 @@ After any code change (called by builder), before claiming any task is complete,
 
 > **NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE**
 
-Evidence before assertions, always. Trusting "should work" or previous runs is dishonesty, not efficiency.
+Evidence before assertions. "Should work" is dishonesty, not efficiency.
 
 ## Precise Vocabulary
 
-- **Verification Gate**: The ordered sequence of checks (Type Check, Lint, Test, Build, Promise Scan, Evidence Capture) that must all pass before completion can be claimed
-- **Type Check**: Static type analysis via `tsc --noEmit` or `bun run typecheck`; must pass with zero errors
-- **Lint**: Code quality analysis via project-specific linter; must pass with zero errors, warnings captured separately
-- **Test**: Automated test suite via project-specific test runner; any failure blocks the gate
-- **Build**: Production compilation producing deployable output; must produce output without errors
-- **Promise Scan**: Searches subagent output for `<promise>TAG</promise>` completion markers; the promise tag must match the expected completion promise
-- **Evidence**: Full captured output from each verification step, logged as structured pass/fail with timing and metrics
-- **Rationalization**: Any excuse used to defer or skip fresh verification — all rejected by the Iron Law
-- **Contract**: A declarative set of testable assertions encoding the Definition of Done. Each assertion is a promise with an evidence requirement — no assertion passes without attached command output.
-- **Definition of Done (DoD)**: The complete set of conditions that must be met (all assertions passed, all evidence captured) before a task can be marked complete. A failing or pending assertion without evidence blocks the gate.
+- **Verification Gate**: ordered checks (Type Check → Lint → Test → Build → Promise Scan → Evidence Capture) — all must pass
+- **Type Check**: `tsc --noEmit` or equivalent; zero errors required
+- **Lint**: project linter; zero errors required, warnings logged separately
+- **Test**: test suite runner; any failure blocks gate
+- **Build**: production compilation; zero errors, output artifact verified
+- **Promise Scan**: grep subagent output for `<promise>TAG</promise>` marker
+- **Evidence**: captured full output per step — structured pass/fail + timing + metrics
+- **Rationalization**: any excuse to skip fresh verification — all rejected
+- **Contract**: declarative testable assertions encoding Definition of Done; each assertion requires command-evidence to pass
+- **DoD**: complete set of conditions (all assertions passed + evidence captured) before task is complete
 
 ## Context Requirements
 
-- Project type (determines which verification commands to use)
-- Project-specific tool chain: TypeScript compiler, linter, test runner, build tool
-- CI pipeline configuration (if one exists) — verification check ordering must remain consistent across local and CI environments
+- Project type → determines command selection
+- Tool chain: TypeScript compiler, linter, test runner, build tool
+- CI config (if exists) — verification ordering must match local and CI
 
 ## Workflow
 
-Run these checks in order. Stop on first failure unless otherwise specified.
+Run in order. Stop on first failure.
 
 ### 1. Type Check
-
-Command: `tsc --noEmit` or `bun run typecheck`
-- Must pass with zero errors
-- Capture full output as evidence
+`tsc --noEmit` or `bun run typecheck`
+→ verify: exit 0, zero errors, capture output
 
 ### 2. Lint
-
-Command: `bun run lint` or project-specific linter
-- Must pass with zero errors
-- Capture warnings separately from errors
-- If lint-fix available, run it
+`bun run lint` or project linter
+→ verify: exit 0, zero errors, log warnings separately
+If `--fix` available, run it before checking
 
 ### 3. Test
-
-Command: `bun run test` or project-specific test runner
-- Capture: test suites passed/failed, total tests, individual failures
-- A failing test blocks the gate
-- Capture full output as evidence
+`bun run test` or project test runner
+→ verify: exit 0, all suites passed, capture failure details
+[Test] → verify: suite count + pass count + fail count captured
 
 ### 4. Build
-
-Command: `bun run build` or project-specific build
-- Must produce output without errors
-- Verify the output file exists and has expected size
+`bun run build` or project build command
+→ verify: exit 0, artifact exists, size logged
+[Build] → verify: dist output present, non-zero size
 
 ### 5. Promise Scan
-
-Scan the subagent's full output for a `<promise>` completion tag:
-- Match pattern: `<promise>EXPECTED_TAG</promise>`
-- The expected tag is provided by builder (default: `DONE`)
-- Uses regex: `/<promise>\s*EXPECTED_TAG\s*<\/promise>/i`
-- If promise tag exists with expected value → PASS
-- If promise tag exists with unexpected value → FAIL (log the unexpected tag)
-- If no promise tag found → FAIL (task not marked complete)
-- Capture the promise tag value as evidence
+Scan subagent output for `<promise>EXPECTED_TAG</promise>`
+Default tag: `DONE`. Regex: `/<promise>\s*EXPECTED_TAG\s*<\/promise>/i`
+→ verify: tag present with expected value
 
 ### 5.5 Contract / Definition of Done
-
-When the task specifies a Definition of Done contract, verify each assertion against evidence:
-
-- Each assertion must carry an evidence-backed status: `passed`, `failed`, or `pending`
-- Evidence must reference actual command output (stdout, exit codes, file content, test results) — never subjective self-assessment
-- Any `failed` assertion blocks the gate immediately. Document: assertion name, expected outcome, actual result, and the evidence that disproves it
-- Any `pending` assertion blocks the gate — pending means the task is incomplete
-- The `<promise>TAG</promise>` completion marker is verified as the final assertion:
-  - Match pattern: `<promise>EXPECTED_TAG</promise>` (default: `DONE`)
-  - Regex: `/<promise>\s*EXPECTED_TAG\s*<\/promise>/i`
-  - Without a matching promise tag, the task is not complete even if all assertions pass
-- Collect evidence per-assertion in the Evidence Capture step
+When task has a DoD contract, verify each assertion against evidence:
+- Each assertion status: `passed`, `failed`, or `pending` — backed by command output
+- `failed` → block gate. Document: assertion name, expected, actual, disproving evidence
+- `pending` → block gate (task incomplete)
+- Final assertion: `<promise>EXPECTED_TAG</promise>` match
+→ verify: all assertions PASS with evidence attached
 
 ### 6. Evidence Capture
-
-Log actual output, not "should work":
+Log actual output, not intent:
 ```
 Type check: PASS (0 errors, 2.1s)
 Lint: PASS (0 errors, 0 warnings, 1.5s)
@@ -102,16 +86,42 @@ Build: PASS (output: dist/index.js, 156KB)
 Promise:  PASS (<promise>DONE</promise>)
 Contract: PASS (3/3 assertions passed, all evidence attached)
 ```
+→ verify: evidence log complete, all entries PASS
 
-## Tool Requirements
+**Phase output:** Structured evidence log with PASS/FAIL per gate, timing, and metrics.
 
-- **Bash**: to execute verification commands (type check, lint, test, build) and capture their output
-- **Read**: to examine captured output evidence and verify build artifact details
+## Flow Diagram
+
+```
+Type Check ──► Lint ──► Test ──► Build ──► Promise Scan ──► Evidence Capture
+    │            │         │          │            │                │
+    ▼            ▼         ▼          ▼            ▼                ▼
+   PASS         PASS      PASS       PASS         PASS             DONE
+    │            │         │          │            │                │
+    └───── FAIL: stop, report first failure ───────┘
+```
+
+## Tools
+
+| Tool | Phase(s) | Input | Output |
+|------|----------|-------|--------|
+| Bash | All | shell command | stdout + stderr + exit code |
+| Read | Evidence Capture | captured log file | verified content |
+| Write | Evidence Log | structured log | `.agnes/evidence/` entry |
+
+## Examples
+
+| Scenario | Command | Expected | Actual | Verdict |
+|----------|---------|----------|--------|---------|
+| Type check passes | `tsc --noEmit` | exit 0, 0 errors | exit 0, 0 errors | PASS |
+| Lint has warnings | `bun run lint` | exit 0, 0 errors | exit 0, 2 warnings | PASS (warnings logged) |
+| Test fails | `bun run test` | exit 0 | exit 1, 1 suite failed | FAIL — block gate |
+| Build missing | `bun run build` | dist/bundle.js exists | file not found | FAIL — block gate |
+| Promise missing | grep subagent output | `<promise>DONE</promise>` | no match | FAIL — task not complete |
+| Contract 3/3 pass | all assertion commands | 3 passed | 3 passed, evidence attached | PASS |
 
 ## Output
 
-A structured verification evidence log in the following format, reported after all gates pass:
-
 ```
 Type check: PASS (0 errors, 2.1s)
 Lint: PASS (0 errors, 0 warnings, 1.5s)
@@ -121,61 +131,40 @@ Promise:  PASS (<promise>DONE</promise>)
 Contract: PASS (3/3 assertions passed, all evidence attached)
 ```
 
-If any gate fails, output the failure details and stop — do not continue to subsequent gates.
+Any gate fails → output failure details, stop, do not proceed.
 
-## Quality Criteria
+## Quality
 
-- All gates must pass with zero errors before completion can be claimed
-- Evidence must be freshly captured in the current session — previous runs do not count
-- Every gate outcome is logged with actual metrics (timing, counts, sizes)
-- The Rationalization Guard Table is enforced at all times:
+- All gates PASS with zero errors before completion claim
+- Evidence captured fresh in current session — no cached results
+- Every gate logged with actual metrics (timing, counts, sizes)
+→ verify: evidence freshness confirmed
+→ verify: all gates exited 0
+→ verify: promise tag matches expected value
+→ verify: no rationalizations accepted
+
+Rationalization Guard Table:
 
 | Excuse | Reality |
 |--------|---------|
-| "Should work now" | RUN the verification |
-| "It passed yesterday" | Run it NOW in this session |
+| "Should work" | RUN the verification |
+| "Passed yesterday" | Run it NOW |
 | "Just this once" | No exceptions |
-| "The test isn't important" | Then remove it or fix it |
-| "I'll check later" | Check now or document why not |
-| "All assertions feel right" | Show me the command evidence |
-| "It's probably done" | Run the contract assertions |
-
-## Named Subagent Roles — @executor
-
-### @executor for Verification
-
-The verifier agent delegates ALL bash commands to the @executor subagent. The verifier itself must NEVER run bash directly.
-
-The @executor runs verification commands (tests, builds, type checks, linters) and returns compact pass/fail results. The verifier:
-1. Specifies the exact command(s) to run
-2. Reads the @executor's compact result
-3. Makes the pass/fail/blocked determination
-4. Documents the result with file:line references for any failures
-
-The @executor does not interpret results — it only executes and reports. The verifier retains full responsibility for analysis and documentation.
-
-When running verification commands, prefer:
-- `--quiet` or `--short` flags for compact output
-- JSON output format when available (e.g., `--format json`)
-- The smallest command that answers the verification question before escalating to broader checks
-
-## When NOT to Use
-
-- When no automated checks exist for the project — use manual verification instead
-- When designing or writing tests — use tester instead
-- During initial project scaffolding before a CI pipeline is configured
-- When the task is to investigate and fix test failures rather than gate a completion claim
+| "Test isn't important" | Remove or fix it |
+| "I'll check later" | Check now or document why |
+| "Feels right" | Show command evidence |
+| "Probably done" | Run contract assertions |
 
 ## Protocol Shells
 
-All verification operations follow the protocol shell format:
-
+```
 /protocol {
   intent="Verify code change meets correctness and quality criteria",
   input={ change="<diff-or-file>", criteria="<verification-checks>" },
   process=[ /verify{correctness}, /verify{regression}, /synthesize{verdict} ],
   output={ result="<pass-fail>", evidence="<specific-evidence>" }
 }
+```
 
 ## Cognitive Tools
 
@@ -183,4 +172,11 @@ All verification operations follow the protocol shell format:
 |------|------|
 | /decompose | Break verification into independent checks |
 | /verify | Check each criterion with specific evidence from output |
-| /synthesize | Combine check results into a verified/blocked verdict |
+| /synthesize | Combine check results into verified/blocked verdict |
+
+## When NOT to Use
+
+- No automated checks exist — use manual verification instead
+- Designing or writing tests — use tester instead
+- Initial project scaffolding before CI pipeline
+- Investigating/fixing test failures (not gating a completion claim)

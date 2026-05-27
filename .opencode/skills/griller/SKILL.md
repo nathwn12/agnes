@@ -7,192 +7,154 @@ use_when: "debugger has narrowed but not resolved, complex multi-file bugs with 
 version: 1.0
 ---
 
-## Use When
+# Griller
 
-debugger has narrowed but not resolved, complex multi-file bugs with no clear hypothesis, recurring issues that were "fixed" before.
+**Tradeoff:** Root-cause certainty costs 3-5x more context than quick fix. Use when debugger narrowed but stalled.
 
-## Core Concept
+## Core
 
-**Tone:** AGNES-led. You take full control of the debugging cycle. You're relentless but methodical.
+Own full debugging cycle: fast feedback loop → ranked falsifiable hypotheses → instrument one variable at a time → fix + regression test. 3-fail rule as safety valve.
 
-Debugging is an adversarial process. The griller owns the full cycle — building a fast feedback loop, generating ranked falsifiable hypotheses, instrumenting precisely one variable at a time, then fixing with a regression test that proves the root cause. The 6-phase discipline is the backbone. The 3-fail rule is the safety valve: if three hypotheses are wrong, the architecture is wrong, not the code.
+**Backward Tracing:** Start at symptom → trace data flow BACKWARD through each layer boundary → add diagnostic instrumentation → ask "What input to THIS layer produces this output?" → repeat until root cause found.
 
-**Backward Tracing Pattern:**
+## Vocabulary
 
-- Start at the symptom (error message, crash, wrong output)
-- Trace data flow BACKWARD through each layer boundary
-- At each boundary, add diagnostic instrumentation
-- Ask: "What input to THIS layer would produce this output?"
-- Repeat until reaching the root cause layer
+- **Feedback loop:** Fast deterministic pass/fail signal reproducing bug in one command
+- **HITL:** Bash script guiding human through manual repro, captures structured KEY=VALUE for agent parsing
+- **Falsifiable hypothesis:** Ranked root cause prediction with specific "if true, then X" consequence and exact test
+- **Instrumentation:** Tagged debug logs using `[DEBUG-<random4>]` pattern for easy cleanup
+- **Regression test:** Fails before fix, passes after, runs in <100ms
+- **3-Fail Rule:** Three wrong hypotheses → architecture wrong, not code → document + recommend redesign
+- **Seam:** Architecture boundary where a test can isolate a layer
+- **Non-deterministic bug:** Unreliable repro; goal → >60% repro rate via looping, parallelization, stress, delay injection
 
-## Precise Vocabulary
+## Context
 
-- **Feedback loop:** A fast, deterministic pass/fail signal that reproduces the bug in one command and produces a clear pass/fail result
-- **HITL (Human-In-The-Loop):** A bash script pattern that guides a human through manual repro steps and captures structured KEY=VALUE output for agent parsing, used when full automation is impossible
-- **Falsifiable hypothesis:** A ranked prediction of root cause with a specific "if true, then X" consequence and an exact test to prove or disprove it
-- **Instrumentation:** Tagged debug logs using the pattern `[DEBUG-<random4>]` for easy identification and cleanup during the cleanup phase
-- **Regression test:** A test that fails before the fix (proves it tests the right thing), passes after the fix (proves the fix works), and runs in <100ms
-- **3-Fail Rule:** After three proven-wrong hypotheses, stop — the architecture is wrong, not the code — document and recommend redesign
-- **Seam:** An architecture boundary where a test can meaningfully isolate a layer; the presence or absence of correct seams determines whether a regression test can be written
-- **Non-deterministic bug:** A bug that doesn't reproduce reliably; the goal shifts from clean repro to achieving >60% repro rate through looping, parallelization, stress, or delay injection
-
-## Context Requirements
-
-- A bug report or symptom description (error message, crash, wrong output, performance regression)
-- debugger has been applied and has narrowed the scope but not resolved the root cause
-- Access to the codebase, test infrastructure, and reproduction environment
-- For HITL scenarios: a collaborating human who can follow scripted interaction steps
+- Bug report or symptom description
+- debugger applied but unresolved
+- Codebase, test infra, repro environment access
+- For HITL: collaborating human
 
 ## Workflow
 
 ### Phase 1: Build Feedback Loop
 
-Create a fast, deterministic pass/fail signal:
-- Failing test, curl script, headless browser script, or throwaway harness
-- Must be runnable in one command
-- Must produce a clear pass/fail result
-- Iterate: make it faster, sharper, more deterministic
+Fast deterministic pass/fail signal in one command. Iterate: faster, sharper → verify: loop <5s.
 
-**10 feedback loop strategies (ranked by preference):**
+**10 strategies (ranked):**
 
-1. **Failing test** — Fastest, most reliable. Write a test that asserts the expected behavior. Red before fix, green after.
-2. **curl / HTTP request** — For API and web bugs. Hit the endpoint directly with known payload, assert response.
-3. **CLI invocation with known input** — For CLI tools. Run with predetermined args, assert stdout/stderr/exit code.
-4. **Headless browser script** — For UI bugs. Script navigation, interaction, and screenshot/assertion checks.
-5. **Replay trace** — Record a real session and replay it deterministically. Captures timing and state.
-6. **Throwaway harness** — Minimal script (5-20 lines) that exercises only the buggy code path. No test framework needed.
-7. **Fuzz** — Random inputs, look for crashes or assertion failures. Good for edge-case discovery.
-8. **Bisection** — Binary search through commits to find where the bug was introduced. `git bisect`.
-9. **Differential loop** — Run working variant and broken variant side by side, diff the output/behavior.
-10. **HITL bash script** — Human-in-the-loop. Last resort when fully automated reproduction is impossible (see pattern below).
+1. **Failing test** — Fastest. Red before fix, green after.
+2. **curl / HTTP request** — API/web bugs. Hit endpoint, assert response.
+3. **CLI with known input** — Assert stdout/stderr/exit code.
+4. **Headless browser** — UI bugs. Script interaction, assert.
+5. **Replay trace** — Record real session, replay deterministically.
+6. **Throwaway harness** — 5-20 line script exercising buggy path. No test framework.
+7. **Fuzz** — Random inputs, look for crashes.
+8. **Bisection** — `git bisect` through commits.
+9. **Differential loop** — Run working vs broken side by side, diff output.
+10. **HITL bash script** — Last resort when full automation impossible.
 
-**HITL (Human-In-The-Loop) bash script pattern:**
-
-When fully automated reproduction is impossible, create a script that guides the human through the repro steps and captures structured output:
-
+**HITL pattern:** `step()` describes human action, `capture()` records structured KEY=VALUE:
 ```
-# scripts/hitl-<bug>.sh
 step() { echo "=== STEP: $* ===" >&2; }
 capture() { echo "$1=$2" >> /tmp/hitl-output.txt; }
-
 step "Open the app and navigate to settings"
 read -p "What do you see? " result
 capture "SETTINGS_PAGE" "$result"
-
-step "Click the 'Save' button"
-read -p "Does it show an error? (y/n): " result
-capture "SAVE_ERROR" "$result"
-
-echo "=== HITL complete ==="
-cat /tmp/hitl-output.txt
 ```
 
-Use `step()` to describe what the human should do, `capture()` to record structured responses. Outputs `KEY=VALUE` for agent parsing.
+**Non-deterministic bugs:** Goal >60% repro rate:
+- Loop repro 100x, measure frequency
+- Parallelize for contention, add stress, inject sleeps at race points
+- 50% flake = debuggable; 1% = not
+- → verify: repro rate >60%
 
-**Non-deterministic bug techniques:**
-
-Goal is NOT a clean repro (may be impossible) but HIGHER repro rate:
-- Loop the repro 100x and measure frequency
-- Parallelize to increase contention
-- Add stress (memory pressure, CPU load, network latency)
-- Inject sleeps/delays at suspected race points
-- 50% flake = debuggable; 1% flake = not (move on)
-- Add logging, slow down operations, stress the system — don't stop until the bug is reproducible at least 60% of the time
+**Output:** One-command pass/fail script reproducing the bug.
 
 ### Phase 2: Reproduce
 
-Run the feedback loop, watch the bug appear:
-- Confirm it's the RIGHT bug — matches the user's report
-- Run at least 3 times to confirm reproducibility
-- If the bug disappears, document the environment where it was seen
+Run feedback loop, confirm it's the RIGHT bug. Run ≥3x to confirm consistency → verify: 3/3. If disappears, document environment.
+
+**Output:** Confirmed reproducible bug.
 
 ### Phase 3: Hypothesise
 
 Generate 3-5 ranked falsifiable hypotheses:
 ```
-Hypothesis 1 (60%): <specific cause>
-  If true: <specific prediction>
-  Test: <exact command or code change>
-
-Hypothesis 2 (25%): <specific cause>
-  If true: <specific prediction>
-  Test: <exact command or code change>
+Hypothesis 1 (60%): <cause>
+  If true: <prediction>
+  Test: <exact command>
 ```
+Present to user for veto → verify: approved. Execute top.
 
-Present to user for veto, then execute the top hypothesis.
+**Output:** Ranked hypotheses, user-approved execution order.
 
 ### Phase 4: Instrument
 
-One variable at a time:
-- Tagged debug logs using pattern: `[DEBUG-<random4>]` for easy cleanup
-- Add only the instrumentation needed to test the current hypothesis
-- Remove or disable previous instrumentation before adding new
-- For performance: baseline first, then bisect
+One variable at a time. Tagged logs via `[DEBUG-<random4>]` for easy cleanup. Only instrumentation for current hypothesis. Remove previous before adding new. Performance: baseline first → verify.
+
+**Output:** Targeted instrumentation matching hypothesis.
 
 ### Phase 5: Fix + Regression Test
 
-Before writing the fix, write a failing test that reproduces the bug:
-- If correct seam exists: write failing test → apply fix → verify pass → re-run original repro
-- If no correct seam: document the architecture gap as a finding
+If correct seam exists: write failing test → apply fix → verify pass → re-run original repro. If no seam: document architecture gap. Regression test: fail before, pass after, <100ms → verify.
 
-The regression test must:
-- Fail before the fix (prove it tests the right thing)
-- Pass after the fix (prove the fix works)
-- Run in <100ms (fast CI feedback)
+**Output:** Regression test (red/green) + fixed code.
 
 ### Phase 6: Cleanup
 
-Remove all instrumentation:
-- Grep for `[DEBUG-*]` tags and remove all occurrences
-- Remove temporary test files and harnesses
-- Confirm the original bug no longer reproduces
-- Confirm the regression test passes
-- Document root cause in `.agnes/learnings/`
+Grep `[DEBUG-*]` tags, remove all → verify: zero remain. Remove temp files, harnesses. Confirm original bug gone → verify. Confirm regression test passes.
+
+**Output:** Clean codebase + root cause in `.agnes/learnings/`.
 
 ### 3-Fail Rule
 
-After 3 hypotheses are proven wrong:
-- Stop. The architecture is wrong, not the code.
-- Do NOT attempt a 4th fix.
-- Document what was tried and why each failed
-- Recommend a redesign or deeper investigation
-- Save to `.agnes/learnings/` as an architectural learning
+Three wrong hypotheses → stop. Architecture wrong, not code. No 4th fix. Document what was tried, why each failed → verify: saved to `.agnes/learnings/`. Recommend redesign.
 
-### Performance Regression Specific
+### Performance Regression
 
-- Measure FIRST, fix second. Never optimize without baseline.
-- Use profiling tools before guessing bottlenecks.
-- Compare before/after with statistical significance.
-- One change at a time between measurements.
+Measure first, fix second → verify: baseline exists. Profile before guessing. One change at a time. Statistically significant before/after comparison.
 
-## Tool Requirements
+## Tools
 
-- **bash** — Running feedback loops, scripts, git bisect, CLI commands, test runners
-- **read** — Reading source code, logs, error messages, configuration files
-- **grep** — Searching codebase for relevant code, finding `[DEBUG-*]` tags during cleanup
-- **write** — Creating test files, HITL scripts, harnesses, documentation
-- **edit** — Applying fixes, adding/removing instrumentation
-- **task** — Delegating sub-work (spawning subagents for parallel investigation)
-- **question** — Presenting hypotheses to the user for veto, gathering HITL input
+| Tool | Phase(s) | Input | Output |
+|------|----------|-------|--------|
+| bash | 1,2,4,5,6 | Feedback loops, scripts, bisect | Pass/fail, measurement, repro |
+| read | 2,4,6 | Source, logs, config | Context for hypotheses |
+| grep | 1,4,6 | Codebase, [DEBUG-*] tags | Relevant code, tag count |
+| write | 1,5,6 | Tests, HITL scripts, harnesses | Feedback loop, regression test |
+| edit | 4,5 | Instrumentation, fix | Modified source |
+| task | 3,4,5 | Parallel investigation | Narrowed per sub-task |
+| question | 3,5 | Hypothesis veto, HITL input | User-approved direction |
+
+## Examples
+
+| Scenario | Approach | Verify |
+|----------|----------|--------|
+| API 500 for valid input | curl → hypothesis: middleware rejects token → instrument auth | Token expiry comparison `<=` vs `<` |
+| UI flickers on route change | Headless browser → hypothesis: race in state init → timing logs | State reset after render, not before |
+| Intermittent DB timeout in CI | Loop 100x → hypothesis: pool exhaustion | Pool size = 1, needs N+1 |
+| Crash on user upload | Fuzz → hypothesis: invalid EXIF handler → git bisect | EXIF parsing commit regression |
+| "Fixed" bug reappears | Old test passes → write new repro | Old test missed edge case |
 
 ## Output
 
 - **Root cause** identified and documented
-- **Regression test** that fails before fix and passes after (runs in <100ms)
-- **Fixed code** with all instrumentation removed
-- **Clean codebase** — all `[DEBUG-*]` tags, temporary files, and harnesses removed
-- **Architecture finding** (if 3-fail rule triggered) saved to `.agnes/learnings/`
-- **Learnings document** in `.agnes/learnings/` describing root cause and fix
+- **Regression test** failing before fix, passing after (<100ms)
+- **Fixed code** with instrumentation removed
+- **Clean codebase** — all `[DEBUG-*]` tags, temp files removed
+- **Architecture finding** (3-fail rule triggered) in `.agnes/learnings/`
+- **Learnings document** in `.agnes/learnings/`
 
 ## Quality Criteria
 
-- [ ] Feedback loop exists and is fast (<5s)
-- [ ] Bug reproduces reliably
-- [ ] Root cause identified and documented
-- [ ] Regression test written (red before fix, green after)
-- [ ] All `[DEBUG-*]` instrumentation removed
-- [ ] Original repro no longer reproduces
-- [ ] Architecture findings documented (if 3-fail rule triggered)
+- → verify: feedback loop exists, <5s
+- → verify: bug reproduces reliably (3/3 or >60% for non-deterministic)
+- → verify: root cause documented in `.agnes/learnings/`
+- → verify: regression test written (red before, green after)
+- → verify: all `[DEBUG-*]` instrumentation removed
+- → verify: original repro no longer fails
+- → verify: architecture findings documented (if 3-fail rule)
 
 **Rationalization Table:**
 
@@ -200,29 +162,11 @@ After 3 hypotheses are proven wrong:
 |--------|---------|
 | "It should work" | Run it. Now. |
 | "It passed yesterday" | Yesterday's weather. Run it now. |
-| "Works on my machine" | Not a claim, find the environment diff |
-| "I'll check later" | No. Check now or document as assumption |
-| "The test must be wrong" | Prove it. Show why the test is wrong. |
+| "Works on my machine" | Not a claim. Find env diff. |
+| "I'll check later" | No. Check now or document assumption. |
+| "The test must be wrong" | Prove it. Show why. |
 | "This is a simple fix" | Famous last words. Debug first. |
-| "I don't need to reproduce it" | You ALWAYS need to reproduce it. |
-
-## When NOT to Use
-
-- For simple, obvious bugs that debugger can resolve — griller is overkill for single-file, single-cause issues with clear symptom-to-source mappings
-- When the bug cannot be reproduced at least 60% of the time after exhausting non-deterministic techniques — move on rather than spinning
-- When the necessary architecture understanding or reproduction environment is unavailable (use explorer or setup tooling first)
-- When the user expects a quick fix without systematic investigation — the griller is methodical by design
-
-## Protocol Shells
-
-All deep debugging follows the protocol shell format:
-
-/protocol {
-  intent="Stress-test hypotheses for a stubborn bug",
-  input={ hypotheses="<attempted-fixes>", symptoms="<remaining-failures>" },
-  process=[ /decompose{assumptions}, /trace{edge-cases}, /compare{explanations} ],
-  output={ result="<root-cause>", eliminated="<ruled-out-hypotheses>" }
-}
+| "I don't need to reproduce" | You ALWAYS need to reproduce it. |
 
 ## Cognitive Tools
 
@@ -231,3 +175,12 @@ All deep debugging follows the protocol shell format:
 | /decompose | Break assumptions into testable sub-hypotheses |
 | /trace | Walk each execution path until divergence |
 | /compare | Evaluate competing explanations against all symptoms |
+
+Protocol shell: `/protocol {intent, input={hypotheses, symptoms}, process=[/decompose, /trace, /compare], output={result, eliminated}}`
+
+## Skip When
+
+- debugger can resolve (simple single-cause bugs)
+- Bug cannot reproduce >60% after exhausting non-deterministic techniques
+- Architecture understanding or repro environment unavailable (use explorer first)
+- User expects quick fix without systematic investigation
