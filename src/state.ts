@@ -98,6 +98,20 @@ export interface RetentionPolicy {
   terminalStatuses: ('done' | 'abandoned')[];
 }
 
+export interface AgnesCharter {
+  date: string;
+  old_plan_compatibility: 'preserved';
+  migration_note: string;
+  principles: string[];
+}
+
+export const AGNES_CHARTER: AgnesCharter = {
+  date: '2026-05-27',
+  old_plan_compatibility: 'preserved',
+  migration_note: 'Rule numbers changed but semantics preserved. Old plan files remain valid.',
+  principles: ['delegate_or_die', 'wave_dont_wander', 'one_percent_rule', 'verify_or_void', 'spend_like_its_yours'],
+};
+
 export interface PlanIndex {
   agnesVersion: string;
   schemaVersion: 2;
@@ -107,6 +121,7 @@ export interface PlanIndex {
   activePlanId: string | null;
   plans: PlanIndexEntry[];
   retention?: RetentionPolicy;
+  charter?: AgnesCharter;
 }
 
 function getPlanFilePath(root: string, entry: PlanIndexEntry): string {
@@ -258,6 +273,10 @@ export function readPlanIndex(projectRoot?: string): PlanIndex | null {
     let migrated = false;
     for (const entry of parsed.plans) {
       if (migratePlanEntry(root, entry)) migrated = true;
+    }
+    if (!parsed.charter) {
+      parsed.charter = AGNES_CHARTER;
+      migrated = true;
     }
     if (migrated) writePlanIndex(parsed, root);
 
@@ -584,6 +603,7 @@ export function createPlan(input: {
     updatedAt: now,
     activePlanId: null,
     plans: [],
+    charter: AGNES_CHARTER,
   };
 
   index.plans.push(entry);
@@ -1077,6 +1097,7 @@ export function createAutoPlan(params: { goal: string; source: 'gate' | 'user' |
     updatedAt: now,
     activePlanId: null,
     plans: [],
+    charter: AGNES_CHARTER,
   };
 
   index.activePlanId = id;
