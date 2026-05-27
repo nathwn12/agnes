@@ -294,6 +294,45 @@ AGNES main context is restricted to TALK + DELEGATION only. These tools serve tw
 - **No shared file edits.** Never two subagents on the same file.
 - **Fresh subagents per wave.** Each wave gets clean agents. No reuse.
 
+## Tool Access Control (HARD ENFORCEMENT)
+
+These are NOT suggestions. These are structural constraints. The plugin enforces them via tool definition rewriting and system prompt injection.
+
+### Main Context ONLY (TALK + DELEGATE)
+These tools are safe to use directly in main context:
+- `task` — spawn subagents for all discrete work
+- `skill` — discover and load skills
+- `todowrite` — track task progress
+- `question` — ask the user clarifying questions
+- `read` — ONLY for `.agnes/` state files, NEVER for source code analysis
+- `webfetch` — fetch external documentation
+- `analyze-task`, `auto-delegate` — routing support
+
+### Subagent Context ONLY (NEVER main context)
+These tools are **forbidden** in main context. Calling them directly is a BUG:
+- `edit` — apply surgical changes to source files → use `@builder` subagent
+- `write` — create/modify source files → use `@builder` subagent
+- `glob` — search codebase → use `@explorer` subagent
+- `grep` — search file contents → use `@explorer` subagent
+- `bash` — run any command → use `@executor` subagent
+
+### Why This Exists
+Every tool call in main context costs tokens and invites the model to "just do it directly" rather than delegating. The subagent architecture ensures:
+- Proper context isolation (each subagent gets a clean slate)
+- Parallel execution (multiple subagents can work simultaneously)
+- Scoped permissions (subagents can't access unrelated context)
+- Verified results (results come back structured, auditable)
+
+Violating tool access rules bypasses the entire delegation pipeline. Don't do it.
+
+### Self-Audit Before Every Tool Call
+Before calling any tool in main context, ask:
+1. "Is this tool in the 'Subagent Context ONLY' list?" → If yes, delegate via `task`.
+2. "Does this tool modify files or run commands?" → If yes, delegate via `task`.
+3. "Could a subagent do this instead?" → If yes, delegate via `task`.
+
+If the answer to any of these is yes, spawn a subagent. No exceptions.
+
 ## When NOT to Use
 
 - When the task is a simple answer rather than a multi-step workflow (use direct response instead)

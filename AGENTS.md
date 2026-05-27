@@ -108,6 +108,40 @@ AGNES defines 5 named subagent roles for consistent delegation:
 | `@builder` | Implements one sub-task from plan. Delegates bash to @executor and review to @reviewer. | orchestrator (build phase) |
 | `@reviewer` | Reviews diff against sub-task scope using reviewer skill. Writes findings to `.opencode/review.md`. | builder, orchestrator (review phase) |
 
+---
+
+## Delegation Enforcement (HARD RULES)
+
+These are NOT optional. Structural constraints enforced at plugin level. Violations are bugs.
+
+### Tool Access Control
+AGNES enforces tool-level delegation via three mechanisms:
+- `tool.definition` hook — prepends `[AGNES ENFORCEMENT]` banner to work-tool descriptions
+- `experimental.chat.system.transform` — injects hard delegation rules into system prompt
+- `buildToolAccessBlock()` — emits `<structured type="tool_access">` block in bootstrap
+
+**MAIN CONTEXT (TALK + DELEGATE only):**
+- `task` — spawn subagents for all discrete work
+- `skill` — discover and load domain skills
+- `todowrite` — track task progress
+- `question` — ask clarifying questions
+- `read`/`webfetch` — `.agnes/` state only, never source analysis
+- `analyze-task`/`auto-delegate` — routing support
+
+**SUBAGENT CONTEXT ONLY (NEVER main context):**
+- `edit`, `write` — editing/creating source files (use `@builder`)
+- `bash` — running commands (use `@executor`)
+- `glob`, `grep` — searching the codebase (use `@explorer`)
+
+### Self-Audit Before Every Tool Call
+Before calling any tool, check:
+1. Does this tool modify files? → **Delegate via `task`**
+2. Does this tool run commands? → **Delegate via `task`**
+3. Does this tool search source code? → **Delegate via `task`**
+4. Am I doing work instead of delegating? → **STOP. Spawn a subagent.**
+
+---
+
 ## Coding Priority Order
 
 When implementing, prioritize in this order:

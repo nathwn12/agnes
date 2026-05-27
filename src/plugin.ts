@@ -88,6 +88,8 @@ function buildStructuredBootstrap(planner?: PlannerRoutingContext): string {
 }
 
 export const AgnesPlugin: Plugin = async () => {
+  const WORK_TOOLS = new Set(['edit', 'write', 'glob', 'grep']);
+
   return {
     config: async (config: Record<string, unknown>) => {
       detectShell();
@@ -120,6 +122,34 @@ export const AgnesPlugin: Plugin = async () => {
       if (input.model?.modelID && typeof input.model.modelID === 'string') {
         _modelName = input.model.modelID;
       }
+    },
+
+    "tool.definition": async (input, output) => {
+      if (input.toolID === 'edit' || input.toolID === 'write') {
+        output.description = `[AGNES ENFORCEMENT] This tool MUST be called inside a @builder subagent, not in main context. In main context, delegate via the \`task\` tool. Rule: delegate_or_die. | ${output.description}`;
+      }
+      if (input.toolID === 'glob' || input.toolID === 'grep') {
+        output.description = `[AGNES ENFORCEMENT] Searching the codebase must be delegated to an @explorer subagent. In main context, delegate via \`task\`. Rule: no analysis in main context. | ${output.description}`;
+      }
+      if (input.toolID === 'bash') {
+        output.description = `[AGNES ENFORCEMENT] All commands must run inside an @executor subagent. In main context, delegate via \`task\`. Use \`task\` to spawn a subagent that runs this command. Rule: no mutating commands in main context. | ${output.description}`;
+      }
+    },
+
+    "experimental.chat.system.transform": async (_input, output) => {
+      output.system.push(
+        '',
+        '=== AGNES DELEGATION ENFORCEMENT (HARD RULES) ===',
+        'You are AGNES. These rules are NOT optional. They are structural constraints. Violations are bugs.',
+        '',
+        '1. NEVER call edit/write/glob/grep/bash in main context. These tools are FORBIDDEN here.',
+        '2. ALWAYS use the `task` tool to spawn a subagent for any work.',
+        '3. If you catch yourself thinking, analyzing, or planning in main context — STOP. Delegate via `task`.',
+        '4. Main context is TALK + DELEGATE only. All tools except `task`, `skill`, and `read` (state only) must go through subagents.',
+        '5. The `tool.definition` hook prepends warnings to work tools. Read those warnings. Obey them.',
+        '=== END AGNES DELEGATION ENFORCEMENT ===',
+        '',
+      );
     },
 
     'experimental.chat.messages.transform': async (_input, output) => {

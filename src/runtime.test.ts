@@ -15,12 +15,16 @@ import {
   checkPlanDrift,
   assertTaskScope,
   runWaveGates,
+  executeWave,
+  getPlanGateFromState,
 } from './runtime.js';
 import type { AgnesRuntimeState, ProcessMessageResult } from './runtime.js';
 import { FlowController } from './flowcontrol.js';
 import type { PlanIndex } from './state.js';
 import { freshStruggleMetrics } from './state.js';
 import type { Gate, GateResult } from './verification.js';
+import { MiddlewareChain, defaultMiddlewareChain } from './middleware.js';
+import type { TaskDescriptor } from './schema.js';
 
 function makeGateResult(overrides: Partial<GateResult>): GateResult {
   return {
@@ -660,5 +664,162 @@ describe('runWaveGates', () => {
 
     expect(results).toEqual([failingResult]);
     expect(flow.isBlocked()).toBe(false);
+  });
+});
+
+describe('executeWave', () => {
+  const sampleTasks: TaskDescriptor[] = [
+    { skill: 'builder', payload: { file: 'src/main.ts' } },
+    { skill: 'verifier', payload: {} },
+  ];
+
+  test('returns results for each task', async () => {
+    const flow = new FlowController();
+    const result = await executeWave('plan-001', sampleTasks, defaultMiddlewareChain, flow);
+    expect(result.results).toHaveLength(2);
+    expect(result.results[0]).toHaveProperty('taskId', 'task-builder');
+    expect(result.results[1]).toHaveProperty('taskId', 'task-verifier');
+    expect(result.nextAction).toBeNull();
+  });
+
+  test('each result has BLOCKED status (subagent handler not yet wired)', async () => {
+    const flow = new FlowController();
+    const result = await executeWave('plan-001', sampleTasks, defaultMiddlewareChain, flow);
+    const statuses = result.results.map(r => r.status);
+    expect(statuses).toEqual(['BLOCKED', 'BLOCKED']);
+  });
+
+  test('stops early when flow is blocked', async () => {
+    const flow = new FlowController();
+    flow.setJump('blocked', 'prerequisite_failed');
+    const result = await executeWave('plan-001', sampleTasks, defaultMiddlewareChain, flow);
+    expect(result.results).toHaveLength(0);
+    expect(result.nextAction).toBe('blocked');
+  });
+
+  test('skips tasks when flow signal is skip', async () => {
+    const flow = new FlowController();
+    flow.setJump('skip', 'not_needed');
+    const result = await executeWave('plan-001', sampleTasks, defaultMiddlewareChain, flow);
+    expect(result.results).toHaveLength(0);
+    expect(result.nextAction).toBe('skip');
+  });
+
+  test('respects skip signal between tasks', async () => {
+    const flow = new FlowController();
+    flow.setJump('skip', 'skip-this-wave');
+    const result = await executeWave('plan-001', sampleTasks, defaultMiddlewareChain, flow);
+    expect(result.results).toHaveLength(0);
+  });
+
+  test('handles empty task list', async () => {
+    const flow = new FlowController();
+    const result = await executeWave('plan-001', [], defaultMiddlewareChain, flow);
+    expect(result.results).toHaveLength(0);
+    expect(result.nextAction).toBeNull();
+  });
+
+  test('executes middleware beforeWave hook', async () => {
+    const flow = new FlowController();
+    let beforeRan = false;
+    const customChain = new MiddlewareChain([
+      { name: 'test', beforeWave: async (ctx) => { beforeRan = true; return ctx; } },
+    ]);
+    await executeWave('plan-001', sampleTasks, customChain, flow);
+    expect(beforeRan).toBe(true);
+  });
+
+  test('executes middleware afterWave hook', async () => {
+    const flow = new FlowController();
+    let afterRan = false;
+    const customChain = new MiddlewareChain([
+      {
+        name: 'test',
+        afterWave: async (ctx, results) => { afterRan = true; return ctx; },
+      },
+    ]);
+    await executeWave('plan-001', sampleTasks, customChain, flow);
+    expect(afterRan).toBe(true);
+  });
+
+  test('passes wave index through middleware', async () => {
+    const flow = new FlowController();
+    let capturedIndex = -1;
+    const customChain = new MiddlewareChain([
+      {
+        name: 'test',
+        beforeWave: async (ctx) => { capturedIndex = ctx.waveIndex; return ctx; },
+      },
+    ]);
+    await executeWave('plan-001', sampleTasks, customChain, flow);
+    expect(capturedIndex).toBe(0);
+  });
+});
+
+describe('getPlanGateFromState', () => {
+  test('returns block message when no active plan', () => {
+    const state: AgnesRuntimeState = {
+      hasActivePlan: false,
+      activePlanId: null,
+      planContent: null,
+      planEntry: null,
+    };
+    const gate = getPlanGateFromState(state);
+    expect(gate).not.toBeNull();
+    expect(gate).toContain('PLAN REQUIRED');
+  });
+
+  test('returns block message when plan not approved', () => {
+    const state: AgnesRuntimeState = {
+      hasActivePlan: true,
+      activePlanId: 'plan-001',
+      planContent: 'Goal: Test',
+      planEntry: {
+        id: 'plan-001',
+        status: 'draft',
+        createdAt: '',
+        updatedAt: '',
+        summary: 'Test',
+        total: 1,
+        completed: 0,
+        blocked: 0,
+        file: 'plan-001.yaml',
+      },
+    };
+    const gate = getPlanGateFromState(state);
+    expect(gate).not.toBeNull();
+    expect(gate).toContain('APPROVAL REQUIRED');
+  });
+
+  test('returns null when plan is active and approved', () => {
+    const state: AgnesRuntimeState = {
+      hasActivePlan: true,
+      activePlanId: 'plan-001',
+      planContent: 'Goal: Test',
+      planEntry: {
+        id: 'plan-001',
+        status: 'approved',
+        createdAt: '',
+        updatedAt: '',
+        summary: 'Test',
+        total: 1,
+        completed: 0,
+        blocked: 0,
+        file: 'plan-001.yaml',
+      },
+    };
+    const gate = getPlanGateFromState(state);
+    expect(gate).toBeNull();
+  });
+
+  test('returns null when hasActivePlan but no planEntry', () => {
+    const state: AgnesRuntimeState = {
+      hasActivePlan: true,
+      activePlanId: 'plan-001',
+      planContent: null,
+      planEntry: null,
+    };
+    const gate = getPlanGateFromState(state);
+    expect(gate).toBeNull();
   });
 });

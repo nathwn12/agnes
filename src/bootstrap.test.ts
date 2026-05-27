@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-import { getBootstrapContent, buildRuntimeBlock, buildOrchestratorBlock, buildPlanStateBlock, buildShellBlock, buildProtocolBlock, buildExecutionContextBlock, buildSkillRegistryBlock, buildSkillRegistryText } from './bootstrap.js';
+import { getBootstrapContent, buildRuntimeBlock, buildOrchestratorBlock, buildNamedRolesBlock, buildToolAccessBlock, buildPlanStateBlock, buildShellBlock, buildProtocolBlock, buildExecutionContextBlock, buildSkillRegistryBlock, buildSkillRegistryText, buildBootstrap } from './bootstrap.js';
 import type { OrchestratorRules } from './bootstrap.js';
 import type { PlanIndex } from './state.js';
 
@@ -215,6 +215,159 @@ describe('buildSkillRegistryBlock', () => {
     expect(match).not.toBeNull();
     expect(match![1]).toContain('type: skill_registry');
     expect(match![1]).toContain('skills:');
+  });
+});
+
+describe('buildToolAccessBlock', () => {
+  test('produces correct structured type tag', () => {
+    const block = buildToolAccessBlock();
+    expect(block).toContain('<structured type="tool_access">');
+    expect(block).toContain('</structured>');
+  });
+
+  test('partitions subagent-only tools', () => {
+    const block = buildToolAccessBlock();
+    expect(block).toContain('edit');
+    expect(block).toContain('write');
+    expect(block).toContain('glob');
+    expect(block).toContain('grep');
+    expect(block).toContain('bash');
+  });
+
+  test('lists main-context allowed tools', () => {
+    const block = buildToolAccessBlock();
+    expect(block).toContain('task');
+    expect(block).toContain('skill');
+  });
+
+  test('includes shared tools (read, webfetch)', () => {
+    const block = buildToolAccessBlock();
+    expect(block).toContain('read');
+    expect(block).toContain('webfetch');
+  });
+
+  test('yields valid YAML inside the tag', () => {
+    const block = buildToolAccessBlock();
+    const match = block.match(/<structured type="tool_access">\n([\s\S]*?)\n<\/structured>/);
+    expect(match).not.toBeNull();
+    expect(match![1]).toContain('type: tool_access');
+    expect(match![1]).toContain('subagent_only');
+    expect(match![1]).toContain('main_context_only');
+  });
+});
+
+describe('buildNamedRolesBlock', () => {
+  const rules: OrchestratorRules = {
+    delegate: true,
+    parallelize: true,
+    onePercent: true,
+    verify: true,
+    noSharedEdits: true,
+    freshSubagents: true,
+    scarcity: true,
+    answerDirectly: true,
+    namedRoles: {
+      executor: 'Runs commands',
+      explorer: 'Codebase research only',
+      planner: 'Creates plans',
+      builder: 'Implements tasks',
+      reviewer: 'Reviews diffs',
+    },
+  };
+
+  test('produces correct structured type tag', () => {
+    const block = buildNamedRolesBlock(rules);
+    expect(block).toContain('<structured type="named_roles">');
+    expect(block).toContain('</structured>');
+  });
+
+  test('includes all named roles', () => {
+    const block = buildNamedRolesBlock(rules);
+    expect(block).toContain('Runs commands');
+    expect(block).toContain('Codebase research only');
+    expect(block).toContain('Creates plans');
+    expect(block).toContain('Implements tasks');
+    expect(block).toContain('Reviews diffs');
+  });
+
+  test('includes answer_directly flag', () => {
+    const block = buildNamedRolesBlock(rules);
+    expect(block).toContain('answer_directly: true');
+  });
+
+  test('yields valid YAML structure inside the tag', () => {
+    const block = buildNamedRolesBlock(rules);
+    const match = block.match(/<structured type="named_roles">\n([\s\S]*?)\n<\/structured>/);
+    expect(match).not.toBeNull();
+    expect(match![1]).toContain('type: named_roles');
+    expect(match![1]).toContain('roles:');
+  });
+});
+
+describe('buildBootstrap', () => {
+  const pkg = { version: '0.10.2', root: '/test/root', skillsDir: '/test/skills', cacheRoot: '/test/cache' };
+  const rules: OrchestratorRules = {
+    delegate: true,
+    parallelize: true,
+    onePercent: true,
+    verify: true,
+    noSharedEdits: true,
+    freshSubagents: true,
+    scarcity: true,
+    answerDirectly: true,
+    namedRoles: {
+      executor: 'Runs commands',
+      explorer: 'Codebase research only',
+      planner: 'Creates plans',
+      builder: 'Implements tasks',
+      reviewer: 'Reviews diffs',
+    },
+  };
+  const shell = { name: 'powershell', version: '7.4', antiPatterns: ['Get-Content'], preferredSyntax: 'cmdlets' };
+  const exec = { attempt: 1, struggleDetected: false, lastPromiseTag: null };
+
+  test('assembles all structured blocks in order', () => {
+    const result = buildBootstrap({ pkg, rules, index: null, shell, exec });
+    const blockTypes = [...result.matchAll(/type="(\w+)"/g)].map(m => m[1]);
+    expect(blockTypes.length).toBeGreaterThanOrEqual(8);
+    expect(blockTypes[0]).toBe('runtime');
+    expect(blockTypes[1]).toBe('orchestrator');
+    expect(blockTypes[2]).toBe('named_roles');
+    expect(blockTypes[3]).toBe('tool_access');
+    expect(blockTypes[4]).toBe('shell');
+    expect(blockTypes[5]).toBe('execution');
+    expect(blockTypes[6]).toBe('protocol');
+  });
+
+  test('includes delegator rules in the output', () => {
+    const result = buildBootstrap({ pkg, rules, index: null, shell, exec });
+    expect(result).toContain('delegate_or_die: true');
+    expect(result).toContain('parallelize_by_default: true');
+    expect(result).toContain('verify_before_claiming: true');
+  });
+
+  test('includes plan_state block when index is provided', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-bb-'));
+    try {
+      const index: PlanIndex = {
+        agnesVersion: '0.10.2',
+        schemaVersion: 2,
+        projectDir: tmp,
+        projectName: 'test',
+        updatedAt: new Date().toISOString(),
+        activePlanId: null,
+        plans: [],
+      };
+      const result = buildBootstrap({ pkg, rules, index, shell, exec });
+      expect(result).toContain('type="plan_state"');
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('excludes plan_state block when no index and no planner', () => {
+    const result = buildBootstrap({ pkg, rules, index: null, shell, exec });
+    expect(result).not.toContain('type="plan_state"');
   });
 });
 

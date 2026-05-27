@@ -280,6 +280,25 @@ export function buildProtocolBlock(): string {
   }));
 }
 
+export function buildToolAccessBlock(): string {
+  return wrapStructured("tool_access", yamlDump({
+    type: "tool_access",
+    rule: "Main context is TALK + DELEGATE only. Tools are partitioned by context.",
+    main_context_only: {
+      allowed: ["task", "skill", "todowrite", "question", "analyze-task", "auto-delegate"],
+      description: "Spawn subagents, load skills, track todos, ask user questions. NO source mutations.",
+    },
+    subagent_only: {
+      allowed: ["edit", "write", "glob", "grep", "bash"],
+      description: "All source code work — editing, searching, building, testing. NEVER called in main context.",
+    },
+    shared: {
+      allowed: ["read", "webfetch"],
+      description: "Read-only context gathering. Use sparingly in main context — prefer to delegate.",
+    },
+  }));
+}
+
 // ── Skill registry (compact, auto-discovered from frontmatter) ─────────────
 
   const SKILL_SUGGEST_NEXT: Record<string, string[]> = {
@@ -358,6 +377,7 @@ export function buildBootstrap(context: BootstrapContext): string {
     buildRuntimeBlock(context.pkg),
     buildOrchestratorBlock(context.rules),
     buildNamedRolesBlock(context.rules),
+    buildToolAccessBlock(),
     ...(context.index || context.planner ? [buildPlanStateBlock(context.index, context.planner)] : []),
     buildShellBlock(context.shell),
     buildExecutionContextBlock(context.exec),
