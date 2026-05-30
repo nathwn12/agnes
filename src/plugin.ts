@@ -88,8 +88,6 @@ function buildStructuredBootstrap(planner?: PlannerRoutingContext): string {
 }
 
 export const AgnesPlugin: Plugin = async () => {
-  const WORK_TOOLS = new Set(['edit', 'write', 'glob', 'grep']);
-
   return {
     config: async (config: Record<string, unknown>) => {
       detectShell();

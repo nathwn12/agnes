@@ -59,4 +59,3 @@ export function createFlowController(initialTarget?: JumpTarget, reason?: string
   return controller;
 }
 
-export const defaultFlowController = createFlowController();

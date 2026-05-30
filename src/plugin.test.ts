@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import type { Plugin } from '@opencode-ai/plugin';
 import { buildBootstrap, getBootstrapPackageInfo } from './bootstrap.js';
 import type { OrchestratorRules } from './bootstrap.js';
 import { detectShell } from './shell.js';

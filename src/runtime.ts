@@ -13,6 +13,7 @@ import {
   updateStruggleMetrics,
   detectStruggle,
   cacheDir,
+  sortPlansByDate,
 } from './state.js';
 import type { PlanIndexEntry, PlanIndex, ActivePlan, StruggleMetrics, PlannerRoutingContext } from './state.js';
 import { MiddlewareChain } from './middleware.js';
@@ -186,16 +187,7 @@ export function getPlanState(workspaceRoot?: string | null): {
 
   const active = getLatestActivePlan(workspaceRoot);
   const latestId = planIndex.plans.length > 0
-    ? [...planIndex.plans].sort((a, b) => {
-        const aTime = new Date(a.updatedAt).getTime();
-        const bTime = new Date(b.updatedAt).getTime();
-        if (isNaN(aTime) && isNaN(bTime)) return b.id.localeCompare(a.id);
-        if (isNaN(aTime)) return 1;
-        if (isNaN(bTime)) return -1;
-        const diff = bTime - aTime;
-        if (diff !== 0) return diff;
-        return b.id.localeCompare(a.id);
-      })[0].id
+    ? sortPlansByDate(planIndex.plans)[0].id
     : null;
 
   return {
@@ -223,8 +215,6 @@ export function getPlanGate(workspaceRoot?: string | null): string | null {
   }
   return null;
 }
-
-export const getCurrentState = getPlanState;
 
 export interface IterationReport {
   iteration: number;
@@ -602,8 +592,6 @@ export function classifyPlannerRoute(message: string, mode: PlannerRoutingMode =
     reason: scope === 'complex' ? 'outside lightweight boundary' : 'not eligible for builtin route',
   };
 }
-
-export const NO_PLAN_NUDGE = 'No active plan. For simple tasks, just ask. For complex tasks, use the current planner path.';
 
 export function requestMatchesPlan(message: string, plan: string): boolean {
   const messageTokens = message.toLowerCase()

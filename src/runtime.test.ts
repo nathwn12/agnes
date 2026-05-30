@@ -735,7 +735,7 @@ describe('executeWave', () => {
     const customChain = new MiddlewareChain([
       {
         name: 'test',
-        afterWave: async (ctx, results) => { afterRan = true; return ctx; },
+        afterWave: async (ctx, _results) => { afterRan = true; return ctx; },
       },
     ]);
     await executeWave('plan-001', sampleTasks, customChain, flow);

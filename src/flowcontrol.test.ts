@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import { FlowController, createFlowController } from './flowcontrol.js';
-import type { JumpTarget } from './flowcontrol.js';
 
 describe('FlowController', () => {
   test('setJump stores a target', () => {

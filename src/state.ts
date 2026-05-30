@@ -9,7 +9,36 @@ import type { Plan, PlanTask } from './schema.js';
 
 import { parseAgnesMessage } from './protocol.js';
 import type { CompletionStatus } from './protocol.js';
-import { NO_PLAN_NUDGE } from './runtime.js';
+
+const NO_PLAN_NUDGE = 'No active plan. For simple tasks, just ask. For complex tasks, use the current planner path.';
+export { NO_PLAN_NUDGE };
+
+function parseTaskLines(lines: string[]): PlanTask[] {
+  return lines.filter(l => /^[-*]\s+\[([ x/])\]/.test(l.trim())).map((line, i) => {
+    const status = line.includes('[x]') ? 'done' : line.includes('[/]') ? 'in_progress' : 'pending';
+    const summary = line.replace(/^[-*]\s+\[[ x/]\]\s*/, '').trim();
+    return {
+      id: `task-${String(i + 1).padStart(3, '0')}`,
+      summary,
+      status: status as PlanTask['status'],
+      files: [],
+      depends_on: [],
+    };
+  });
+}
+
+export function sortPlansByDate(plans: PlanIndexEntry[]): PlanIndexEntry[] {
+  return [...plans].sort((a, b) => {
+    const aTime = new Date(a.updatedAt).getTime();
+    const bTime = new Date(b.updatedAt).getTime();
+    if (isNaN(aTime) && isNaN(bTime)) return b.id.localeCompare(a.id);
+    if (isNaN(aTime)) return 1;
+    if (isNaN(bTime)) return -1;
+    const diff = bTime - aTime;
+    if (diff !== 0) return diff;
+    return b.id.localeCompare(a.id);
+  });
+}
 
 function assertShape<T>(data: unknown, shape: Record<string, string>): data is T {
   if (!data || typeof data !== 'object') return false;
@@ -27,7 +56,7 @@ const DEFAULT_MAX_PLAN_TASKS = 10;
 
 let _agnesVersion: string | null = null;
 
-export function getAgnesVersion(): string {
+function getAgnesVersion(): string {
   if (_agnesVersion) return _agnesVersion;
   let version: string;
   try {
@@ -60,7 +89,10 @@ export type PlanStatus =
   | "in_progress"
   | "blocked"
   | "done"
-  | "abandoned";
+  | "abandoned"
+  | "pending";
+
+const ACTIVE_STATUSES: PlanStatus[] = ['draft', 'reviewed', 'ready', 'approved', 'in_progress', 'blocked'];
 
 export interface StruggleMetrics {
   noProgressIterations: number;
@@ -93,7 +125,7 @@ export interface PlannerRoutingContext {
   reason: string;
 }
 
-export interface RetentionPolicy {
+interface RetentionPolicy {
   maxAgeDays: number;
   terminalStatuses: ('done' | 'abandoned')[];
 }
@@ -279,7 +311,7 @@ export function writePlanIndex(index: PlanIndex, projectRoot?: string): void {
   fs.renameSync(tmp, filePath);
 }
 
-export function writePlanFile(plan: Plan, plansDir: string): string {
+function writePlanFile(plan: Plan, plansDir: string): string {
   const parsed = PlanSchema.parse(plan);
   const filePath = path.join(plansDir, `${parsed.id}.yaml`);
   const yaml = yamlStringify(JSON.parse(JSON.stringify(parsed)), null, { indent: 2 });
@@ -289,13 +321,9 @@ export function writePlanFile(plan: Plan, plansDir: string): string {
   return filePath;
 }
 
-export function readPlanFile(plansDir: string, planId: string): Plan | null {
-  return readPlanArtifact(plansDir, planId)?.plan ?? null;
-}
-
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?/;
 
-export function parseLegacyMdPlan(filePath: string): Plan {
+function parseLegacyMdPlan(filePath: string): Plan {
   const raw = fs.readFileSync(filePath, 'utf-8');
   const fm = raw.match(FRONTMATTER_RE);
   let frontmatter: Record<string, unknown> = {};
@@ -309,20 +337,7 @@ export function parseLegacyMdPlan(filePath: string): Plan {
   const checkMatch = body.match(/^Check:\s*(.+)$/m);
   const summaryMatch = body.match(/^#\s+\S+\s+[—–-]\s+(.+)$/m);
 
-  const taskLines: string[] = [];
-  for (const line of body.split('\n')) {
-    if (/^- \[[ x\/]\]/.test(line)) {
-      taskLines.push(line);
-    }
-  }
-
-  const tasks: PlanTask[] = taskLines.map((t, i) => ({
-    id: `task-${String(i + 1).padStart(3, '0')}`,
-    summary: t.replace(/^- \[[ x\/]\]\s*/, '').trim(),
-    status: t.startsWith('- [x]') ? 'done' : t.startsWith('- [/]') ? 'blocked' : 'pending',
-    files: [],
-    depends_on: [],
-  }));
+  const tasks: PlanTask[] = parseTaskLines(body.split('\n'));
 
   const planId = typeof frontmatter.id === 'string' ? frontmatter.id : path.basename(filePath, '.md');
   const createdAt = typeof frontmatter.createdAt === 'string' ? frontmatter.createdAt : new Date().toISOString();
@@ -390,30 +405,19 @@ export function getLatestActivePlan(projectRoot?: string): ActivePlan | null {
   const index = readPlanIndex(root);
   if (!index) return null;
 
-  const activeStatuses: PlanStatus[] = ['draft', 'reviewed', 'ready', 'approved', 'in_progress', 'blocked'];
+
 
   let target: PlanIndexEntry | undefined;
 
   if (index.activePlanId) {
     const entry = index.plans.find(p => p.id === index.activePlanId);
-    if (entry && activeStatuses.includes(entry.status)) {
+    if (entry && ACTIVE_STATUSES.includes(entry.status)) {
       target = entry;
     }
   }
 
   if (!target) {
-    const sorted = [...index.plans]
-      .filter(p => activeStatuses.includes(p.status))
-      .sort((a, b) => {
-        const aTime = new Date(a.updatedAt).getTime();
-        const bTime = new Date(b.updatedAt).getTime();
-        if (isNaN(aTime) && isNaN(bTime)) return b.id.localeCompare(a.id);
-        if (isNaN(aTime)) return 1;
-        if (isNaN(bTime)) return -1;
-        const diff = bTime - aTime;
-        if (diff !== 0) return diff;
-        return b.id.localeCompare(a.id);
-      });
+    const sorted = sortPlansByDate(index.plans.filter(p => ACTIVE_STATUSES.includes(p.status)));
     target = sorted[0];
   }
 
@@ -588,7 +592,7 @@ export function createPlan(input: {
 
   index.plans.push(entry);
   index.updatedAt = now;
-  const isActive = status === 'draft' || status === 'reviewed' || status === 'ready' || status === 'approved' || status === 'in_progress' || status === 'blocked';
+  const isActive = ACTIVE_STATUSES.includes(status);
   index.activePlanId = isActive ? id : null;
   writePlanIndex(index, root);
 
@@ -632,22 +636,7 @@ export function createPlanIteration(input: {
     summary: input.summary,
     ...(input.plannerMode ? { plannerMode: input.plannerMode } : {}),
     ...(input.plannerSource ? { plannerSource: input.plannerSource } : {}),
-    tasks: input.tasksMarkdown.split('\n')
-      .filter(line => /^- \[.?\]/.test(line))
-      .map((t, i) => {
-        const cleaned = t.replace(/^- \[[ x\/]\]\s*/, '').trim();
-        let taskStatus: PlanTask['status'];
-        if (t.startsWith('- [x]')) taskStatus = 'done';
-        else if (t.startsWith('- [/]')) taskStatus = 'blocked';
-        else taskStatus = 'pending';
-        return {
-          id: `task-${String(i + 1).padStart(3, '0')}`,
-          summary: cleaned,
-          status: taskStatus,
-          files: [],
-          depends_on: [],
-        };
-      }),
+    tasks: parseTaskLines(input.tasksMarkdown.split('\n')),
     notes: input.notes ?? [],
   };
   const content = serializePlan(plan);
@@ -726,7 +715,7 @@ export function updatePlanStatus(input: {
     if (index.activePlanId === input.id) index.activePlanId = null;
   }
 
-  if (input.status === 'draft' || input.status === 'reviewed' || input.status === 'ready' || input.status === 'approved' || input.status === 'in_progress' || input.status === 'blocked') {
+  if (ACTIVE_STATUSES.includes(input.status)) {
     index.activePlanId = input.id;
   }
 
@@ -830,7 +819,7 @@ export function detectStruggle(metrics: StruggleMetrics): string[] {
 
 // ─── Planning Discipline ─────────────────────────────────────────────────────
 
-export const VALID_TRANSITIONS: Record<string, string[]> = {
+const VALID_TRANSITIONS: Record<string, string[]> = {
   draft: ['reviewed', 'abandoned'],
   reviewed: ['ready', 'approved', 'draft', 'abandoned'],
   ready: ['in_progress', 'abandoned'],

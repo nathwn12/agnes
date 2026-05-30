@@ -1,14 +1,6 @@
 import { isValidAgnesMessage } from './protocol.js';
 import type { AnyAgnesMessage } from './protocol.js';
 
-export const ALLOWED_MESSAGE_TYPES: Set<string> = new Set([
-  'task',
-  'result',
-  'error',
-  'status',
-  'completion',
-] as const satisfies string[]);
-
 export const ALLOWED_ERROR_TYPES: Set<string> = new Set([
   'TypeError',
   'BuildError',
@@ -31,31 +23,18 @@ export class ValidationError extends Error {
 
 /**
  * Validate a raw object against AnyAgnesMessage type.
- * Checks: is object, has valid 'type' field in ALLOWED_MESSAGE_TYPES,
- * has required id and timestamp for the base AgnesMessage type.
+ * Delegates validation to isValidAgnesMessage from protocol.ts.
  */
 export function validateMessage(raw: unknown): AnyAgnesMessage {
   if (typeof raw !== 'object' || raw === null) {
     throw new ValidationError('Not an object');
   }
-  const msg = raw as Record<string, unknown>;
 
-  if (typeof msg.type !== 'string' || !ALLOWED_MESSAGE_TYPES.has(msg.type)) {
-    throw new ValidationError(`Unknown or missing type: ${msg.type}`);
+  if (!isValidAgnesMessage(raw)) {
+    throw new ValidationError('Object does not match AnyAgnesMessage shape');
   }
 
-  if (typeof msg.id !== 'string') {
-    throw new ValidationError('Missing required field: id');
-  }
-
-  if (typeof msg.timestamp !== 'string') {
-    throw new ValidationError('Missing required field: timestamp');
-  }
-
-  if (isValidAgnesMessage(msg)) {
-    return msg;
-  }
-  throw new ValidationError('Object does not match AnyAgnesMessage shape');
+  return raw;
 }
 
 /**

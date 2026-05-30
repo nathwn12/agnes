@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export type SkillPhase =
+type SkillPhase =
   | 'SETUP'
   | 'META'
   | 'THINK'
@@ -31,7 +31,7 @@ export interface TaskDescriptor {
   config?: TaskConfig;
 }
 
-export interface TaskConfig {
+interface TaskConfig {
   tags?: string[];
   metadata?: Record<string, unknown>;
   callbacks?: string[];
@@ -229,34 +229,13 @@ export type Plan = z.infer<typeof PlanSchema>;
 
 // ── Bootstrap block schemas ───────────────────────────────────────────────────
 
-export const BootstrapBlockTypeSchema = z.enum([
-  "runtime", "orchestrator", "named_roles", "plan_state", "shell", "execution", "protocol", "skill_registry"
-]);
-
-export const BootstrapBlockSchema = z.object({
-  type: BootstrapBlockTypeSchema,
-}).passthrough();
-
-export const RuntimeBlockSchema = BootstrapBlockSchema.extend({
-  type: z.literal("runtime"),
-  agnes_version: z.string(),
-  package_root: z.string(),
-  skills_dir: z.string(),
-  cache_root: z.string(),
-});
-
-export const OrchestratorBlockSchema = BootstrapBlockSchema.extend({
-  type: z.literal("orchestrator"),
-  rules: z.record(z.string(), z.boolean()),
-});
-
 // ── Message schemas ───────────────────────────────────────────────────────────
 
-export const MessageTypeSchema = z.enum([
+const MessageTypeSchema = z.enum([
   "task", "result", "error", "status", "completion"
 ]);
 
-export const CompletionStatusSchema = z.enum([
+const CompletionStatusSchema = z.enum([
   "DONE", "DONE_WITH_CONCERNS", "NEEDS_CONTEXT", "BLOCKED"
 ]);
 

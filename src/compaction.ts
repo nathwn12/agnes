@@ -2,11 +2,11 @@ import { stringify as yamlStringify } from 'yaml';
 
 import type { StruggleMetrics } from './state.js';
 
-export const DEFAULT_COMPACTION_SOFT_LIMIT = 150_000;
-export const DEFAULT_COMPACTION_HARD_LIMIT = 200_000;
+const DEFAULT_COMPACTION_SOFT_LIMIT = 150_000;
+const DEFAULT_COMPACTION_HARD_LIMIT = 200_000;
 const DEFAULT_DISCRETIONARY_COMPACTION_FLOOR = 50_000;
 
-export type CompactionAction = 'none' | 'nudge' | 'alert' | 'compact';
+type CompactionAction = 'none' | 'nudge' | 'alert' | 'compact';
 
 export interface CompactionPolicyState {
   tokenCount: number;
@@ -24,7 +24,7 @@ export interface CompactionDecision {
   advisory: string;
 }
 
-export interface MessagePartLike {
+interface MessagePartLike {
   type?: string;
   text?: string;
 }
@@ -78,7 +78,7 @@ function pruneCompactionStates(): void {
   }
 }
 
-export function estimatePromptTokens(text: string): number {
+function estimatePromptTokens(text: string): number {
   const trimmed = text.trim();
   if (!trimmed) return 0;
   return Math.max(1, Math.ceil(trimmed.length / 4));
@@ -160,7 +160,7 @@ export function getCompactionState(sessionID: string): CompactionPolicyState | n
   return entry.state;
 }
 
-export function buildCompactionAdvisory(action: CompactionAction, reason: string): string {
+function buildCompactionAdvisory(action: CompactionAction, reason: string): string {
   if (action === 'none') return '';
 
   if (action === 'compact') {

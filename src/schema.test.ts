@@ -30,13 +30,13 @@ describe('PlanSchema', () => {
   });
 
   test('missing required field goal fails', () => {
-    const { goal, ...withoutGoal } = validPlan;
+    const { goal: _goal, ...withoutGoal } = validPlan;
     const result = PlanSchema.safeParse(withoutGoal);
     expect(result.success).toBe(false);
   });
 
   test('missing required field id fails', () => {
-    const { id, ...withoutId } = validPlan;
+    const { id: _id, ...withoutId } = validPlan;
     const result = PlanSchema.safeParse(withoutId);
     expect(result.success).toBe(false);
   });

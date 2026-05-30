@@ -31,9 +31,9 @@ import {
   transitionPlanStatus,
   generateRetrospective,
 } from './state.js';
-import type { PlanIndex, PlanIndexEntry, ActivePlan, StruggleMetrics, RetentionPolicy, PlanQualityReport, PlannerRoutingContext } from './state.js';
-import { getPlanState, getPlanGate, getCurrentState, getPlanGateFromState, NO_PLAN_NUDGE } from './runtime.js';
-import type { AgnesRuntimeState } from './runtime.js';
+import type { PlanIndex, PlanIndexEntry, StruggleMetrics, PlannerRoutingContext } from './state.js';
+import { getPlanState, getPlanGate } from './runtime.js';
+import { NO_PLAN_NUDGE } from './state.js';
 
 afterAll(() => {
   cleanupTempDirs();

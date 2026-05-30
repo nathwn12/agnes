@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { TaskMessageSchema, ResultMessageSchema, BaseMessageSchema } from './schema.js';
 
-export type MessageType = 'task' | 'result' | 'error' | 'status' | 'completion';
+type MessageType = 'task' | 'result' | 'error' | 'status' | 'completion';
 export type CompletionStatus = 'DONE' | 'DONE_WITH_CONCERNS' | 'NEEDS_CONTEXT' | 'BLOCKED';
 
 interface AgnesMessage {
@@ -10,7 +10,7 @@ interface AgnesMessage {
   timestamp: string;
 }
 
-export interface TaskMessage extends AgnesMessage {
+interface TaskMessage extends AgnesMessage {
   type: 'task';
   skill: string;
   payload: unknown;
@@ -34,7 +34,7 @@ export interface ResultMessage extends AgnesMessage {
   };
 }
 
-export interface ErrorMessage extends AgnesMessage {
+interface ErrorMessage extends AgnesMessage {
   type: 'error';
   taskId: string;
   errorType: string;
@@ -42,7 +42,7 @@ export interface ErrorMessage extends AgnesMessage {
   stack?: string;
 }
 
-export interface StatusMessage extends AgnesMessage {
+interface StatusMessage extends AgnesMessage {
   type: 'status';
   taskId: string;
   phase: string;
