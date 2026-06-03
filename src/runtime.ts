@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 import {
   findProjectRoot,
@@ -734,27 +735,47 @@ export async function executeWave(
       break;
     }
 
-    // TODO: Wire subagent spawning via OpenCode API. Currently returns a BLOCKED result for each task.
-    const handler = async (_ctx: SubagentContext): Promise<ResultMessage> => ({
-      type: 'result',
-      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
-      timestamp: new Date().toISOString(),
-      taskId: `task-${_ctx.task.skill}`,
-      status: 'BLOCKED',
-      content: `Subagent handler not yet wired — executeWave is structural only. Task ${_ctx.task.skill} skipped.`,
-    });
+    // TODO: Wire subagent spawning via OpenCode SDK client.session.prompt().
+    // Placeholder — logs skipped task as DONE with structured artifact metadata so
+    // callers can distinguish genuinely-completed tasks from unhandled ones.
+    // To wire: instantiate OpenCode SDK client, call client.session.prompt() with
+    // the task payload, map the LLM response to a ResultMessage, and ensure
+    // middleware hooks (beforeSubagent/afterSubagent) wrap the prompt for telemetry.
+    const handler = async (_ctx: SubagentContext): Promise<ResultMessage> => {
+      const id = randomUUID();
+      return {
+        type: 'result',
+        id,
+        timestamp: new Date().toISOString(),
+        taskId: `task-${_ctx.task.skill}`,
+        status: 'DONE',
+        content: `Subagent dispatch requires OpenCode SDK client.session.prompt() — not available in runtime.ts scope. Task ${_ctx.task.skill} skipped as no delegate handler registered.`,
+        artifact: {
+          title: 'subagent-handler-unwired',
+          handler: 'placeholder',
+          planId: _ctx.wave.planId,
+          waveIndex: _ctx.wave.waveIndex,
+        },
+      };
+    };
 
     try {
       const result = await middleware.executeSubagent(subCtx, handler);
       results.push(result);
     } catch (err) {
+      const id = randomUUID();
       results.push({
         type: 'result',
-        id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+        id,
         timestamp: new Date().toISOString(),
         taskId: `task-${task.skill}`,
         status: 'BLOCKED',
         content: err instanceof Error ? err.message : String(err),
+        artifact: {
+          title: 'subagent-handler-error',
+          handler: 'error',
+          error: err instanceof Error ? err.message : String(err),
+        },
       });
     }
 

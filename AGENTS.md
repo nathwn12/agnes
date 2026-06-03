@@ -140,6 +140,22 @@ Before calling any tool, check:
 3. Does this tool search source code? → **Delegate via `task`**
 4. Am I doing work instead of delegating? → **STOP. Spawn a subagent.**
 
+### Plugin Hooks Used
+
+AGNES uses the following OpenCode plugin hooks. Some are undocumented in public docs — their behavior is defined by the TypeScript type definitions at `@opencode-ai/plugin`.
+
+| Hook | File | Purpose | Documented? |
+|------|------|---------|-------------|
+| `tool.definition` | `src/plugin.ts` | Prepends `[AGNES ENFORCEMENT]` banners to tool descriptions sent to LLM | Type defs only |
+| `tool.execute.before` | `src/plugin.ts` | Blocks restricted tool calls (bash/edit/write/glob/grep) in main context by throwing Error | ✅ plugins.mdx |
+| `permission.ask` | (not implemented) | Could intercept permission decisions before user prompt; available for future use | Type defs only |
+| `experimental.chat.system.transform` | `src/plugin.ts` | Injects hard delegation rules into system prompt | Type defs only |
+| `experimental.chat.messages.transform` | `src/plugin.ts` | Prepends structured bootstrap blocks to first user message | Type defs only |
+| `config` | `src/plugin.ts` | Receives resolved config; sets planner mode, interleaved reasoning, skill paths | ✅ plugins.mdx |
+| `chat.message` | `src/plugin.ts` | Captures model ID from incoming messages | ✅ events |
+
+**Key detail**: `tool.execute.before` can block tool execution by throwing. The error renders as a tool failure in the chat stream (not a TUI toast/notification). `permission.ask` can silently deny via `output.status = "deny"` but is not yet implemented by AGNES.
+
 ---
 
 ## Coding Priority Order

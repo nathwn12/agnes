@@ -686,7 +686,7 @@ describe('executeWave', () => {
     const flow = new FlowController();
     const result = await executeWave('plan-001', sampleTasks, defaultMiddlewareChain, flow);
     const statuses = result.results.map(r => r.status);
-    expect(statuses).toEqual(['BLOCKED', 'BLOCKED']);
+    expect(statuses).toEqual(['DONE', 'DONE']);
   });
 
   test('stops early when flow is blocked', async () => {

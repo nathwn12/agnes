@@ -132,6 +132,35 @@ export const AgnesPlugin: Plugin = async () => {
       if (input.toolID === 'bash') {
         output.description = `[AGNES ENFORCEMENT] All commands must run inside an @executor subagent. In main context, delegate via \`task\`. Use \`task\` to spawn a subagent that runs this command. Rule: no mutating commands in main context. | ${output.description}`;
       }
+      if (input.toolID === 'read') {
+        output.description = `[AGNES ENFORCEMENT] File reading in main context should be limited to .agnes/ state files. For source code analysis, delegate to @explorer subagent. | ${output.description}`;
+      }
+      if (input.toolID === 'webfetch') {
+        output.description = `[AGNES ENFORCEMENT] Use sparingly in main context. Prefer to delegate web fetching to a subagent for structured results. | ${output.description}`;
+      }
+      if (input.toolID === 'question') {
+        output.description = `[AGNES ENFORCEMENT] OK to use in main context for asking the user clarifying questions. | ${output.description}`;
+      }
+      if (input.toolID === 'skill') {
+        output.description = `[AGNES ENFORCEMENT] OK to use in main context to load domain-specific skills. | ${output.description}`;
+      }
+      if (input.toolID === 'todowrite') {
+        output.description = `[AGNES ENFORCEMENT] OK to use in main context for tracking task progress. | ${output.description}`;
+      }
+    },
+
+    "tool.execute.before": async (input) => {
+      const restricted = new Set(['bash', 'edit', 'write', 'glob', 'grep']);
+      if (restricted.has(input.tool)) {
+        const messages: Record<string, string> = {
+          bash: 'use @executor subagent via task',
+          edit: 'use @builder subagent via task',
+          write: 'use @builder subagent via task',
+          glob: 'use @explorer subagent via task',
+          grep: 'use @explorer subagent via task',
+        };
+        throw new Error(`[AGNES] ${input.tool} blocked in main context — ${messages[input.tool]}`);
+      }
     },
 
     "experimental.chat.system.transform": async (_input, output) => {

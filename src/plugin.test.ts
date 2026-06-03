@@ -224,12 +224,14 @@ describe('tool.definition hook', () => {
     expect(output.description).toContain('executor');
   });
 
-  test('does not modify unrelated tool descriptions', async () => {
+  test('modifies read tool description with delegation warning', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
     const plugin = await AgnesPlugin();
     const output = { description: 'Read a file', parameters: {} };
     await (plugin as any)['tool.definition']({ toolID: 'read' }, output);
-    expect(output.description).not.toContain('AGNES ENFORCEMENT');
+    expect(output.description).toContain('AGNES ENFORCEMENT');
+    expect(output.description).toContain('explorer');
+    expect(output.description).toContain('Read a file');
   });
 });
 

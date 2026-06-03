@@ -294,7 +294,7 @@ export function buildToolAccessBlock(): string {
     },
     shared: {
       allowed: ["read", "webfetch"],
-      description: "Read-only context gathering. Use sparingly in main context — prefer to delegate.",
+      description: "Read: .agnes/ state files only, never source analysis. webfetch: external docs only. Prefer to delegate to @explorer.",
     },
   }));
 }
