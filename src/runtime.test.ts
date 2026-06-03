@@ -622,18 +622,22 @@ describe('checkPlanDrift', () => {
 });
 
 describe('assertTaskScope', () => {
-  test('does not throw when all files in scope', () => {
-    expect(() => assertTaskScope(['src/auth.ts'], ['src/auth.ts', 'src/utils.ts'])).not.toThrow();
+  test('returns ok when all files in scope', () => {
+    const result = assertTaskScope(['src/auth.ts'], ['src/auth.ts', 'src/utils.ts']);
+    expect(result.ok).toBe(true);
+    expect(result.inScope).toEqual(['src/auth.ts']);
+    expect(result.outOfScope).toEqual([]);
   });
 
-  test('throws when out-of-scope files detected', () => {
-    expect(() => assertTaskScope(['src/auth.ts', 'README.md'], ['src/auth.ts'])).toThrow(
-      'Task scope violation: edited files outside plan scope: [README.md]',
-    );
+  test('returns violation when out-of-scope files detected', () => {
+    const result = assertTaskScope(['src/auth.ts', 'README.md'], ['src/auth.ts']);
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('README.md');
   });
 
-  test('does not throw for empty lists', () => {
-    expect(() => assertTaskScope([], [])).not.toThrow();
+  test('returns ok for empty lists', () => {
+    const result = assertTaskScope([], []);
+    expect(result.ok).toBe(true);
   });
 });
 
@@ -682,11 +686,11 @@ describe('executeWave', () => {
     expect(result.nextAction).toBeNull();
   });
 
-  test('each result has BLOCKED status (subagent handler not yet wired)', async () => {
+  test('each result has PENDING status (task dispatched)', async () => {
     const flow = new FlowController();
     const result = await executeWave('plan-001', sampleTasks, defaultMiddlewareChain, flow);
     const statuses = result.results.map(r => r.status);
-    expect(statuses).toEqual(['BLOCKED', 'BLOCKED']);
+    expect(statuses).toEqual(['PENDING', 'PENDING']);
   });
 
   test('stops early when flow is blocked', async () => {

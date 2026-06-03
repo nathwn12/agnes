@@ -131,8 +131,9 @@ describe('parseAgnesMessage (Zod strict path)', () => {
 describe('buildResultMessage', () => {
   test('builds valid result message with reasoning', () => {
     const result = buildResultMessage({
+      taskId: 'task-001',
       status: 'DONE',
-      summary: 'All good',
+      content: 'All good',
       reasoning: 'The agent concluded correctly',
     });
     expect(result).toContain('<agnes:message>');
@@ -143,33 +144,33 @@ describe('buildResultMessage', () => {
 
   test('builds valid result message without reasoning', () => {
     const result = buildResultMessage({
+      taskId: 'task-001',
       status: 'BLOCKED',
-      summary: 'Blocked by dependency',
+      content: 'Blocked by dependency',
     });
     expect(result).toContain('"status":"BLOCKED"');
-    expect(result).not.toContain('reasoning_content');
+    expect(result).toContain('"taskId":"task-001"');
   });
 });
 
 describe('buildTaskMessage', () => {
-  test('builds valid task message with files and constraints', () => {
+  test('builds valid task message with skill and payload', () => {
     const result = buildTaskMessage({
-      goal: 'Refactor module',
-      files: ['src/module.ts'],
-      constraints: { no_shared_edits: true, read_only: false },
+      skill: 'builder',
+      payload: { file: 'src/module.ts' },
+      config: { tags: ['refactor'] },
     });
     expect(result).toContain('<agnes:message>');
-    expect(result).toContain('"goal":"Refactor module"');
-    expect(result).toContain('"files":["src/module.ts"]');
+    expect(result).toContain('"skill":"builder"');
+    expect(result).toContain('"file":"src/module.ts"');
     expect(result).toContain('"schema":"agnes/message-v1"');
   });
 
   test('builds valid task message with defaults', () => {
-    const result = buildTaskMessage({ goal: 'Simple task' });
+    const result = buildTaskMessage({ skill: 'explorer', payload: { query: 'Find auth patterns' } });
     const parsed = JSON.parse(result.replace(/<\/?agnes:message>/g, ''));
-    expect(parsed.goal).toBe('Simple task');
-    expect(parsed.files).toEqual([]);
-    expect(parsed.constraints).toEqual({ no_shared_edits: true });
+    expect(parsed.skill).toBe('explorer');
+    expect(parsed.payload).toEqual({ query: 'Find auth patterns' });
   });
 });
 

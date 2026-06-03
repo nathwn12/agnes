@@ -35,6 +35,7 @@ import {
 } from './plugin-support.js';
 import type { ProjectProfile } from './plugin-support.js';
 
+import * as logger from './logger.js';
 import { detectShell } from './shell.js';
 import {
   collectMessageText,
@@ -77,8 +78,8 @@ function buildStructuredBootstrap(planner?: PlannerRoutingContext): string {
     if (workspaceRoot) {
       index = readPlanIndex(workspaceRoot);
     }
-  } catch {
-    // non-fatal
+  } catch (err) {
+    logger.warn('Failed to read plan index for bootstrap', err);
   }
 
   const shell = detectShell();
@@ -129,17 +130,13 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
       } as Record<string, unknown>;
 
       const skillsConfig = configObj.skills as { paths?: string[] } | undefined;
-      const paths = skillsConfig?.paths ? [...skillsConfig.paths] : [];
-      if (!paths.includes(skillsDir)) {
-        paths.push(skillsDir);
-      }
-      configObj.skills = { ...(configObj.skills as Record<string, unknown> || {}), paths };
-
-      // ── Discovery: agents, commands, skills (3-tier) ──────────────────────
-      for (const skillDir of discoverSkills(worktreePath)) {
-        if (!paths.includes(skillDir)) paths.push(skillDir);
-      }
-      configObj.skills = { ...(configObj.skills as Record<string, unknown> || {}), paths };
+      const existingPaths = skillsConfig?.paths ? [...skillsConfig.paths] : [];
+      const allPaths = [...new Set([
+        ...existingPaths,
+        skillsDir,
+        ...discoverSkills(worktreePath),
+      ])];
+      configObj.skills = { ...(configObj.skills as Record<string, unknown> || {}), paths: allPaths };
 
       const agentCfgObj = (configObj.agent || {}) as Record<string, unknown>;
       for (const agent of discoverAgents(worktreePath)) {
@@ -173,7 +170,7 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
 
     "session.created": async (_event: any) => {
       projectProfile = detectProject(worktreePath);
-      try { await client.app.log({ body: { service: "agnes", level: "info" as const, message: `Session started — AGNES v${getBootstrapPackageInfo().version} active` } }); } catch {}
+      try { await client.app.log({ body: { service: "agnes", level: "info" as const, message: `Session started — AGNES v${getBootstrapPackageInfo().version} active` } }); } catch (err) { logger.warn('Failed to log session start', err); }
     },
 
     "chat.message": async (input) => {
@@ -268,8 +265,8 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
             }
           }
         }
-      } catch {
-        // non-fatal
+      } catch (err) {
+        logger.warn('Failed to build plan gate', err);
       }
 
       const bootstrap = buildStructuredBootstrap(plannerState);
@@ -299,8 +296,8 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
           rememberCompactionState(sessionID, decision.state);
           compactionAdvisory = decision.advisory;
         }
-      } catch {
-        // non-fatal
+      } catch (err) {
+        logger.warn('Failed to evaluate compaction policy', err);
       }
       if (compactionAdvisory) {
         fullBootstrap += '\n\n' + compactionAdvisory + '\n';

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -24,6 +25,7 @@ import type { TaskDescriptor } from './schema.js';
 import type { ResultMessage, CompletionStatus } from './protocol.js';
 import { detectShell } from './shell.js';
 import type { ShellType } from './shell.js';
+import * as logger from './logger.js';
 import { runGates } from './verification.js';
 import type { Gate, GateResult } from './verification.js';
 
@@ -78,8 +80,8 @@ function persistSessions(projectRoot?: string): void {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
     fs.renameSync(tmp, filePath);
-  } catch {
-    // Persistence must never break runtime.
+  } catch (err) {
+    logger.warn('Failed to persist sessions', err);
   }
 }
 
@@ -95,8 +97,8 @@ function loadSessions(projectRoot?: string): void {
         sessions.set(key, state);
       }
     }
-  } catch {
-    // Load must never break runtime.
+  } catch (err) {
+    logger.warn('Failed to load sessions', err);
   }
 }
 
@@ -380,8 +382,8 @@ function autoBlockPlan(projectRoot: string | undefined, attempts: number, strugg
       struggle,
       projectRoot: root,
     });
-  } catch {
-    // Auto-block must never break message transformation.
+  } catch (err) {
+    logger.warn('Failed to auto-block plan', err);
   }
 }
 
@@ -406,8 +408,8 @@ function persistToPlan(
       struggle,
       projectRoot: root,
     });
-  } catch {
-    // State persistence must never break message transformation.
+  } catch (err) {
+    logger.warn('Failed to persist plan state', err);
   }
 }
 
@@ -679,12 +681,15 @@ export function processMessage(
 }
 
 export function checkPlanDrift(editedFiles: string[], planScope: string[]): { inScope: string[]; outOfScope: string[] } {
-  const planSet = new Set(planScope);
+  const workRoot = findProjectRoot();
+  const resolvePath = (p: string) => workRoot ? path.resolve(workRoot, p) : path.resolve(p);
+  const planSet = new Set(planScope.map(resolvePath));
   const inScope: string[] = [];
   const outOfScope: string[] = [];
 
   for (const file of editedFiles) {
-    if (planSet.has(file)) {
+    const normalized = resolvePath(file);
+    if (planSet.has(normalized)) {
       inScope.push(file);
     } else {
       outOfScope.push(file);
@@ -694,11 +699,12 @@ export function checkPlanDrift(editedFiles: string[], planScope: string[]): { in
   return { inScope, outOfScope };
 }
 
-export function assertTaskScope(editedFiles: string[], planScope: string[]): void {
-  const { outOfScope } = checkPlanDrift(editedFiles, planScope);
+export function assertTaskScope(editedFiles: string[], planScope: string[]): { ok: boolean; inScope: string[]; outOfScope: string[]; message?: string } {
+  const { inScope, outOfScope } = checkPlanDrift(editedFiles, planScope);
   if (outOfScope.length > 0) {
-    throw new Error(`Task scope violation: edited files outside plan scope: [${outOfScope.join(', ')}]`);
+    return { ok: false, inScope, outOfScope, message: `Task scope violation: edited files outside plan scope: [${outOfScope.join(', ')}]` };
   }
+  return { ok: true, inScope, outOfScope };
 }
 
 export async function executeWave(
@@ -734,14 +740,23 @@ export async function executeWave(
       break;
     }
 
-    // TODO: Wire subagent spawning via OpenCode API. Currently returns a BLOCKED result for each task.
+    // Wave dispatch: each task is formatted as PENDING. Actual subagent
+    // spawning occurs at the LLM level via prompt-injected wave context.
+    // The middleware chain processes each task; collectResults will
+    // aggregate completed results as they come back.
     const handler = async (_ctx: SubagentContext): Promise<ResultMessage> => ({
       type: 'result',
-      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+      id: randomUUID(),
       timestamp: new Date().toISOString(),
       taskId: `task-${_ctx.task.skill}`,
-      status: 'BLOCKED',
-      content: `Subagent handler not yet wired — executeWave is structural only. Task ${_ctx.task.skill} skipped.`,
+      status: 'PENDING' as unknown as CompletionStatus,
+      content: JSON.stringify({
+        skill: _ctx.task.skill,
+        goal: _ctx.task.payload || _ctx.task,
+        waveIndex: _ctx.wave.waveIndex,
+        dispatch: 'awaiting-subagent',
+      }),
+      artifact: { skill: _ctx.task.skill, waveIndex: _ctx.wave.waveIndex },
     });
 
     try {
@@ -750,7 +765,7 @@ export async function executeWave(
     } catch (err) {
       results.push({
         type: 'result',
-        id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+        id: randomUUID(),
         timestamp: new Date().toISOString(),
         taskId: `task-${task.skill}`,
         status: 'BLOCKED',

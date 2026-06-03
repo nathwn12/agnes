@@ -248,8 +248,8 @@ describe('planning discipline integration', () => {
     const { outOfScope } = checkPlanDrift(['src/login.ts', 'src/settings.ts'], ['src/login.ts']);
     expect(outOfScope).toEqual(['src/settings.ts']);
 
-    expect(() => assertTaskScope(['src/login.ts'], ['src/login.ts'])).not.toThrow();
-    expect(() => assertTaskScope(['src/login.ts', 'src/settings.ts'], ['src/login.ts'])).toThrow();
+    expect(assertTaskScope(['src/login.ts'], ['src/login.ts']).ok).toBe(true);
+    expect(assertTaskScope(['src/login.ts', 'src/settings.ts'], ['src/login.ts']).ok).toBe(false);
   });
 
   test('Edge cases: missing index, NaN dates, empty scope', () => {
@@ -264,6 +264,6 @@ describe('planning discipline integration', () => {
 
     expect(transitionPlanStatus('plan-999', 'done', tmp)).toBeNull();
 
-    expect(() => assertTaskScope(['src/login.ts'], [])).toThrow();
+    expect(assertTaskScope(['src/login.ts'], []).ok).toBe(false);
   });
 });

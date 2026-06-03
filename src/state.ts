@@ -7,6 +7,7 @@ import { stringify as yamlStringify, parse as yamlParse } from 'yaml';
 import { PlanSchema } from './schema.js';
 import type { Plan, PlanTask } from './schema.js';
 
+import * as logger from './logger.js';
 import { parseAgnesMessage } from './protocol.js';
 import type { CompletionStatus } from './protocol.js';
 
@@ -65,7 +66,8 @@ function getAgnesVersion(): string {
     const pkgPath = path.join(__dirname, '..', '..', 'package.json');
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
     version = pkg.version ?? '0.0.0';
-  } catch {
+  } catch (err) {
+    logger.warn('Failed to read AGNES version', err);
     version = '0.0.0';
   }
   _agnesVersion = version;
@@ -295,7 +297,8 @@ export function readPlanIndex(projectRoot?: string): PlanIndex | null {
 
     pruneExpiredPlans(parsed, root);
     return parsed;
-  } catch {
+  } catch (err) {
+    logger.warn('Failed to read plan index', err);
     return null;
   }
 }
@@ -378,8 +381,8 @@ export function pruneExpiredPlans(index: PlanIndex, projectRoot?: string): PlanI
       if (!isNaN(updatedMs) && updatedMs <= cutoffMs) {
         try {
           fs.rmSync(getPlanFilePath(root, entry), { force: true });
-        } catch {
-          // File may already be gone
+        } catch (err) {
+          logger.warn('Failed to prune plan file', err);
         }
         changed = true;
         continue;
@@ -499,8 +502,8 @@ export function getNextPlanId(projectRoot?: string): string {
         if (num > max) max = num;
       }
     }
-  } catch {
-    // fall through
+  } catch (err) {
+    logger.warn('Failed to read plan directory', err);
   }
 
   return `plan-${String(max + 1).padStart(3, '0')}`;
@@ -916,7 +919,8 @@ function parseQualityInput(content: string): { goal: string; criteria: string; r
         verification: task.files.join(', ') || task.summary,
       })),
     };
-  } catch {
+  } catch (err) {
+    logger.warn('Failed to parse plan YAML, falling back to section extraction', err);
     return {
       goal: extractSection(content, 'Goal'),
       criteria: extractSection(content, 'Completion Criteria'),
@@ -1139,7 +1143,8 @@ export function transitionPlanStatus(planId: string, newStatus: string, projectR
     let content: string;
     try {
       content = fs.readFileSync(planPath, 'utf8');
-    } catch {
+    } catch (err) {
+      logger.warn('Failed to read plan file', err);
       return null;
     }
     const report = assessPlanQuality(content);

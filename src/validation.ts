@@ -1,6 +1,14 @@
 import { isValidAgnesMessage } from './protocol.js';
 import type { AnyAgnesMessage } from './protocol.js';
 
+export const ALLOWED_MESSAGE_TYPES: ReadonlySet<string> = new Set([
+  'task',
+  'result',
+  'error',
+  'status',
+  'completion',
+]);
+
 export const ALLOWED_ERROR_TYPES: Set<string> = new Set([
   'TypeError',
   'BuildError',

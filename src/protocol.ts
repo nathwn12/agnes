@@ -212,6 +212,9 @@ export function serializeAgnesMessage(msg: object): string {
     id: m.id ?? randomUUID(),
     timestamp: m.timestamp ?? new Date().toISOString(),
   };
+  if (!isValidAgnesMessage(enhanced)) {
+    process.stderr.write(`[agnes] validateMessage failed for message type "${m.type}": missing required fields\n`);
+  }
   const json = JSON.stringify(enhanced);
   return `<agnes:message>${json}</agnes:message>`;
 }
@@ -221,27 +224,35 @@ export function generateMessageId(): string {
 }
 
 export function buildResultMessage(params: {
+  taskId: string;
   status: CompletionStatus;
-  summary: string;
+  content: string;
+  artifact?: unknown;
   reasoning?: string;
 }): string {
   return serializeAgnesMessage({
     type: 'result',
+    taskId: params.taskId,
     status: params.status,
-    summary: params.summary,
-    reasoning_content: params.reasoning,
+    content: params.content,
+    ...(params.artifact !== undefined && { artifact: params.artifact }),
+    ...(params.reasoning !== undefined && { reasoning_content: params.reasoning }),
   });
 }
 
 export function buildTaskMessage(params: {
-  goal: string;
-  files?: string[];
-  constraints?: { no_shared_edits?: boolean; read_only?: boolean };
+  skill: string;
+  payload: unknown;
+  config?: {
+    tags?: string[];
+    metadata?: Record<string, unknown>;
+    maxDurationMs?: number;
+  };
 }): string {
   return serializeAgnesMessage({
     type: 'task',
-    goal: params.goal,
-    files: params.files || [],
-    constraints: params.constraints || { no_shared_edits: true },
+    skill: params.skill,
+    payload: params.payload,
+    ...(params.config !== undefined && { config: params.config }),
   });
 }
