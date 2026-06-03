@@ -33,12 +33,6 @@ const packageJsonPath = path.join(packageRoot, 'package.json');
 const skillsDir = path.join(packageRoot, '.opencode', 'skills');
 const opencodePackageCache = path.join(os.homedir(), '.cache', 'opencode', 'packages');
 
-function extractFrontmatter(content: string): { content: string } {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
-  if (!match) return { content };
-  return { content: match[2] };
-}
-
 function getPackageVersion(): string {
   if (!fs.existsSync(packageJsonPath)) return 'unknown';
 
@@ -68,22 +62,18 @@ function simpleHash(str: string): string {
 }
 
 export function getStaticBootstrapContent(): string | null {
-  const skillPath = path.join(skillsDir, 'orchestrator', 'SKILL.md');
-  if (!fs.existsSync(skillPath)) {
+  const soulPath = path.join(packageRoot, 'SOUL.md');
+  if (!fs.existsSync(soulPath)) {
     return null;
   }
 
   const version = getPackageVersion();
-  const fullContent = fs.readFileSync(skillPath, 'utf8');
+  const fullContent = fs.readFileSync(soulPath, 'utf8');
   const cacheKey = `${version}:${simpleHash(fullContent)}`;
 
   if (_bootstrapCache?.key === cacheKey) {
     return _bootstrapCache.content;
   }
-  const { content: frontmatterContent } = extractFrontmatter(fullContent);
-
-  const bootstrapEnd = frontmatterContent.indexOf('<!-- bootstrap-end -->');
-  const trimmedContent = bootstrapEnd !== -1 ? frontmatterContent.slice(0, bootstrapEnd).trim() : frontmatterContent;
   const cacheNukeCommand = `rm -rf "$HOME/.cache/opencode/packages"/agnes@git+https_*`;
 
   const toolMapping = `**Tool Mapping for OpenCode:**
@@ -105,9 +95,9 @@ You are AGNES.
 - OpenCode package cache root: \`${opencodePackageCache}\`
 - If the user explicitly asks to clear or nuke AGNES's OpenCode cache, remove the installed AGNES cache directory or use: \`${cacheNukeCommand}\`, then restart OpenCode.
 
-**IMPORTANT: The orchestrator skill content is below. It is ALREADY LOADED. Do NOT use the skill tool to load "orchestrator" again.**
+**IMPORTANT: AGNES SOUL.md is loaded below. Orchestrator skill available via \`skill\` tool.**
 
-${trimmedContent}
+${fullContent.trim()}
 
 ${toolMapping}
 </EXTREMELY_IMPORTANT>`;
@@ -294,7 +284,7 @@ export function buildToolAccessBlock(): string {
     },
     shared: {
       allowed: ["read", "webfetch"],
-      description: "Read-only context gathering. Use sparingly in main context — prefer to delegate.",
+      description: "Read: .agnes/ state files only, never source analysis. webfetch: external docs only. Prefer to delegate to @explorer.",
     },
   }));
 }
