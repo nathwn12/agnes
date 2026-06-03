@@ -233,16 +233,14 @@ describe('tool.definition hook', () => {
   });
 });
 
-describe('experimental.chat.system.transform hook', () => {
-  test('injects delegation enforcement rules into system prompt', async () => {
-    const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin({ directory: process.cwd() });
-    const output = { system: ['Existing prompt'] };
-    await (plugin as any)['experimental.chat.system.transform']({}, output);
-    expect(output.system.length).toBeGreaterThan(1);
-    const joined = output.system.join('\n');
-    expect(joined).toContain('AGNES DELEGATION ENFORCEMENT');
-    expect(joined).toContain('HARD RULES');
-    expect(joined).toContain('NEVER call edit/write/glob/grep/bash');
+describe('bootstrap delegation enforcement', () => {
+  test('getBootstrapContent includes delegation enforcement rules', () => {
+    const { getBootstrapContent } = require('./bootstrap.js');
+    const content = getBootstrapContent();
+    expect(content).not.toBeNull();
+    expect(content).toContain('AGNES DELEGATION ENFORCEMENT');
+    expect(content).toContain('HARD RULES');
+    expect(content).toContain('NEVER call edit/write/glob/grep/bash');
+    expect(content).toContain('ALWAYS use the `task` tool');
   });
 });

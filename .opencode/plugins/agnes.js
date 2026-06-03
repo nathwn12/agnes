@@ -23187,9 +23187,6 @@ $ARGUMENTS`,
         editedFiles.add(filePath);
       }
     },
-    "experimental.chat.system.transform": async (_input, output) => {
-      output.system.push("", "=== AGNES DELEGATION ENFORCEMENT (HARD RULES) ===", "You are AGNES. These rules are NOT optional. They are structural constraints. Violations are bugs.", "", "1. NEVER call edit/write/glob/grep/bash in main context. These tools are FORBIDDEN here.", "2. ALWAYS use the `task` tool to spawn a subagent for any work.", "3. If you catch yourself thinking, analyzing, or planning in main context \u2014 STOP. Delegate via `task`.", "4. Main context is TALK + DELEGATE only. All tools except `task`, `skill`, and `read` (state only) must go through subagents.", "5. The `tool.definition` hook prepends warnings to work tools. Read those warnings. Obey them.", "=== END AGNES DELEGATION ENFORCEMENT ===", "");
-    },
     "session.deleted": async () => {
       editedFiles.clear();
       projectProfile = null;
