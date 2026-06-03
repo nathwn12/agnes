@@ -6959,8 +6959,8 @@ var require_public_api = __commonJS((exports) => {
 
 // src/plugin.ts
 import { randomUUID as randomUUID2 } from "crypto";
-import * as path4 from "path";
-import { fileURLToPath as fileURLToPath3 } from "url";
+import * as path7 from "path";
+import { fileURLToPath as fileURLToPath4 } from "url";
 
 // src/bootstrap.ts
 import * as fs2 from "fs";
@@ -22090,14 +22090,14 @@ function getStaticBootstrapContent() {
     return _bootstrapCache.content;
   }
   const cacheNukeCommand = `rm -rf "$HOME/.cache/opencode/packages"/agnes@git+https_*`;
-  const toolMapping = `**工具映射（OpenCode）:**
-技能引用爾所無之器，以 OpenCode 等效代之：
+  const toolMapping = `**Tool Mapping for OpenCode:**
+When skills reference tools you don't have, substitute OpenCode equivalents:
 - \`TodoWrite\` \u2192 \`todowrite\`
-- \`Task\` with subagents \u2192 OpenCode 子代系統（@mention）
-- \`Skill\` \u2192 OpenCode 本機 \`skill\` 器
-- \`Read\`, \`Write\`, \`Edit\`, \`Bash\` \u2192 爾之本機器
+- \`Task\` with subagents \u2192 OpenCode's subagent system (@mention)
+- \`Skill\` \u2192 OpenCode's native \`skill\` tool
+- \`Read\`, \`Write\`, \`Edit\`, \`Bash\` \u2192 Your native tools
 
-用 OpenCode 本機 \`skill\` 器列舉並加載技能。`;
+Use OpenCode's native \`skill\` tool to list and load skills.`;
   const staticContent = `<EXTREMELY_IMPORTANT>
 You are AGNES.
 
@@ -22108,7 +22108,7 @@ You are AGNES.
 - OpenCode package cache root: \`${opencodePackageCache}\`
 - If the user explicitly asks to clear or nuke AGNES's OpenCode cache, remove the installed AGNES cache directory or use: \`${cacheNukeCommand}\`, then restart OpenCode.
 
-**要：AGNES SOUL.md 載於下。Orchestrator 技能可經 \`skill\` 器取用。**
+**IMPORTANT: AGNES SOUL.md is loaded below. Orchestrator skill available via \`skill\` tool.**
 
 ${fullContent.trim()}
 
@@ -22247,18 +22247,18 @@ function buildProtocolBlock() {
 function buildToolAccessBlock() {
   return wrapStructured("tool_access", $stringify({
     type: "tool_access",
-    rule: "主域惟語與委。諸器依域分割。",
+    rule: "Main context is TALK + DELEGATE only. Tools are partitioned by context.",
     main_context_only: {
       allowed: ["task", "skill", "todowrite", "question", "analyze-task", "auto-delegate"],
-      description: "召子代、載技能、記事項、問用戶。不得改源。"
+      description: "Spawn subagents, load skills, track todos, ask user questions. NO source mutations."
     },
     subagent_only: {
       allowed: ["edit", "write", "glob", "grep", "bash"],
-      description: "諸源工——改、搜、建、測。主域永不得用。"
+      description: "All source code work \u2014 editing, searching, building, testing. NEVER called in main context."
     },
     shared: {
       allowed: ["read", "webfetch"],
-      description: "Read：惟 .agnes/ 態檔，不析源。webfetch：惟外部文檔。宜委 @explorer。"
+      description: "Read: .agnes/ state files only, never source analysis. webfetch: external docs only. Prefer to delegate to @explorer."
     }
   }));
 }
@@ -22321,11 +22321,11 @@ function buildSkillRegistryText() {
   const skills = readSkillRegistry();
   if (!skills.length)
     return "";
-  const lines = [`### 技能註冊（建議次技）
+  const lines = [`### Skill Registry (next-skill suggestions)
 `];
   for (const s of skills) {
     if (s.suggest_next.length)
-      lines.push(`- **${s.id}**（${s.phase}）\u2192 次技：${s.suggest_next.join(", ")}`);
+      lines.push(`- **${s.id}** (${s.phase}) \u2192 next: ${s.suggest_next.join(", ")}`);
   }
   return lines.join(`
 `);
@@ -22354,9 +22354,189 @@ function buildBootstrap(context) {
 `);
 }
 
-// src/runtime.ts
-import * as fs3 from "fs";
+// src/discovery.ts
 import * as path3 from "path";
+import * as fs3 from "fs";
+import * as os4 from "os";
+import { fileURLToPath as fileURLToPath3 } from "url";
+
+// src/discovery-policy.ts
+function stripYamlFrontmatter(content) {
+  return content.replace(/^---[\s\S]*?---\n/, "");
+}
+function parseCommandFrontmatter(content) {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match)
+    return {};
+  const result = {};
+  for (const line of match[1].split(`
+`)) {
+    const kv = line.match(/^(\w+):\s*(.+)$/);
+    if (kv) {
+      let value = kv[2].trim();
+      if (value === "true")
+        value = true;
+      else if (value === "false")
+        value = false;
+      else if (value.startsWith('"') && value.endsWith('"'))
+        value = value.slice(1, -1);
+      result[kv[1]] = value;
+    }
+  }
+  return result;
+}
+function inferAgentDesc(name, prompt) {
+  const firstLine = prompt.split(`
+`)[0]?.trim() || "";
+  if (firstLine) {
+    return firstLine.replace(/^You are an?\s+/i, "").replace(/\.$/, "");
+  }
+  return name.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+function inferAgentPermission(name) {
+  if (name === "search-agent" || name === "docs-lookup") {
+    return { edit: "deny", write: "deny", bash: "deny", task: "deny" };
+  }
+  if (name === "code-reviewer" || name === "planner" || name === "architect" || name.startsWith("plan-") && name.endsWith("-reviewer")) {
+    return { edit: "deny", write: "deny", task: "deny" };
+  }
+  return;
+}
+function mergeByName(priorityGroups) {
+  const seen = new Map;
+  for (const group of priorityGroups) {
+    for (const item of group) {
+      if (!seen.has(item.name)) {
+        seen.set(item.name, item);
+      }
+    }
+  }
+  return [...seen.values()];
+}
+
+// src/discovery.ts
+var __dirname3 = path3.dirname(fileURLToPath3(import.meta.url));
+var pluginRoot = findPackageRoot(__dirname3) ?? path3.resolve(__dirname3, "..", "..");
+var BUNDLED_AGENTS_DIR = path3.join(pluginRoot, ".opencode", "prompts", "agents");
+var BUNDLED_COMMANDS_DIR = path3.join(pluginRoot, ".opencode", "commands");
+var BUNDLED_SKILLS_DIR = path3.join(pluginRoot, ".opencode", "skills");
+function readFileSafe(filePath) {
+  try {
+    return fs3.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+function homeDir() {
+  return process.env.USERPROFILE || os4.homedir();
+}
+function scanAgentDir(dir, source) {
+  const results = [];
+  try {
+    const entries = fs3.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith(".txt"))
+        continue;
+      const name = entry.name.slice(0, -4);
+      const prompt = readFileSafe(path3.join(dir, entry.name));
+      if (!prompt)
+        continue;
+      results.push({ name, desc: inferAgentDesc(name, prompt), prompt, permission: inferAgentPermission(name), source });
+    }
+  } catch {}
+  return results;
+}
+function scanCommandDir(dir, source) {
+  const results = [];
+  try {
+    const entries = fs3.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith(".md"))
+        continue;
+      const name = entry.name.slice(0, -3);
+      const content = readFileSafe(path3.join(dir, entry.name));
+      if (!content)
+        continue;
+      const fm = parseCommandFrontmatter(content);
+      const template = stripYamlFrontmatter(content);
+      if (!template)
+        continue;
+      results.push({
+        name,
+        desc: fm.description || name.replace(/-/g, " "),
+        template,
+        agent: fm.agent,
+        subtask: fm.subtask,
+        source
+      });
+    }
+  } catch {}
+  return results;
+}
+function scanSkillDir(dir) {
+  const results = [];
+  try {
+    const entries = fs3.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory())
+        continue;
+      if (fs3.existsSync(path3.join(dir, entry.name, "SKILL.md"))) {
+        results.push(path3.join(dir, entry.name));
+      }
+    }
+  } catch {}
+  return results;
+}
+function globalDir(sub) {
+  return path3.join(homeDir(), ".config", "opencode", sub);
+}
+function workspaceDir(worktree, sub) {
+  return path3.join(worktree, ".opencode", sub);
+}
+var cachedAgents = null;
+var cachedCommands = null;
+var cachedSkills = null;
+function discoverAgents(worktreePath) {
+  if (cachedAgents)
+    return cachedAgents;
+  cachedAgents = mergeByName([
+    scanAgentDir(BUNDLED_AGENTS_DIR, "agnes"),
+    scanAgentDir(globalDir(path3.join("prompts", "agents")), "global"),
+    scanAgentDir(workspaceDir(worktreePath, path3.join("prompts", "agents")), "workspace")
+  ]);
+  return cachedAgents;
+}
+function discoverCommands(worktreePath) {
+  if (cachedCommands)
+    return cachedCommands;
+  cachedCommands = mergeByName([
+    scanCommandDir(BUNDLED_COMMANDS_DIR, "agnes"),
+    scanCommandDir(globalDir("commands"), "global"),
+    scanCommandDir(workspaceDir(worktreePath, "commands"), "workspace")
+  ]);
+  return cachedCommands;
+}
+function discoverSkills(worktreePath) {
+  if (cachedSkills)
+    return cachedSkills;
+  const bundled = scanSkillDir(BUNDLED_SKILLS_DIR);
+  const global = scanSkillDir(globalDir("skills"));
+  const workspace = scanSkillDir(workspaceDir(worktreePath, "skills"));
+  const seen = new Set;
+  const results = [];
+  for (const dir of [...bundled, ...global, ...workspace]) {
+    if (!seen.has(dir)) {
+      seen.add(dir);
+      results.push(dir);
+    }
+  }
+  cachedSkills = results;
+  return cachedSkills;
+}
+
+// src/runtime.ts
+import * as fs4 from "fs";
+import * as path4 from "path";
 var sessions = new Map;
 loadSessions();
 function sessionsFilePath(projectRoot) {
@@ -22364,16 +22544,16 @@ function sessionsFilePath(projectRoot) {
   if (!root)
     return null;
   const dir = cacheDir(root);
-  return dir ? path3.join(dir, "sessions.json") : null;
+  return dir ? path4.join(dir, "sessions.json") : null;
 }
 function loadSessions(projectRoot) {
   try {
     const filePath = sessionsFilePath(projectRoot);
     if (!filePath)
       return;
-    if (!fs3.existsSync(filePath))
+    if (!fs4.existsSync(filePath))
       return;
-    const raw = fs3.readFileSync(filePath, "utf8");
+    const raw = fs4.readFileSync(filePath, "utf8");
     const data = JSON.parse(raw);
     for (const [key, state] of Object.entries(data)) {
       if (state && typeof state.attempts === "number" && state.struggle && typeof state.lastAccessed === "number") {
@@ -22615,6 +22795,130 @@ function classifyPlannerRoute(message, mode = "auto") {
   };
 }
 
+// src/model-routing.ts
+import * as fs5 from "fs";
+import * as path5 from "path";
+import * as os5 from "os";
+
+// src/model-routing-policy.ts
+var DEFAULT_MODEL = "opencode-go/deepseek-v4-flash";
+function generateDefaultConfig() {
+  return {
+    enabled: false,
+    global_default: DEFAULT_MODEL,
+    agents: {}
+  };
+}
+function populateAgentList(routing, agentNames) {
+  const agents = { ...routing.agents };
+  for (const name of agentNames) {
+    if (!(name in agents))
+      agents[name] = "";
+  }
+  return { ...routing, agents };
+}
+function applyModelRouting(config2, routing) {
+  if (!routing)
+    routing = generateDefaultConfig();
+  if (!routing.enabled)
+    return;
+  const globalDefault = routing.global_default || DEFAULT_MODEL;
+  const agentModels = routing.agents || {};
+  for (const [name, agentConfig] of Object.entries(config2.agent || {})) {
+    const agent = agentConfig;
+    if (agent.model)
+      continue;
+    agent.model = agentModels[name] || globalDefault;
+  }
+}
+
+// src/model-routing.ts
+function getConfigPath() {
+  const home = process.env.USERPROFILE || os5.homedir();
+  return path5.join(home, ".config", "opencode", "agnes.json");
+}
+function writeConfig(configPath, config2) {
+  const dir = path5.dirname(configPath);
+  if (!fs5.existsSync(dir))
+    fs5.mkdirSync(dir, { recursive: true });
+  fs5.writeFileSync(configPath, JSON.stringify(config2, null, 2), "utf8");
+}
+function loadModelRoutingConfig() {
+  const configPath = getConfigPath();
+  try {
+    if (fs5.existsSync(configPath)) {
+      const raw = fs5.readFileSync(configPath, "utf8").trim();
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.enabled === undefined)
+          parsed.enabled = false;
+        return parsed;
+      }
+    }
+  } catch {}
+  const defaults = generateDefaultConfig();
+  writeConfig(configPath, defaults);
+  return defaults;
+}
+function applyModelRouting2(config2, routing) {
+  applyModelRouting(config2, routing || loadModelRoutingConfig());
+}
+
+// src/plugin-support.ts
+import * as fs6 from "fs";
+import * as path6 from "path";
+function detectProject(cwd) {
+  let projectName = path6.basename(cwd);
+  try {
+    const pkg = JSON.parse(fs6.readFileSync(path6.join(cwd, "package.json"), "utf8"));
+    if (pkg.name)
+      projectName = pkg.name;
+  } catch {}
+  const languages = [];
+  if (fs6.existsSync(path6.join(cwd, "tsconfig.json")))
+    languages.push("typescript");
+  if (fs6.existsSync(path6.join(cwd, "go.mod")))
+    languages.push("go");
+  if (fs6.existsSync(path6.join(cwd, "Cargo.toml")))
+    languages.push("rust");
+  if (fs6.existsSync(path6.join(cwd, "pyproject.toml")))
+    languages.push("python");
+  if (fs6.existsSync(path6.join(cwd, "package.json")))
+    languages.push("javascript");
+  const lockfiles = { "bun.lock": "bun", "bun.lockb": "bun", "pnpm-lock.yaml": "pnpm", "yarn.lock": "yarn", "package-lock.json": "npm" };
+  let packageManager = "npm";
+  for (const [lock, name] of Object.entries(lockfiles)) {
+    if (fs6.existsSync(path6.join(cwd, lock))) {
+      packageManager = name;
+      break;
+    }
+  }
+  return { projectName, languages, packageManager };
+}
+function buildCompactionContext(input) {
+  const out = [];
+  out.push("# AGNES Context (preserve across compaction)");
+  out.push("", `## AGNES v${input.pkg.version}`);
+  out.push(`- Package root: ${input.pkg.root}`);
+  out.push("- Primary role: delegate to subagents, synthesize results, verify before claiming");
+  out.push("- Soul: Think Before Coding, Simplicity First, Surgical Changes, Goal-Driven Execution");
+  out.push("- Route by task type: planning, review, build-fix, TDD, docs, language-specific");
+  out.push("- Answer directly when no tools are needed", "");
+  if (input.projectProfile) {
+    out.push("## Project Profile");
+    out.push(`- Languages: ${input.projectProfile.languages.join(", ") || "none detected"}`);
+    out.push(`- Package manager: ${input.projectProfile.packageManager}`, "");
+  }
+  const edited = [...input.editedFiles];
+  if (edited.length > 0) {
+    out.push("## Recently Edited Files");
+    for (const f of edited)
+      out.push(`- ${f}`);
+    out.push("");
+  }
+  return out;
+}
+
 // src/compaction.ts
 var DEFAULT_COMPACTION_SOFT_LIMIT = 150000;
 var DEFAULT_COMPACTION_HARD_LIMIT = 200000;
@@ -22735,8 +23039,8 @@ function buildCompactionAdvisory(action, reason) {
 }
 
 // src/plugin.ts
-var __dirname3 = path4.dirname(fileURLToPath3(import.meta.url));
-var skillsDir2 = path4.resolve(__dirname3, "../skills");
+var __dirname4 = path7.dirname(fileURLToPath4(import.meta.url));
+var skillsDir2 = path7.resolve(__dirname4, "../skills");
 var _modelName;
 var _plannerMode = "auto";
 function buildStructuredBootstrap(planner) {
@@ -22754,11 +23058,11 @@ function buildStructuredBootstrap(planner) {
     scarcity: true,
     answerDirectly: true,
     namedRoles: {
-      executor: "行令、測、建。返簡要成敗 + 檔參照。不提修復方。",
-      explorer: "惟研碼。Glob \u2192 grep \u2192 擇讀。惟讀。不改。",
-      planner: "依任務需求以 planner 技能創建/更新 plan-NNN.yaml。",
-      builder: "實作計劃中一子任務。委 bash 於 executor，委審查於 reviewer。",
-      reviewer: "審 diff 是否符合子任務範疇，以 reviewer 技能。書發現於檔。"
+      executor: "Runs commands, tests, builds. Returns compact pass/fail + file refs. Never suggests fixes.",
+      explorer: "Codebase research only. Glob \u2192 grep \u2192 selective read. Read-only. Never edits.",
+      planner: "Creates/refreshes plan-NNN.yaml from task requirements using planner skill.",
+      builder: "Implements one sub-task from plan. Delegates bash to executor and review to reviewer.",
+      reviewer: "Reviews diff against sub-task scope using reviewer skill. Writes findings."
     }
   };
   let index = null;
@@ -22792,7 +23096,10 @@ function buildStructuredBootstrap(planner) {
 ` + structuredBlocks + `
 `;
 }
-var AgnesPlugin = async () => {
+var AgnesPlugin = async ({ client, directory, worktree }) => {
+  const worktreePath = worktree || directory;
+  const editedFiles = new Set;
+  let projectProfile = null;
   return {
     config: async (config2) => {
       detectShell();
@@ -22814,6 +23121,46 @@ var AgnesPlugin = async () => {
         paths.push(skillsDir2);
       }
       configObj.skills = { ...configObj.skills || {}, paths };
+      for (const skillDir of discoverSkills(worktreePath)) {
+        if (!paths.includes(skillDir))
+          paths.push(skillDir);
+      }
+      configObj.skills = { ...configObj.skills || {}, paths };
+      const agentCfgObj = configObj.agent || {};
+      for (const agent of discoverAgents(worktreePath)) {
+        if (!agentCfgObj[agent.name]) {
+          const agentCfg = { description: agent.desc, mode: "subagent", prompt: agent.prompt };
+          if (agent.permission)
+            agentCfg.permission = agent.permission;
+          agentCfgObj[agent.name] = agentCfg;
+        }
+      }
+      configObj.agent = agentCfgObj;
+      const cmdCfgObj = configObj.command || {};
+      for (const cmd of discoverCommands(worktreePath)) {
+        if (!cmdCfgObj[cmd.name]) {
+          cmdCfgObj[cmd.name] = {
+            description: cmd.desc,
+            template: `${cmd.template}
+
+$ARGUMENTS`,
+            ...cmd.agent ? { agent: cmd.agent } : {},
+            ...cmd.subtask ? { subtask: true } : {}
+          };
+        }
+      }
+      configObj.command = cmdCfgObj;
+      const routing = loadModelRoutingConfig();
+      const agentNames = Object.keys(configObj.agent || {});
+      const populated = populateAgentList(routing, agentNames);
+      writeConfig(getConfigPath(), populated);
+      applyModelRouting2(configObj, populated);
+    },
+    "session.created": async (_event) => {
+      projectProfile = detectProject(worktreePath);
+      try {
+        await client.app.log({ body: { service: "agnes", level: "info", message: `Session started \u2014 AGNES v${getBootstrapPackageInfo().version} active` } });
+      } catch {}
     },
     "chat.message": async (input) => {
       if (input.model?.modelID && typeof input.model.modelID === "string") {
@@ -22822,17 +23169,30 @@ var AgnesPlugin = async () => {
     },
     "tool.definition": async (input, output) => {
       if (input.toolID === "edit" || input.toolID === "write") {
-        output.description = `[AGNES ENFORCEMENT] 此器須於 @builder 子代中調用，不得在主域。主域則委以 \`task\`。律：委或亡。 | ${output.description}`;
+        output.description = `[AGNES ENFORCEMENT] This tool MUST be called inside a @builder subagent, not in main context. In main context, delegate via the \`task\` tool. Rule: delegate_or_die. | ${output.description}`;
       }
       if (input.toolID === "glob" || input.toolID === "grep") {
-        output.description = `[AGNES ENFORCEMENT] 搜碼須委 @explorer 子代。主域則委以 \`task\`。律：主域不析。 | ${output.description}`;
+        output.description = `[AGNES ENFORCEMENT] Searching the codebase must be delegated to an @explorer subagent. In main context, delegate via \`task\`. Rule: no analysis in main context. | ${output.description}`;
       }
       if (input.toolID === "bash") {
-        output.description = `[AGNES ENFORCEMENT] 諸令須行於 @executor 子代。主域則委以 \`task\`。以 \`task\` 召子代執行。律：主域無變令。 | ${output.description}`;
+        output.description = `[AGNES ENFORCEMENT] All commands must run inside an @executor subagent. In main context, delegate via \`task\`. Use \`task\` to spawn a subagent that runs this command. Rule: no mutating commands in main context. | ${output.description}`;
+      }
+    },
+    "file.edited": async (event) => {
+      editedFiles.add(event.path);
+    },
+    "tool.execute.after": async (input, _output) => {
+      const filePath = input.args?.filePath;
+      if ((input.tool === "edit" || input.tool === "write") && filePath) {
+        editedFiles.add(filePath);
       }
     },
     "experimental.chat.system.transform": async (_input, output) => {
-      output.system.push("", "=== AGNES 委任律令（鐵則） ===", "汝為 AGNES。此令不可違。結構之限，違即為咎。", "", "一、主域禁用改/寫/搜/查/令。此器等皆禁。", "二、凡有工作，必以 `task` 召子代行。", "三、若自覺思、析、規於主域——止。委以 `task`。", "四、主域惟語與委。除 `task`、`skill`、`read`（惟讀態）外，諸器須經子代。", "五、`tool.definition` 鉤預警於工器。讀其警，遵其行。", "=== AGNES 委任律令終 ===", "");
+      output.system.push("", "=== AGNES DELEGATION ENFORCEMENT (HARD RULES) ===", "You are AGNES. These rules are NOT optional. They are structural constraints. Violations are bugs.", "", "1. NEVER call edit/write/glob/grep/bash in main context. These tools are FORBIDDEN here.", "2. ALWAYS use the `task` tool to spawn a subagent for any work.", "3. If you catch yourself thinking, analyzing, or planning in main context \u2014 STOP. Delegate via `task`.", "4. Main context is TALK + DELEGATE only. All tools except `task`, `skill`, and `read` (state only) must go through subagents.", "5. The `tool.definition` hook prepends warnings to work tools. Read those warnings. Obey them.", "=== END AGNES DELEGATION ENFORCEMENT ===", "");
+    },
+    "session.deleted": async () => {
+      editedFiles.clear();
+      projectProfile = null;
     },
     "experimental.chat.messages.transform": async (_input, output) => {
       if (!output.messages?.length)
@@ -22913,10 +23273,10 @@ ${execContext}
       }
       fullBootstrap += `
 
-## 完成協定
-諸事畢，置此 HTML 註於回應之末（用戶不可見，AGNES 解析之）：
+## Completion Protocol
+When all tasks are complete, place this HTML comment at the very end of your response (invisible to users, parsed by AGNES):
 <!-- ${serializeAgnesMessage({ type: "completion", id: randomUUID2(), timestamp: new Date().toISOString(), status: "DONE", summary: "all tasks completed successfully" })} -->
-部分結果：
+For partial results:
 <!-- ${serializeAgnesMessage({ type: "result", taskId: "task-000", id: randomUUID2(), timestamp: new Date().toISOString(), status: "DONE", content: "...", artifact: {} })} -->
 `;
       const { sessionID, messageID } = firstUser.parts[0];
@@ -22927,6 +23287,12 @@ ${execContext}
         type: "text",
         text: fullBootstrap
       });
+    },
+    "experimental.session.compacting": async (_input, output) => {
+      const pkg = getBootstrapPackageInfo();
+      for (const line of buildCompactionContext({ pkg, projectProfile, editedFiles })) {
+        output.context.push(line);
+      }
     }
   };
 };

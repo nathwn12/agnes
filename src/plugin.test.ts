@@ -96,7 +96,7 @@ describe('buildStructuredBootstrap (via buildBootstrap integration)', () => {
 describe('AgnesPlugin structure', () => {
   test('plugin factory returns an object with config and message hooks', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin();
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
     expect(plugin).toHaveProperty('config');
     expect(plugin).toHaveProperty(['chat.message']);
     expect(plugin).toHaveProperty(['experimental.chat.messages.transform']);
@@ -107,7 +107,7 @@ describe('AgnesPlugin structure', () => {
 
   test('config hook sets planner mode from config', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin();
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
     const config: Record<string, unknown> = {
       planner: { mode: 'builtin' },
     };
@@ -118,7 +118,7 @@ describe('AgnesPlugin structure', () => {
 
   test('config hook defaults planner mode to auto when not set', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin();
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
     const config: Record<string, unknown> = {};
     await plugin.config!(config);
     expect((config.planner as Record<string, unknown>).mode).toBe('auto');
@@ -126,7 +126,7 @@ describe('AgnesPlugin structure', () => {
 
   test('config hooks adds skills path', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin();
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
     const config: Record<string, unknown> = {
       skills: { paths: [] },
     };
@@ -137,7 +137,7 @@ describe('AgnesPlugin structure', () => {
 
   test('config hook sets provider interleaved config', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin();
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
     const config: Record<string, unknown> = {};
     await plugin.config!(config);
     const provider = config.provider as Record<string, unknown>;
@@ -149,7 +149,7 @@ describe('AgnesPlugin structure', () => {
 describe('chat.message hook', () => {
   test('captures model ID from input', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin();
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
     const input = { model: { modelID: 'gpt-4' } };
     await (plugin as any)['chat.message'](input);
   });
@@ -158,14 +158,14 @@ describe('chat.message hook', () => {
 describe('experimental.chat.messages.transform hook', () => {
   test('skips when no messages', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin();
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
     const output = { messages: [] };
     await (plugin as any)['experimental.chat.messages.transform']({}, output);
   });
 
   test('skips when bootstrap already present', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin();
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
     const output = {
       messages: [
         {
@@ -182,7 +182,7 @@ describe('experimental.chat.messages.transform hook', () => {
 describe('tool.definition hook', () => {
   test('modifies edit tool description with delegation warning', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin();
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
     const output = { description: 'Edit a file', parameters: {} };
     await (plugin as any)['tool.definition']({ toolID: 'edit' }, output);
     expect(output.description).toContain('AGNES ENFORCEMENT');
@@ -192,7 +192,7 @@ describe('tool.definition hook', () => {
 
   test('modifies write tool description with delegation warning', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin();
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
     const output = { description: 'Write a file', parameters: {} };
     await (plugin as any)['tool.definition']({ toolID: 'write' }, output);
     expect(output.description).toContain('AGNES ENFORCEMENT');
@@ -200,7 +200,7 @@ describe('tool.definition hook', () => {
 
   test('modifies glob tool description', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin();
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
     const output = { description: 'Search files', parameters: {} };
     await (plugin as any)['tool.definition']({ toolID: 'glob' }, output);
     expect(output.description).toContain('AGNES ENFORCEMENT');
@@ -209,7 +209,7 @@ describe('tool.definition hook', () => {
 
   test('modifies grep tool description', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin();
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
     const output = { description: 'Grep files', parameters: {} };
     await (plugin as any)['tool.definition']({ toolID: 'grep' }, output);
     expect(output.description).toContain('AGNES ENFORCEMENT');
@@ -217,7 +217,7 @@ describe('tool.definition hook', () => {
 
   test('modifies bash tool description', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin();
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
     const output = { description: 'Run command', parameters: {} };
     await (plugin as any)['tool.definition']({ toolID: 'bash' }, output);
     expect(output.description).toContain('AGNES ENFORCEMENT');
@@ -226,7 +226,7 @@ describe('tool.definition hook', () => {
 
   test('does not modify unrelated tool descriptions', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin();
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
     const output = { description: 'Read a file', parameters: {} };
     await (plugin as any)['tool.definition']({ toolID: 'read' }, output);
     expect(output.description).not.toContain('AGNES ENFORCEMENT');
@@ -236,7 +236,7 @@ describe('tool.definition hook', () => {
 describe('experimental.chat.system.transform hook', () => {
   test('injects delegation enforcement rules into system prompt', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin();
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
     const output = { system: ['Existing prompt'] };
     await (plugin as any)['experimental.chat.system.transform']({}, output);
     expect(output.system.length).toBeGreaterThan(1);

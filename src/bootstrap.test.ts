@@ -139,7 +139,7 @@ describe('getBootstrapContent', () => {
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
     expect(content!).toContain('AGNES');
-    expect(content!).toContain('orchestrator');
+    expect(content!).toContain('Orchestrator');
   });
 
   test('includes the version string from package.json', () => {

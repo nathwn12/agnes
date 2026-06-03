@@ -11,7 +11,7 @@ import type { CompactionPolicyState } from './compaction.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function findPackageRoot(fromDir: string): string | null {
+export function findPackageRoot(fromDir: string): string | null {
   let current = fromDir;
   for (let i = 0; i < 5; i++) {
     const pj = path.join(current, 'package.json');

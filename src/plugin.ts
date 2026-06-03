@@ -8,6 +8,11 @@ import {
   getBootstrapPackageInfo,
 } from './bootstrap.js';
 import type { OrchestratorRules } from './bootstrap.js';
+import {
+  discoverAgents,
+  discoverCommands,
+  discoverSkills,
+} from './discovery.js';
 import type { PlanIndex } from './state.js';
 import {
   findProjectRoot,
@@ -17,6 +22,18 @@ import {
 import type { PlannerRoutingContext } from './state.js';
 import { getPlanGate, buildExecutionContext, classifyPlannerRoute } from './runtime.js';
 import { serializeAgnesMessage } from './protocol.js';
+import {
+  applyModelRouting,
+  loadModelRoutingConfig,
+  getConfigPath,
+  writeConfig,
+  populateAgentList,
+} from './model-routing.js';
+import {
+  buildCompactionContext,
+  detectProject,
+} from './plugin-support.js';
+import type { ProjectProfile } from './plugin-support.js';
 
 import { detectShell } from './shell.js';
 import {
@@ -87,7 +104,10 @@ function buildStructuredBootstrap(planner?: PlannerRoutingContext): string {
   return proseBootstrap + '\n\n## Structured Protocol Blocks\n' + structuredBlocks + '\n';
 }
 
-export const AgnesPlugin: Plugin = async () => {
+export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
+  const worktreePath = worktree || directory;
+  const editedFiles = new Set<string>();
+  let projectProfile: ProjectProfile | null = null;
   return {
     config: async (config: Record<string, unknown>) => {
       detectShell();
@@ -114,6 +134,46 @@ export const AgnesPlugin: Plugin = async () => {
         paths.push(skillsDir);
       }
       configObj.skills = { ...(configObj.skills as Record<string, unknown> || {}), paths };
+
+      // ── Discovery: agents, commands, skills (3-tier) ──────────────────────
+      for (const skillDir of discoverSkills(worktreePath)) {
+        if (!paths.includes(skillDir)) paths.push(skillDir);
+      }
+      configObj.skills = { ...(configObj.skills as Record<string, unknown> || {}), paths };
+
+      const agentCfgObj = (configObj.agent || {}) as Record<string, unknown>;
+      for (const agent of discoverAgents(worktreePath)) {
+        if (!agentCfgObj[agent.name]) {
+          const agentCfg: Record<string, unknown> = { description: agent.desc, mode: "subagent", prompt: agent.prompt };
+          if (agent.permission) agentCfg.permission = agent.permission;
+          agentCfgObj[agent.name] = agentCfg;
+        }
+      }
+      configObj.agent = agentCfgObj;
+
+      const cmdCfgObj = (configObj.command || {}) as Record<string, unknown>;
+      for (const cmd of discoverCommands(worktreePath)) {
+        if (!cmdCfgObj[cmd.name]) {
+          cmdCfgObj[cmd.name] = {
+            description: cmd.desc,
+            template: `${cmd.template}\n\n$ARGUMENTS`,
+            ...(cmd.agent ? { agent: cmd.agent } : {}),
+            ...(cmd.subtask ? { subtask: true } : {}),
+          };
+        }
+      }
+      configObj.command = cmdCfgObj;
+      // ── Model Routing (Win #3) ─────────────────────────────────────
+      const routing = loadModelRoutingConfig();
+      const agentNames = Object.keys((configObj.agent || {}) as Record<string, unknown>);
+      const populated = populateAgentList(routing, agentNames);
+      writeConfig(getConfigPath(), populated);
+      applyModelRouting(configObj, populated);
+    },
+
+    "session.created": async (_event: any) => {
+      projectProfile = detectProject(worktreePath);
+      try { await client.app.log({ body: { service: "agnes", level: "info" as const, message: `Session started — AGNES v${getBootstrapPackageInfo().version} active` } }); } catch {}
     },
 
     "chat.message": async (input) => {
@@ -134,6 +194,17 @@ export const AgnesPlugin: Plugin = async () => {
       }
     },
 
+    "file.edited": async (event: { path: string }) => {
+      editedFiles.add(event.path);
+    },
+
+    "tool.execute.after": async (input: { tool: string; args?: Record<string, unknown> }, _output: unknown) => {
+      const filePath = input.args?.filePath as string | undefined;
+      if ((input.tool === "edit" || input.tool === "write") && filePath) {
+        editedFiles.add(filePath);
+      }
+    },
+
     "experimental.chat.system.transform": async (_input, output) => {
       output.system.push(
         '',
@@ -148,6 +219,11 @@ export const AgnesPlugin: Plugin = async () => {
         '=== END AGNES DELEGATION ENFORCEMENT ===',
         '',
       );
+    },
+
+    "session.deleted": async () => {
+      editedFiles.clear();
+      projectProfile = null;
     },
 
     'experimental.chat.messages.transform': async (_input, output) => {
@@ -241,6 +317,13 @@ export const AgnesPlugin: Plugin = async () => {
         type: 'text',
         text: fullBootstrap,
       });
+    },
+
+    "experimental.session.compacting": async (_input: any, output: any) => {
+      const pkg = getBootstrapPackageInfo();
+      for (const line of buildCompactionContext({ pkg, projectProfile, editedFiles })) {
+        output.context.push(line);
+      }
     },
   };
 };
