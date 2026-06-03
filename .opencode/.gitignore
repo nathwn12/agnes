@@ -1,0 +1,8 @@
+node_modules
+package.json
+package-lock.json
+bun.lock
+.gitignore
+index.json
+plans/
+INSTALL.md

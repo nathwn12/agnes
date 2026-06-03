@@ -4,4 +4,6 @@ review-package/
 verification/
 /.agnes
 nul
-/.opencode
+/.opencode/index.json
+/.opencode/plans/
+/.opencode/INSTALL.md
