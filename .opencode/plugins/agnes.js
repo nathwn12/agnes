@@ -22090,14 +22090,14 @@ function getStaticBootstrapContent() {
     return _bootstrapCache.content;
   }
   const cacheNukeCommand = `rm -rf "$HOME/.cache/opencode/packages"/agnes@git+https_*`;
-  const toolMapping = `**Tool Mapping for OpenCode:**
-When skills reference tools you don't have, substitute OpenCode equivalents:
+  const toolMapping = `**工具映射（OpenCode）:**
+技能引用爾所無之器，以 OpenCode 等效代之：
 - \`TodoWrite\` \u2192 \`todowrite\`
-- \`Task\` with subagents \u2192 OpenCode's subagent system (@mention)
-- \`Skill\` \u2192 OpenCode's native \`skill\` tool
-- \`Read\`, \`Write\`, \`Edit\`, \`Bash\` \u2192 Your native tools
+- \`Task\` with subagents \u2192 OpenCode 子代系統（@mention）
+- \`Skill\` \u2192 OpenCode 本機 \`skill\` 器
+- \`Read\`, \`Write\`, \`Edit\`, \`Bash\` \u2192 爾之本機器
 
-Use OpenCode's native \`skill\` tool to list and load skills.`;
+用 OpenCode 本機 \`skill\` 器列舉並加載技能。`;
   const staticContent = `<EXTREMELY_IMPORTANT>
 You are AGNES.
 
@@ -22108,7 +22108,7 @@ You are AGNES.
 - OpenCode package cache root: \`${opencodePackageCache}\`
 - If the user explicitly asks to clear or nuke AGNES's OpenCode cache, remove the installed AGNES cache directory or use: \`${cacheNukeCommand}\`, then restart OpenCode.
 
-**IMPORTANT: AGNES SOUL.md is loaded below. Orchestrator skill available via \`skill\` tool.**
+**要：AGNES SOUL.md 載於下。Orchestrator 技能可經 \`skill\` 器取用。**
 
 ${fullContent.trim()}
 
@@ -22247,18 +22247,18 @@ function buildProtocolBlock() {
 function buildToolAccessBlock() {
   return wrapStructured("tool_access", $stringify({
     type: "tool_access",
-    rule: "Main context is TALK + DELEGATE only. Tools are partitioned by context.",
+    rule: "主域惟語與委。諸器依域分割。",
     main_context_only: {
       allowed: ["task", "skill", "todowrite", "question", "analyze-task", "auto-delegate"],
-      description: "Spawn subagents, load skills, track todos, ask user questions. NO source mutations."
+      description: "召子代、載技能、記事項、問用戶。不得改源。"
     },
     subagent_only: {
       allowed: ["edit", "write", "glob", "grep", "bash"],
-      description: "All source code work \u2014 editing, searching, building, testing. NEVER called in main context."
+      description: "諸源工——改、搜、建、測。主域永不得用。"
     },
     shared: {
       allowed: ["read", "webfetch"],
-      description: "Read: .agnes/ state files only, never source analysis. webfetch: external docs only. Prefer to delegate to @explorer."
+      description: "Read：惟 .agnes/ 態檔，不析源。webfetch：惟外部文檔。宜委 @explorer。"
     }
   }));
 }
@@ -22321,11 +22321,11 @@ function buildSkillRegistryText() {
   const skills = readSkillRegistry();
   if (!skills.length)
     return "";
-  const lines = [`### Skill Registry (next-skill suggestions)
+  const lines = [`### 技能註冊（建議次技）
 `];
   for (const s of skills) {
     if (s.suggest_next.length)
-      lines.push(`- **${s.id}** (${s.phase}) \u2192 next: ${s.suggest_next.join(", ")}`);
+      lines.push(`- **${s.id}**（${s.phase}）\u2192 次技：${s.suggest_next.join(", ")}`);
   }
   return lines.join(`
 `);
@@ -22754,11 +22754,11 @@ function buildStructuredBootstrap(planner) {
     scarcity: true,
     answerDirectly: true,
     namedRoles: {
-      executor: "Runs commands, tests, builds. Returns compact pass/fail + file refs. Never suggests fixes.",
-      explorer: "Codebase research only. Glob \u2192 grep \u2192 selective read. Read-only. Never edits.",
-      planner: "Creates/refreshes plan-NNN.yaml from task requirements using planner skill.",
-      builder: "Implements one sub-task from plan. Delegates bash to executor and review to reviewer.",
-      reviewer: "Reviews diff against sub-task scope using reviewer skill. Writes findings."
+      executor: "行令、測、建。返簡要成敗 + 檔參照。不提修復方。",
+      explorer: "惟研碼。Glob \u2192 grep \u2192 擇讀。惟讀。不改。",
+      planner: "依任務需求以 planner 技能創建/更新 plan-NNN.yaml。",
+      builder: "實作計劃中一子任務。委 bash 於 executor，委審查於 reviewer。",
+      reviewer: "審 diff 是否符合子任務範疇，以 reviewer 技能。書發現於檔。"
     }
   };
   let index = null;
@@ -22822,17 +22822,17 @@ var AgnesPlugin = async () => {
     },
     "tool.definition": async (input, output) => {
       if (input.toolID === "edit" || input.toolID === "write") {
-        output.description = `[AGNES ENFORCEMENT] This tool MUST be called inside a @builder subagent, not in main context. In main context, delegate via the \`task\` tool. Rule: delegate_or_die. | ${output.description}`;
+        output.description = `[AGNES ENFORCEMENT] 此器須於 @builder 子代中調用，不得在主域。主域則委以 \`task\`。律：委或亡。 | ${output.description}`;
       }
       if (input.toolID === "glob" || input.toolID === "grep") {
-        output.description = `[AGNES ENFORCEMENT] Searching the codebase must be delegated to an @explorer subagent. In main context, delegate via \`task\`. Rule: no analysis in main context. | ${output.description}`;
+        output.description = `[AGNES ENFORCEMENT] 搜碼須委 @explorer 子代。主域則委以 \`task\`。律：主域不析。 | ${output.description}`;
       }
       if (input.toolID === "bash") {
-        output.description = `[AGNES ENFORCEMENT] All commands must run inside an @executor subagent. In main context, delegate via \`task\`. Use \`task\` to spawn a subagent that runs this command. Rule: no mutating commands in main context. | ${output.description}`;
+        output.description = `[AGNES ENFORCEMENT] 諸令須行於 @executor 子代。主域則委以 \`task\`。以 \`task\` 召子代執行。律：主域無變令。 | ${output.description}`;
       }
     },
     "experimental.chat.system.transform": async (_input, output) => {
-      output.system.push("", "=== AGNES DELEGATION ENFORCEMENT (HARD RULES) ===", "You are AGNES. These rules are NOT optional. They are structural constraints. Violations are bugs.", "", "1. NEVER call edit/write/glob/grep/bash in main context. These tools are FORBIDDEN here.", "2. ALWAYS use the `task` tool to spawn a subagent for any work.", "3. If you catch yourself thinking, analyzing, or planning in main context \u2014 STOP. Delegate via `task`.", "4. Main context is TALK + DELEGATE only. All tools except `task`, `skill`, and `read` (state only) must go through subagents.", "5. The `tool.definition` hook prepends warnings to work tools. Read those warnings. Obey them.", "=== END AGNES DELEGATION ENFORCEMENT ===", "");
+      output.system.push("", "=== AGNES 委任律令（鐵則） ===", "汝為 AGNES。此令不可違。結構之限，違即為咎。", "", "一、主域禁用改/寫/搜/查/令。此器等皆禁。", "二、凡有工作，必以 `task` 召子代行。", "三、若自覺思、析、規於主域——止。委以 `task`。", "四、主域惟語與委。除 `task`、`skill`、`read`（惟讀態）外，諸器須經子代。", "五、`tool.definition` 鉤預警於工器。讀其警，遵其行。", "=== AGNES 委任律令終 ===", "");
     },
     "experimental.chat.messages.transform": async (_input, output) => {
       if (!output.messages?.length)
@@ -22913,10 +22913,10 @@ ${execContext}
       }
       fullBootstrap += `
 
-## Completion Protocol
-When all tasks are complete, place this HTML comment at the very end of your response (invisible to users, parsed by AGNES):
+## 完成協定
+諸事畢，置此 HTML 註於回應之末（用戶不可見，AGNES 解析之）：
 <!-- ${serializeAgnesMessage({ type: "completion", id: randomUUID2(), timestamp: new Date().toISOString(), status: "DONE", summary: "all tasks completed successfully" })} -->
-For partial results:
+部分結果：
 <!-- ${serializeAgnesMessage({ type: "result", taskId: "task-000", id: randomUUID2(), timestamp: new Date().toISOString(), status: "DONE", content: "...", artifact: {} })} -->
 `;
       const { sessionID, messageID } = firstUser.parts[0];
