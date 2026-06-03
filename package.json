@@ -1,11 +1,17 @@
 {
   "name": "agnes",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "AGNES — OpenCode Native Plugin: orchestrator plugin that routes tasks across 24 fused skills",
   "type": "module",
   "main": ".opencode/plugins/agnes.js",
   "repository": "github:nathwn12/agnes",
-  "keywords": ["opencode", "plugin", "agent", "orchestrator", "skills"],
+  "keywords": [
+    "opencode",
+    "plugin",
+    "agent",
+    "orchestrator",
+    "skills"
+  ],
   "license": "MIT",
   "scripts": {
     "bundle": "bun build src/plugin.ts --outfile .opencode/plugins/agnes.js --target bun",
