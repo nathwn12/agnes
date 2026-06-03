@@ -2,6 +2,23 @@
 
 All notable changes to AGNES are documented here.
 
+## [0.16.0] - 2026-06-02
+
+### Added
+
+- **Programmatic delegation enforcement**: Plugin, bootstrap, and docs now enforce delegation via `tool.definition` banners, `experimental.chat.system.transform` injection, and `buildToolAccessBlock()` in bootstrap. Every work-tool description gets `[AGNES ENFORCEMENT]` prefix. (verified: bundled plugin builds clean)
+
+### Changed
+
+- **Permission model hardened**: `tool.execute.before` now blocks restricted tools (bash/edit/write/glob/grep) in main context by throwing Error instead of allowing through. `config` hook sets planner mode and interleaved reasoning. `experimental.chat.messages.transform` prepends structured bootstrap blocks. (verified: src/plugin.ts)
+- **Dead code removal**: Exported unused constants and helpers removed. Deduplicated plan-gate bootstrap logic. Fixed circular dependency between state.ts and bootstrap.ts. (verified: `bun run typecheck`)
+- **Source exports cleaned**: All `src/` exports reviewed — unused exports in state.ts, bootstrap.ts, schema.ts removed. Internal helpers no longer leak through barrel exports. (verified: `rg "export" src/`)
+- **TypeScript strictness**: Added `@types/node` to tsconfig `compilerOptions.types` — eliminates implicit-any on Node built-ins. (verified: `bun run typecheck`)
+
+### Infrastructure
+
+- **Release maintenance**: Bumped package metadata and README version badge to `0.16.0`, then rebuilt the bundled plugin so the published artifact stays aligned.
+
 ## 0.15.0 (2026-05-25)
 
 ### Added

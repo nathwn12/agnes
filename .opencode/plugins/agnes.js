@@ -6960,18 +6960,19 @@ var require_public_api = __commonJS((exports) => {
 // src/plugin.ts
 import { randomUUID as randomUUID2 } from "crypto";
 import * as path4 from "path";
-import { fileURLToPath as fileURLToPath2 } from "url";
+import { fileURLToPath as fileURLToPath3 } from "url";
 
 // src/bootstrap.ts
 import * as fs2 from "fs";
 import * as os3 from "os";
 import * as path2 from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath as fileURLToPath2 } from "url";
 
 // src/state.ts
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { fileURLToPath } from "url";
 
 // node_modules/yaml/dist/index.js
 var composer = require_composer();
@@ -21375,31 +21376,9 @@ var PlanSchema = exports_external.object({
   check: exports_external.string().min(1).max(500),
   summary: exports_external.string().min(1).max(200),
   tasks: exports_external.array(PlanTaskSchema).default([]),
-  notes: exports_external.array(exports_external.string()).default([])
-});
-var BootstrapBlockTypeSchema = exports_external.enum([
-  "runtime",
-  "orchestrator",
-  "named_roles",
-  "plan_state",
-  "shell",
-  "execution",
-  "protocol",
-  "skill_registry"
-]);
-var BootstrapBlockSchema = exports_external.object({
-  type: BootstrapBlockTypeSchema
-}).passthrough();
-var RuntimeBlockSchema = BootstrapBlockSchema.extend({
-  type: exports_external.literal("runtime"),
-  agnes_version: exports_external.string(),
-  package_root: exports_external.string(),
-  skills_dir: exports_external.string(),
-  cache_root: exports_external.string()
-});
-var OrchestratorBlockSchema = BootstrapBlockSchema.extend({
-  type: exports_external.literal("orchestrator"),
-  rules: exports_external.record(exports_external.string(), exports_external.boolean())
+  notes: exports_external.array(exports_external.string()).default([]),
+  plannerMode: exports_external.enum(["builtin", "full"]).optional(),
+  plannerSource: exports_external.enum(["auto", "user", "gate"]).optional()
 });
 var MessageTypeSchema = exports_external.enum([
   "task",
@@ -21459,6 +21438,36 @@ function serializeAgnesMessage(msg) {
 }
 
 // src/state.ts
+var NO_PLAN_NUDGE = "No active plan. For simple tasks, just ask. For complex tasks, use the current planner path.";
+function parseTaskLines(lines) {
+  return lines.filter((l) => /^[-*]\s+\[([ x/])\]/.test(l.trim())).map((line, i) => {
+    const status = line.includes("[x]") ? "done" : line.includes("[/]") ? "in_progress" : "pending";
+    const summary = line.replace(/^[-*]\s+\[[ x/]\]\s*/, "").trim();
+    return {
+      id: `task-${String(i + 1).padStart(3, "0")}`,
+      summary,
+      status,
+      files: [],
+      depends_on: []
+    };
+  });
+}
+function sortPlansByDate(plans) {
+  return [...plans].sort((a, b) => {
+    const aTime = new Date(a.updatedAt).getTime();
+    const bTime = new Date(b.updatedAt).getTime();
+    if (isNaN(aTime) && isNaN(bTime))
+      return b.id.localeCompare(a.id);
+    if (isNaN(aTime))
+      return 1;
+    if (isNaN(bTime))
+      return -1;
+    const diff = bTime - aTime;
+    if (diff !== 0)
+      return diff;
+    return b.id.localeCompare(a.id);
+  });
+}
 function assertShape(data, shape) {
   if (!data || typeof data !== "object")
     return false;
@@ -21472,6 +21481,23 @@ function assertShape(data, shape) {
 var OPENCODE_CACHE_ROOT = path.join(os.homedir(), ".cache", "opencode", "packages");
 var AGNES_DIR = ".agnes";
 var PLANS_DIR = "plans";
+var _agnesVersion = null;
+function getAgnesVersion() {
+  if (_agnesVersion)
+    return _agnesVersion;
+  let version2;
+  try {
+    const __filename2 = fileURLToPath(import.meta.url);
+    const __dirname2 = path.dirname(__filename2);
+    const pkgPath = path.join(__dirname2, "..", "..", "package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+    version2 = pkg.version ?? "0.0.0";
+  } catch {
+    version2 = "0.0.0";
+  }
+  _agnesVersion = version2;
+  return _agnesVersion;
+}
 function isBlockedPath(dir) {
   const resolved = path.resolve(dir);
   const root = path.resolve(OPENCODE_CACHE_ROOT);
@@ -21480,9 +21506,14 @@ function isBlockedPath(dir) {
   }
   return resolved.startsWith(root);
 }
+var ACTIVE_STATUSES = ["draft", "reviewed", "ready", "approved", "in_progress", "blocked"];
 function getPlanFilePath(root, entry) {
   const filename = entry.file || `${entry.id}.yaml`;
   return path.join(root, AGNES_DIR, PLANS_DIR, filename);
+}
+function serializePlan(plan) {
+  const parsed = PlanSchema.parse(plan);
+  return $stringify(JSON.parse(JSON.stringify(parsed)), null, { indent: 2 });
 }
 function readPlanArtifact(plansDir, planId) {
   const yamlPath = path.join(plansDir, `${planId}.yaml`);
@@ -21625,6 +21656,15 @@ function writePlanIndex(index, projectRoot) {
   fs.writeFileSync(tmp, JSON.stringify(index, null, 2), "utf8");
   fs.renameSync(tmp, filePath);
 }
+function writePlanFile(plan, plansDir) {
+  const parsed = PlanSchema.parse(plan);
+  const filePath = path.join(plansDir, `${parsed.id}.yaml`);
+  const yaml = $stringify(JSON.parse(JSON.stringify(parsed)), null, { indent: 2 });
+  const tmpPath = filePath + ".tmp";
+  fs.writeFileSync(tmpPath, yaml, "utf-8");
+  fs.renameSync(tmpPath, filePath);
+  return filePath;
+}
 var FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?/;
 function parseLegacyMdPlan(filePath) {
   const raw = fs.readFileSync(filePath, "utf-8");
@@ -21638,20 +21678,8 @@ function parseLegacyMdPlan(filePath) {
   const goalMatch = body.match(/^Goal:\s*(.+)$/m);
   const checkMatch = body.match(/^Check:\s*(.+)$/m);
   const summaryMatch = body.match(/^#\s+\S+\s+[\u2014\u2013-]\s+(.+)$/m);
-  const taskLines = [];
-  for (const line of body.split(`
-`)) {
-    if (/^- \[[ x\/]\]/.test(line)) {
-      taskLines.push(line);
-    }
-  }
-  const tasks = taskLines.map((t, i) => ({
-    id: `task-${String(i + 1).padStart(3, "0")}`,
-    summary: t.replace(/^- \[[ x\/]\]\s*/, "").trim(),
-    status: t.startsWith("- [x]") ? "done" : t.startsWith("- [/]") ? "blocked" : "pending",
-    files: [],
-    depends_on: []
-  }));
+  const tasks = parseTaskLines(body.split(`
+`));
   const planId = typeof frontmatter.id === "string" ? frontmatter.id : path.basename(filePath, ".md");
   const createdAt = typeof frontmatter.createdAt === "string" ? frontmatter.createdAt : new Date().toISOString();
   const updatedAt = typeof frontmatter.updatedAt === "string" ? frontmatter.updatedAt : createdAt;
@@ -21710,29 +21738,15 @@ function getLatestActivePlan(projectRoot) {
   const index = readPlanIndex(root);
   if (!index)
     return null;
-  const activeStatuses = ["draft", "reviewed", "ready", "approved", "in_progress", "blocked"];
   let target;
   if (index.activePlanId) {
     const entry = index.plans.find((p) => p.id === index.activePlanId);
-    if (entry && activeStatuses.includes(entry.status)) {
+    if (entry && ACTIVE_STATUSES.includes(entry.status)) {
       target = entry;
     }
   }
   if (!target) {
-    const sorted = [...index.plans].filter((p) => activeStatuses.includes(p.status)).sort((a, b) => {
-      const aTime = new Date(a.updatedAt).getTime();
-      const bTime = new Date(b.updatedAt).getTime();
-      if (isNaN(aTime) && isNaN(bTime))
-        return b.id.localeCompare(a.id);
-      if (isNaN(aTime))
-        return 1;
-      if (isNaN(bTime))
-        return -1;
-      const diff = bTime - aTime;
-      if (diff !== 0)
-        return diff;
-      return b.id.localeCompare(a.id);
-    });
+    const sorted = sortPlansByDate(index.plans.filter((p) => ACTIVE_STATUSES.includes(p.status)));
     target = sorted[0];
   }
   if (!target)
@@ -21740,16 +21754,32 @@ function getLatestActivePlan(projectRoot) {
   const artifact = readPlanArtifact(path.join(root, AGNES_DIR, PLANS_DIR), target.id);
   return artifact ? { entry: target, ...artifact } : null;
 }
-function buildPlanSummary(projectRoot) {
+function formatPlannerProvenance(entry, planner) {
+  const parts = [];
+  if (entry?.plannerMode) {
+    parts.push(`planner:${entry.plannerMode}`);
+  }
+  if (entry?.plannerSource) {
+    parts.push(`source:${entry.plannerSource}`);
+  }
+  if (planner) {
+    parts.push(`route:${planner.route}`);
+    parts.push(`mode:${planner.mode}`);
+    parts.push(`reason:${planner.reason}`);
+  }
+  return parts.length > 0 ? `
+Planner: ${parts.join(", ")}` : "";
+}
+function buildPlanSummary(projectRoot, planner) {
   const root = projectRoot ?? findProjectRoot();
   if (!root)
-    return "No active plan. Create one before delegating work.";
+    return NO_PLAN_NUDGE + formatPlannerProvenance(null, planner);
   const index = readPlanIndex(root);
   if (!index || index.plans.length === 0)
-    return "No active plan. Create one before delegating work.";
+    return NO_PLAN_NUDGE + formatPlannerProvenance(null, planner);
   const active = getLatestActivePlan(root);
   if (!active)
-    return "No active plan. Create one before delegating work.";
+    return NO_PLAN_NUDGE + formatPlannerProvenance(null, planner);
   const { entry } = active;
   const goal = active.plan?.goal ?? (active.content.match(/^Goal:\s*(.+)$/m)?.[1] ?? "");
   let line = `Active Plan: ${entry.id} (${entry.status}) \u2014 ${entry.completed}/${entry.total} tasks done
@@ -21758,6 +21788,9 @@ Latest update: ${entry.updatedAt}`;
   if (entry.attempts !== undefined && entry.attempts > 0) {
     line += `
 Attempts: ${entry.attempts}`;
+  }
+  if (entry.plannerMode || entry.plannerSource || planner) {
+    line += formatPlannerProvenance(entry, planner);
   }
   if (entry.struggle) {
     const s = entry.struggle;
@@ -21779,6 +21812,103 @@ Struggle: ${parts.join(", ")}`;
   }
   return line;
 }
+function getNextPlanId(projectRoot) {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root)
+    return "plan-001";
+  const cache = path.join(root, AGNES_DIR, PLANS_DIR);
+  fs.mkdirSync(cache, { recursive: true });
+  let max = 0;
+  try {
+    const files = fs.readdirSync(cache);
+    for (const f of files) {
+      const match = f.match(/^plan-(\d+)\.yaml$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > max)
+          max = num;
+      }
+    }
+  } catch {}
+  return `plan-${String(max + 1).padStart(3, "0")}`;
+}
+function createPlan(input) {
+  const root = input.projectRoot ?? findProjectRoot();
+  if (!root)
+    throw new Error("Cannot create plan: no project root found");
+  const now = new Date().toISOString();
+  const id = getNextPlanId(root);
+  const status = input.status ?? "draft";
+  const total = input.tasks.length;
+  const completed = 0;
+  const blocked = 0;
+  const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
+  const plan = {
+    schema: "agnes/plan-v1",
+    id,
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    status,
+    parent: input.parent ?? null,
+    goal: input.goal,
+    check: input.check,
+    summary: input.summary,
+    ...input.plannerMode ? { plannerMode: input.plannerMode } : {},
+    ...input.plannerSource ? { plannerSource: input.plannerSource } : {},
+    tasks: input.tasks.map((t, i) => {
+      const cleaned = t.replace(/^- \[[ x\/]\]\s*/, "").trim();
+      let taskStatus;
+      if (t.startsWith("- [x]"))
+        taskStatus = "done";
+      else if (t.startsWith("- [/]"))
+        taskStatus = "blocked";
+      else
+        taskStatus = "pending";
+      return {
+        id: `task-${String(i + 1).padStart(3, "0")}`,
+        summary: cleaned,
+        status: taskStatus,
+        files: [],
+        depends_on: []
+      };
+    }),
+    notes: input.notes ?? []
+  };
+  const content = serializePlan(plan);
+  writePlanFile(plan, plansDir);
+  const entry = {
+    id,
+    status,
+    createdAt: now,
+    updatedAt: now,
+    parent: input.parent,
+    summary: input.summary,
+    total,
+    completed,
+    blocked,
+    file: `${id}.yaml`,
+    ...input.attempts !== undefined ? { attempts: input.attempts } : {},
+    ...input.struggle !== undefined ? { struggle: input.struggle } : {},
+    ...input.plannerMode ? { plannerMode: input.plannerMode } : {},
+    ...input.plannerSource ? { plannerSource: input.plannerSource } : {}
+  };
+  const index = readPlanIndex(root) ?? {
+    agnesVersion: getAgnesVersion(),
+    schemaVersion: 2,
+    projectDir: root,
+    projectName: path.basename(root),
+    updatedAt: now,
+    activePlanId: null,
+    plans: []
+  };
+  index.plans.push(entry);
+  index.updatedAt = now;
+  const isActive = ACTIVE_STATUSES.includes(status);
+  index.activePlanId = isActive ? id : null;
+  writePlanIndex(index, root);
+  return { entry, content, plan };
+}
 function freshStruggleMetrics() {
   return {
     noProgressIterations: 0,
@@ -21786,6 +21916,38 @@ function freshStruggleMetrics() {
     shortIterations: 0,
     lastPromiseTag: null
   };
+}
+function buildBuiltinPlanTasks(goal) {
+  const trimmedGoal = goal.trim();
+  const subject = trimmedGoal.length > 72 ? `${trimmedGoal.slice(0, 69)}...` : trimmedGoal;
+  return [
+    `Confirm the smallest scope for: ${subject}`,
+    "Implement the change in the primary file or module",
+    "Verify the result with a focused test or manual check"
+  ];
+}
+function buildBuiltinPlanCheck(goal) {
+  const trimmedGoal = goal.trim();
+  const subject = trimmedGoal.length > 72 ? `${trimmedGoal.slice(0, 69)}...` : trimmedGoal;
+  return `Focused verification confirms the requested change: ${subject}`;
+}
+function createBuiltinPlan(input, projectRoot) {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root)
+    throw new Error("Cannot create builtin plan: no project root found");
+  const status = input.source === "user_ready" ? "ready" : "draft";
+  const summary = input.goal.length > 80 ? `${input.goal.substring(0, 80)}...` : input.goal;
+  const active = createPlan({
+    summary,
+    goal: input.goal,
+    check: buildBuiltinPlanCheck(input.goal),
+    tasks: buildBuiltinPlanTasks(input.goal),
+    status,
+    projectRoot: root,
+    plannerMode: "builtin",
+    plannerSource: input.source === "gate" ? "gate" : "user"
+  });
+  return active.entry.id;
 }
 
 // src/shell.ts
@@ -21873,7 +22035,7 @@ function detectShell() {
 }
 
 // src/bootstrap.ts
-var __dirname2 = path2.dirname(fileURLToPath(import.meta.url));
+var __dirname2 = path2.dirname(fileURLToPath2(import.meta.url));
 function findPackageRoot(fromDir) {
   let current = fromDir;
   for (let i = 0;i < 5; i++) {
@@ -21964,11 +22126,11 @@ ${toolMapping}
   _bootstrapCache = { content: staticContent, key: cacheKey };
   return staticContent;
 }
-function getBootstrapContent() {
+function getBootstrapContent(planner) {
   const staticContent = getStaticBootstrapContent();
   if (!staticContent)
     return null;
-  const planSummary = buildPlanSummary(process.cwd());
+  const planSummary = buildPlanSummary(process.cwd(), planner);
   const shell = detectShell();
   const skillRegistryText = buildSkillRegistryText();
   let content = `${staticContent}
@@ -22024,14 +22186,19 @@ function buildNamedRolesBlock(rules) {
     answer_directly: rules.answerDirectly
   }));
 }
-function buildPlanStateBlock(index) {
-  const plan = getLatestActivePlan(index.projectDir);
+function buildPlanStateBlock(index, planner) {
+  const plan = index ? getLatestActivePlan(index.projectDir) : null;
   if (!plan) {
     return wrapStructured("plan_state", $stringify({
       type: "plan_state",
       active_plan: null,
       status: "none",
-      message: "No active plan. Create one before delegating work."
+      message: "No active plan. For simple tasks, just ask. For complex tasks, use the current planner path.",
+      ...planner ? {
+        planner_mode: planner.mode,
+        planner_route: planner.route,
+        planner_reason: planner.reason
+      } : {}
     }));
   }
   return wrapStructured("plan_state", $stringify({
@@ -22042,7 +22209,14 @@ function buildPlanStateBlock(index) {
     total: plan.entry.total,
     blocked: plan.entry.blocked,
     goal: plan.entry.summary || "No goal set",
-    struggle_detected: (plan.entry.struggle?.noProgressIterations || 0) >= 3
+    struggle_detected: (plan.entry.struggle?.noProgressIterations || 0) >= 3,
+    ...plan.entry.plannerMode ? { planner_mode: plan.entry.plannerMode } : {},
+    ...plan.entry.plannerSource ? { planner_source: plan.entry.plannerSource } : {},
+    ...planner ? {
+      planner_mode: planner.mode,
+      planner_route: planner.route,
+      planner_reason: planner.reason
+    } : {}
   }));
 }
 function buildShellBlock(shell) {
@@ -22077,6 +22251,24 @@ function buildProtocolBlock() {
     type: "protocol",
     marker_prefix: "agnes:message",
     types: ["task", "result", "error", "status", "completion"]
+  }));
+}
+function buildToolAccessBlock() {
+  return wrapStructured("tool_access", $stringify({
+    type: "tool_access",
+    rule: "Main context is TALK + DELEGATE only. Tools are partitioned by context.",
+    main_context_only: {
+      allowed: ["task", "skill", "todowrite", "question", "analyze-task", "auto-delegate"],
+      description: "Spawn subagents, load skills, track todos, ask user questions. NO source mutations."
+    },
+    subagent_only: {
+      allowed: ["edit", "write", "glob", "grep", "bash"],
+      description: "All source code work \u2014 editing, searching, building, testing. NEVER called in main context."
+    },
+    shared: {
+      allowed: ["read", "webfetch"],
+      description: "Read: .agnes/ state files only, never source analysis. webfetch: external docs only. Prefer to delegate to @explorer."
+    }
   }));
 }
 var SKILL_SUGGEST_NEXT = {
@@ -22160,7 +22352,8 @@ function buildBootstrap(context) {
     buildRuntimeBlock(context.pkg),
     buildOrchestratorBlock(context.rules),
     buildNamedRolesBlock(context.rules),
-    ...context.index ? [buildPlanStateBlock(context.index)] : [],
+    buildToolAccessBlock(),
+    ...context.index || context.planner ? [buildPlanStateBlock(context.index, context.planner)] : [],
     buildShellBlock(context.shell),
     buildExecutionContextBlock(context.exec),
     buildProtocolBlock(),
@@ -22240,20 +22433,7 @@ function getPlanState(workspaceRoot) {
     return { hasActivePlan: false, activePlan: null, planIndex: null, latestId: null };
   }
   const active = getLatestActivePlan(workspaceRoot);
-  const latestId = planIndex.plans.length > 0 ? [...planIndex.plans].sort((a, b) => {
-    const aTime = new Date(a.updatedAt).getTime();
-    const bTime = new Date(b.updatedAt).getTime();
-    if (isNaN(aTime) && isNaN(bTime))
-      return b.id.localeCompare(a.id);
-    if (isNaN(aTime))
-      return 1;
-    if (isNaN(bTime))
-      return -1;
-    const diff = bTime - aTime;
-    if (diff !== 0)
-      return diff;
-    return b.id.localeCompare(a.id);
-  })[0].id : null;
+  const latestId = planIndex.plans.length > 0 ? sortPlansByDate(planIndex.plans)[0].id : null;
   return {
     hasActivePlan: active !== null,
     activePlan: active,
@@ -22264,11 +22444,10 @@ function getPlanState(workspaceRoot) {
 function getPlanGate(workspaceRoot) {
   const state = getPlanState(workspaceRoot);
   if (!state.planIndex) {
-    return `
-**PLAN REQUIRED:** No plan index found. Initialize AGNES state first.`;
+    return null;
   }
   if (!state.hasActivePlan) {
-    return "\n**PLAN REQUIRED:** No active plan found. Create a plan with `.agnes/` before any implementation work.";
+    return "";
   }
   if (state.activePlan?.entry.status === "blocked") {
     return `
@@ -22332,6 +22511,7 @@ var IMPLEMENT_WORDS = new Set([
   "want",
   "should"
 ]);
+var CLARIFY_PATTERNS = ["what is", "how does", "explain", "why", "describe", "tell me", "show me"];
 var STOPWORDS = new Set([
   "a",
   "an",
@@ -22352,6 +22532,97 @@ var STOPWORDS = new Set([
   "this",
   "that"
 ]);
+var INTENT_SKILL_MAP = {
+  implement: ["builder"],
+  clarify: ["clarifier"],
+  plan: ["planner", "prd"],
+  review: ["reviewer", "verifier"],
+  test: ["tdd", "tester"],
+  debug: ["debugger", "griller"],
+  unknown: []
+};
+function classifyIntent(message) {
+  const lower = message.toLowerCase().trim();
+  if (!lower)
+    return { category: "unknown", suggestedSkills: [] };
+  if (lower.includes("?") || CLARIFY_PATTERNS.some((p) => lower.includes(p))) {
+    return { category: "clarify", suggestedSkills: INTENT_SKILL_MAP.clarify };
+  }
+  const tokens = lower.split(/[^a-z0-9]+/).filter((t) => t.length > 0);
+  const hasDebugPhrase = lower.includes("debug") || lower.includes("bug");
+  const hasReviewPhrase = lower.includes("review") || lower.includes("check") || lower.includes("verify");
+  const hasTestPhrase = lower.includes("test");
+  const hasImplPhrase = lower.includes("doesn't work") || lower.includes("test fails");
+  const hasImplToken = tokens.some((t) => IMPLEMENT_WORDS.has(t));
+  const hasImplementationSignal = hasImplPhrase || hasImplToken;
+  const hasPlanToken = tokens.some((t) => t === "plan");
+  const hasAnyWorkSignal = hasImplementationSignal || hasTestPhrase || hasDebugPhrase || hasReviewPhrase;
+  if (hasPlanToken && hasAnyWorkSignal) {
+    return { category: "plan", suggestedSkills: INTENT_SKILL_MAP.plan };
+  }
+  if (hasDebugPhrase && !hasImplPhrase && !hasImplToken) {
+    return { category: "debug", suggestedSkills: INTENT_SKILL_MAP.debug };
+  }
+  if (hasReviewPhrase && !hasImplPhrase && !hasImplToken) {
+    return { category: "review", suggestedSkills: INTENT_SKILL_MAP.review };
+  }
+  if (hasTestPhrase && !hasImplPhrase) {
+    return { category: "test", suggestedSkills: INTENT_SKILL_MAP.test };
+  }
+  if (hasImplementationSignal) {
+    return { category: "implement", suggestedSkills: INTENT_SKILL_MAP.implement };
+  }
+  if (hasTestPhrase) {
+    return { category: "test", suggestedSkills: INTENT_SKILL_MAP.test };
+  }
+  return { category: "unknown", suggestedSkills: [] };
+}
+var COMPLEX_KEYWORDS = ["feature", "refactor", "migrate", "architecture", "plan", "redesign"];
+var SEQUENTIAL_PATTERN = /\b(then|after|additionally|furthermore|meanwhile)\b/i;
+function classifyPlannerScope(message) {
+  const lower = message.toLowerCase().trim();
+  if (!lower)
+    return "trivial";
+  const intent = classifyIntent(message);
+  if (intent.category !== "implement")
+    return "trivial";
+  if (COMPLEX_KEYWORDS.some((k) => lower.includes(k)))
+    return "complex";
+  if (SEQUENTIAL_PATTERN.test(lower))
+    return "complex";
+  const fileRefs = (lower.match(/\b\w+\.\w+\b/g) || []).length;
+  if (fileRefs > 2)
+    return "complex";
+  const sentenceText = lower.replace(/\b\w+\.\w+\b/g, "file");
+  const sentences = sentenceText.split(/[.!?\n]+/).filter(Boolean);
+  if (sentences.length > 3)
+    return "complex";
+  const tokens = lower.split(/\s+/).filter(Boolean).length;
+  if (tokens <= 6 && fileRefs <= 1 && sentences.length <= 1)
+    return "trivial";
+  if (tokens <= 14 && fileRefs <= 2 && sentences.length <= 2)
+    return "lightweight";
+  return "complex";
+}
+function classifyPlannerRoute(message, mode = "auto") {
+  const scope = classifyPlannerScope(message);
+  if (scope === "trivial") {
+    return { mode, route: "trivial", reason: "simple request" };
+  }
+  if (mode === "full") {
+    return { mode, route: "full", reason: "forced-full override" };
+  }
+  if (scope === "lightweight") {
+    if (mode === "builtin" || mode === "auto") {
+      return { mode, route: "builtin", reason: "eligible lightweight boundary" };
+    }
+  }
+  return {
+    mode,
+    route: "full",
+    reason: scope === "complex" ? "outside lightweight boundary" : "not eligible for builtin route"
+  };
+}
 
 // src/compaction.ts
 var DEFAULT_COMPACTION_SOFT_LIMIT = 150000;
@@ -22473,11 +22744,12 @@ function buildCompactionAdvisory(action, reason) {
 }
 
 // src/plugin.ts
-var __dirname3 = path4.dirname(fileURLToPath2(import.meta.url));
+var __dirname3 = path4.dirname(fileURLToPath3(import.meta.url));
 var skillsDir2 = path4.resolve(__dirname3, "../skills");
 var _modelName;
-function buildStructuredBootstrap() {
-  const proseBootstrap = getBootstrapContent();
+var _plannerMode = "auto";
+function buildStructuredBootstrap(planner) {
+  const proseBootstrap = getBootstrapContent(planner);
   if (!proseBootstrap)
     return "";
   const pkg = getBootstrapPackageInfo();
@@ -22510,6 +22782,7 @@ function buildStructuredBootstrap() {
     pkg,
     rules,
     index,
+    planner,
     shell: {
       name: shell.shellType,
       version: shell.shellType,
@@ -22534,6 +22807,12 @@ var AgnesPlugin = async () => {
       detectShell();
       const configObj = config2;
       _modelName = typeof configObj.model === "string" ? configObj.model : undefined;
+      const plannerConfig = configObj.planner ?? {};
+      _plannerMode = typeof plannerConfig.mode === "string" && ["auto", "builtin", "full"].includes(plannerConfig.mode) ? plannerConfig.mode : "auto";
+      configObj.planner = {
+        ...plannerConfig,
+        mode: _plannerMode
+      };
       configObj.provider = {
         ...configObj.provider || {},
         interleaved: { field: "reasoning_content" }
@@ -22550,9 +22829,50 @@ var AgnesPlugin = async () => {
         _modelName = input.model.modelID;
       }
     },
+    "tool.definition": async (input, output) => {
+      if (input.toolID === "edit" || input.toolID === "write") {
+        output.description = `[AGNES ENFORCEMENT] This tool MUST be called inside a @builder subagent, not in main context. In main context, delegate via the \`task\` tool. Rule: delegate_or_die. | ${output.description}`;
+      }
+      if (input.toolID === "glob" || input.toolID === "grep") {
+        output.description = `[AGNES ENFORCEMENT] Searching the codebase must be delegated to an @explorer subagent. In main context, delegate via \`task\`. Rule: no analysis in main context. | ${output.description}`;
+      }
+      if (input.toolID === "bash") {
+        output.description = `[AGNES ENFORCEMENT] All commands must run inside an @executor subagent. In main context, delegate via \`task\`. Use \`task\` to spawn a subagent that runs this command. Rule: no mutating commands in main context. | ${output.description}`;
+      }
+      if (input.toolID === "read") {
+        output.description = `[AGNES ENFORCEMENT] File reading in main context should be limited to .agnes/ state files. For source code analysis, delegate to @explorer subagent. | ${output.description}`;
+      }
+      if (input.toolID === "webfetch") {
+        output.description = `[AGNES ENFORCEMENT] Use sparingly in main context. Prefer to delegate web fetching to a subagent for structured results. | ${output.description}`;
+      }
+      if (input.toolID === "question") {
+        output.description = `[AGNES ENFORCEMENT] OK to use in main context for asking the user clarifying questions. | ${output.description}`;
+      }
+      if (input.toolID === "skill") {
+        output.description = `[AGNES ENFORCEMENT] OK to use in main context to load domain-specific skills. | ${output.description}`;
+      }
+      if (input.toolID === "todowrite") {
+        output.description = `[AGNES ENFORCEMENT] OK to use in main context for tracking task progress. | ${output.description}`;
+      }
+    },
+    "tool.execute.before": async (input) => {
+      const restricted = new Set(["bash", "edit", "write", "glob", "grep"]);
+      if (restricted.has(input.tool)) {
+        const messages = {
+          bash: "use @executor subagent via task",
+          edit: "use @builder subagent via task",
+          write: "use @builder subagent via task",
+          glob: "use @explorer subagent via task",
+          grep: "use @explorer subagent via task"
+        };
+        throw new Error(`[AGNES] ${input.tool} blocked in main context \u2014 ${messages[input.tool]}`);
+      }
+    },
+    "experimental.chat.system.transform": async (_input, output) => {
+      output.system.push("", "=== AGNES DELEGATION ENFORCEMENT (HARD RULES) ===", "You are AGNES. These rules are NOT optional. They are structural constraints. Violations are bugs.", "", "1. NEVER call edit/write/glob/grep/bash in main context. These tools are FORBIDDEN here.", "2. ALWAYS use the `task` tool to spawn a subagent for any work.", "3. If you catch yourself thinking, analyzing, or planning in main context \u2014 STOP. Delegate via `task`.", "4. Main context is TALK + DELEGATE only. All tools except `task`, `skill`, and `read` (state only) must go through subagents.", "5. The `tool.definition` hook prepends warnings to work tools. Read those warnings. Obey them.", "=== END AGNES DELEGATION ENFORCEMENT ===", "");
+    },
     "experimental.chat.messages.transform": async (_input, output) => {
-      const bootstrap = buildStructuredBootstrap();
-      if (!bootstrap || !output.messages?.length)
+      if (!output.messages?.length)
         return;
       const firstUser = output.messages.find((m) => m.info?.role === "user");
       if (!firstUser?.parts?.length)
@@ -22561,10 +22881,26 @@ var AgnesPlugin = async () => {
         return;
       let planGate = "";
       let execContext = "";
+      let plannerState;
       try {
         const workspaceRoot = findProjectRoot();
         if (workspaceRoot) {
-          planGate = getPlanGate(workspaceRoot) || "";
+          const userParts = firstUser.parts;
+          const userText = userParts.filter((p) => p.type === "text" && typeof p.text === "string").map((p) => p.text).join(" ");
+          if (userText) {
+            plannerState = classifyPlannerRoute(userText, _plannerMode);
+            if (plannerState.route === "builtin") {
+              const index2 = readPlanIndex(workspaceRoot);
+              if (!index2 || !index2.activePlanId) {
+                createBuiltinPlan({ goal: userText, source: "user" }, workspaceRoot);
+              }
+              planGate = getPlanGate(workspaceRoot) || "";
+            } else if (plannerState.route === "full") {
+              planGate = getPlanGate(workspaceRoot) || "";
+            } else {
+              planGate = "";
+            }
+          }
           const index = readPlanIndex(workspaceRoot);
           if (index?.activePlanId) {
             const activeEntry = index.plans.find((p) => p.id === index.activePlanId);
@@ -22574,6 +22910,9 @@ var AgnesPlugin = async () => {
           }
         }
       } catch {}
+      const bootstrap = buildStructuredBootstrap(plannerState);
+      if (!bootstrap)
+        return;
       const modelLabel = _modelName ? `- Current model: \`${_modelName}\`` : "";
       let fullBootstrap = bootstrap + (planGate || "");
       if (modelLabel) {
