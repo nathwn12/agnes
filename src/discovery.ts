@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { findPackageRoot } from "./bootstrap.js";
 import { inferAgentDesc, inferAgentPermission, mergeByName, parseCommandFrontmatter, stripYamlFrontmatter } from "./discovery-policy.js";
 
+export type AgentPermissionValue = string | Record<string, string>;
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = findPackageRoot(__dirname) ?? path.resolve(__dirname, "..", "..");
 const BUNDLED_AGENTS_DIR = path.join(pluginRoot, ".opencode", "prompts", "agents");
@@ -15,7 +17,7 @@ export interface AgentDiscovery {
   name: string;
   desc: string;
   prompt: string;
-  permission?: Record<string, string>;
+  permission?: Record<string, AgentPermissionValue>;
   source: "agnes" | "global" | "workspace";
 }
 
@@ -98,38 +100,50 @@ function workspaceDir(worktree: string, sub: string): string {
   return path.join(worktree, ".opencode", sub);
 }
 
-let cachedAgents: AgentDiscovery[] | null = null;
-let cachedCommands: CommandDiscovery[] | null = null;
-let cachedSkills: string[] | null = null;
+const cachedAgents = new Map<string, AgentDiscovery[]>();
+const cachedCommands = new Map<string, CommandDiscovery[]>();
+const cachedSkills = new Map<string, string[]>();
+
+function cacheKey(worktreePath: string): string {
+  return path.resolve(worktreePath);
+}
 
 export function clearDiscoveryCache(): void {
-  cachedAgents = null;
-  cachedCommands = null;
-  cachedSkills = null;
+  cachedAgents.clear();
+  cachedCommands.clear();
+  cachedSkills.clear();
 }
 
 export function discoverAgents(worktreePath: string): AgentDiscovery[] {
-  if (cachedAgents) return cachedAgents;
-  cachedAgents = mergeByName([
+  const key = cacheKey(worktreePath);
+  const cached = cachedAgents.get(key);
+  if (cached) return cached;
+  const discovered = mergeByName([
     scanAgentDir(BUNDLED_AGENTS_DIR, "agnes"),
     scanAgentDir(globalDir(path.join("prompts", "agents")), "global"),
     scanAgentDir(workspaceDir(worktreePath, path.join("prompts", "agents")), "workspace"),
   ]);
-  return cachedAgents;
+  cachedAgents.set(key, discovered);
+  return discovered;
 }
 
 export function discoverCommands(worktreePath: string): CommandDiscovery[] {
-  if (cachedCommands) return cachedCommands;
-  cachedCommands = mergeByName([
+  const key = cacheKey(worktreePath);
+  const cached = cachedCommands.get(key);
+  if (cached) return cached;
+  const discovered = mergeByName([
     scanCommandDir(BUNDLED_COMMANDS_DIR, "agnes"),
     scanCommandDir(globalDir("commands"), "global"),
     scanCommandDir(workspaceDir(worktreePath, "commands"), "workspace"),
   ]);
-  return cachedCommands;
+  cachedCommands.set(key, discovered);
+  return discovered;
 }
 
 export function discoverSkills(worktreePath: string): string[] {
-  if (cachedSkills) return cachedSkills;
+  const key = cacheKey(worktreePath);
+  const cached = cachedSkills.get(key);
+  if (cached) return cached;
   const bundled = scanSkillDir(BUNDLED_SKILLS_DIR);
   const global = scanSkillDir(globalDir("skills"));
   const workspace = scanSkillDir(workspaceDir(worktreePath, "skills"));
@@ -141,6 +155,6 @@ export function discoverSkills(worktreePath: string): string[] {
       results.push(dir);
     }
   }
-  cachedSkills = results;
-  return cachedSkills;
+  cachedSkills.set(key, results);
+  return results;
 }

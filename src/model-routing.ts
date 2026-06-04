@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import * as logger from "./logger.js";
 import {
   type ModelRoutingConfig,
   DEFAULT_MODEL,
@@ -16,8 +17,12 @@ export function getConfigPath(): string {
 
 export function writeConfig(configPath: string, config: ModelRoutingConfig): void {
   const dir = path.dirname(configPath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
+  try {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
+  } catch (err) {
+    logger.warn(`Failed to write model routing config at ${configPath}`, err);
+  }
 }
 
 export function loadModelRoutingConfig(): ModelRoutingConfig {
@@ -31,8 +36,8 @@ export function loadModelRoutingConfig(): ModelRoutingConfig {
         return parsed as ModelRoutingConfig;
       }
     }
-  } catch {
-    // Invalid JSON — fall through to regenerate
+  } catch (err) {
+    logger.warn(`Failed to read model routing config at ${configPath}; regenerating defaults`, err);
   }
   // Auto-heal: generate default and write it
   const defaults = generateDefaultConfig();

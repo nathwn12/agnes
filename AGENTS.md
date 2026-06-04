@@ -1,12 +1,12 @@
 # AGNES — OpenCode Plugin
 
-Swarm orchestrator. Delegates, parallelizes, verifies. Never writes code directly.
+Swarm orchestrator. Delegates substantive work, parallelizes independent chunks, verifies. Never performs mutation directly.
 
 ## Operational workflow
 
-- **ALWAYS delegate, ALWAYS parallelize** — never do work in main context. Spawn subagents for every read, write, edit, search, bash operation.
-- **Never one big task** — split reads into multiple subagents (chunks), split edits into multiple subagents (builders/coders). A single subagent must never be choked.
-- **Tool enforcement**: READ-ONLY tools (`read`, `grep`, `glob`, `webfetch`, `websearch`, `skill`, `todowrite`, `question`, `lsp`) are safe in main context. MUTATION tools (`edit`, `write`, `bash`, `apply_patch`) are FORBIDDEN in main context — must use subagents.
+- **Orchestration first** — coordinate in main context; delegate substantive research, implementation, verification, and review to the right subagents.
+- **Parallelize independent chunks** — split broad reads/research and all edits into scoped subagent tasks when they can proceed independently. A single subagent must never be choked.
+- **Tool enforcement**: READ-ONLY tools (`read`, `grep`, `glob`, `webfetch`, `websearch`, `skill`, `todowrite`, `question`, `lsp`) are safe in main context for lightweight coordination and direct simple answers. MUTATION tools (`edit`, `write`, `bash`, `apply_patch`) are FORBIDDEN in main context — must use subagents.
 - **Three-step cycle**: PLAN → REVIEW → IMPLEMENT → FIX/REVISE → ENDORSE. Every task follows this loop. Never skip directly to implementation.
 - **If blocked, STOP and ASK** — never continue blindly or guess. Present the user with the block + recommended next step.
 - **LEAN** — small, precise subagent tasks. One narrow concern per subagent. Broad tasks are fragmented.
@@ -39,8 +39,6 @@ Single test: `bun test src/state.test.ts`. Single test pattern: `bun test -t "pl
 - **`src/discovery.ts`** — Scans 3 layers (bundled/global/workspace) for agents, commands, skills.
 - **`src/model-routing.ts`** — Reads `openecc.json`, routes agents to reasoning models.
 - **`src/verification.ts`** — Gate system (PASS/FAIL/SKIP) with blocking gates.
-- **`src/middleware.ts`** — Hook chain (before/after wave, before/after subagent).
-- **`src/flowcontrol.ts`** — Ephemeral jump signals (retry/skip/blocked/next_wave/end).
 
 ## Key quirks
 

@@ -13,6 +13,12 @@ function validTimestamp(): string {
   return new Date().toISOString();
 }
 
+function parseSerializedEnvelope(text: string): Record<string, unknown> {
+  const match = text.match(/^<!--\s*<agnes:message>([\s\S]+)<\/agnes:message>\s*-->$/);
+  expect(match).not.toBeNull();
+  return JSON.parse(match![1]) as Record<string, unknown>;
+}
+
 describe('parseAgnesMessage (Zod strict path)', () => {
   test('valid task message with schema field passes', () => {
     const ts = validTimestamp();
@@ -22,8 +28,25 @@ describe('parseAgnesMessage (Zod strict path)', () => {
       type: 'task',
       id,
       timestamp: ts,
-      goal: 'Implement feature',
-      files: ['src/a.ts'],
+      skill: 'general',
+      payload: { file: 'src/a.ts' },
+      config: { tags: ['protocol'] },
+    })}</agnes:message>`;
+    const result = parseAgnesMessage(msg);
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe('task');
+  });
+
+  test('legacy task message-v1 shape with goal passes', () => {
+    const ts = validTimestamp();
+    const id = generateMessageId();
+    const msg = `<agnes:message>${JSON.stringify({
+      schema: 'agnes/message-v1',
+      type: 'task',
+      id,
+      timestamp: ts,
+      goal: 'Inspect runtime guardrails',
+      files: ['src/plugin.ts'],
       constraints: { no_shared_edits: true, read_only: false },
     })}</agnes:message>`;
     const result = parseAgnesMessage(msg);
@@ -39,8 +62,9 @@ describe('parseAgnesMessage (Zod strict path)', () => {
       type: 'result',
       id,
       timestamp: ts,
+      taskId: 'task-001',
       status: 'DONE',
-      summary: 'Task completed successfully',
+      content: 'Task completed successfully',
       artifact: { output: 'test' },
       reasoning_content: 'The agent analyzed the code and determined...',
     })}</agnes:message>`;
@@ -52,7 +76,24 @@ describe('parseAgnesMessage (Zod strict path)', () => {
     }
   });
 
-  test('missing required field "goal" in task with schema field fails', () => {
+  test('result message-v1 shape with summary and taskId passes', () => {
+    const ts = validTimestamp();
+    const id = generateMessageId();
+    const msg = `<agnes:message>${JSON.stringify({
+      schema: 'agnes/message-v1',
+      type: 'result',
+      id,
+      timestamp: ts,
+      taskId: 'task-001',
+      status: 'DONE',
+      summary: 'Task completed successfully',
+    })}</agnes:message>`;
+    const result = parseAgnesMessage(msg);
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe('result');
+  });
+
+  test('missing required field "skill" in task with schema field fails', () => {
     const ts = validTimestamp();
     const id = generateMessageId();
     const msg = `<agnes:message>${JSON.stringify({
@@ -60,7 +101,7 @@ describe('parseAgnesMessage (Zod strict path)', () => {
       type: 'task',
       id,
       timestamp: ts,
-      files: [],
+      payload: {},
     })}</agnes:message>`;
     const result = parseAgnesMessage(msg);
     expect(result).toBeNull();
@@ -74,7 +115,8 @@ describe('parseAgnesMessage (Zod strict path)', () => {
       type: 'result',
       id,
       timestamp: ts,
-      summary: 'incomplete',
+      taskId: 'task-001',
+      content: 'incomplete',
     })}</agnes:message>`;
     const result = parseAgnesMessage(msg);
     expect(result).toBeNull();
@@ -87,7 +129,7 @@ describe('parseAgnesMessage (Zod strict path)', () => {
       type: 'task',
       id,
       timestamp: ts,
-      skill: 'builder',
+      skill: 'general',
       payload: { action: 'test' },
     })}</agnes:message>`;
     const result = parseAgnesMessage(msg);
@@ -121,9 +163,74 @@ describe('parseAgnesMessage (Zod strict path)', () => {
       id,
       timestamp: ts,
       status: 'INVALID_STATUS',
-      summary: 'test',
+      taskId: 'task-001',
+      content: 'test',
     })}</agnes:message>`;
     const result = parseAgnesMessage(msg);
+    expect(result).toBeNull();
+  });
+
+  test('valid completion message with schema field passes', () => {
+    const result = parseAgnesMessage(`<agnes:message>${JSON.stringify({
+      schema: 'agnes/message-v1',
+      type: 'completion',
+      id: generateMessageId(),
+      timestamp: validTimestamp(),
+      status: 'DONE',
+      summary: 'complete',
+    })}</agnes:message>`);
+
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe('completion');
+  });
+
+  test('completion message with schema field missing summary fails', () => {
+    const result = parseAgnesMessage(`<agnes:message>${JSON.stringify({
+      schema: 'agnes/message-v1',
+      type: 'completion',
+      id: generateMessageId(),
+      timestamp: validTimestamp(),
+      status: 'DONE',
+    })}</agnes:message>`);
+
+    expect(result).toBeNull();
+  });
+
+  test('completion message with schema field invalid status fails', () => {
+    const result = parseAgnesMessage(`<agnes:message>${JSON.stringify({
+      schema: 'agnes/message-v1',
+      type: 'completion',
+      id: generateMessageId(),
+      timestamp: validTimestamp(),
+      status: 'INVALID_STATUS',
+      summary: 'bad',
+    })}</agnes:message>`);
+
+    expect(result).toBeNull();
+  });
+
+  test('status message with schema field missing phase fails', () => {
+    const result = parseAgnesMessage(`<agnes:message>${JSON.stringify({
+      schema: 'agnes/message-v1',
+      type: 'status',
+      id: generateMessageId(),
+      timestamp: validTimestamp(),
+      taskId: 'task-001',
+    })}</agnes:message>`);
+
+    expect(result).toBeNull();
+  });
+
+  test('error message with schema field missing detail fails', () => {
+    const result = parseAgnesMessage(`<agnes:message>${JSON.stringify({
+      schema: 'agnes/message-v1',
+      type: 'error',
+      id: generateMessageId(),
+      timestamp: validTimestamp(),
+      taskId: 'task-001',
+      errorType: 'BuildError',
+    })}</agnes:message>`);
+
     expect(result).toBeNull();
   });
 });
@@ -136,10 +243,12 @@ describe('buildResultMessage', () => {
       content: 'All good',
       reasoning: 'The agent concluded correctly',
     });
-    expect(result).toContain('<agnes:message>');
+    expect(result.startsWith('<!-- <agnes:message>')).toBe(true);
+    expect(result.endsWith('</agnes:message> -->')).toBe(true);
     expect(result).toContain('"status":"DONE"');
     expect(result).toContain('"reasoning_content":"The agent concluded correctly"');
     expect(result).toContain('"schema":"agnes/message-v1"');
+    expect(parseAgnesMessage(result)).not.toBeNull();
   });
 
   test('builds valid result message without reasoning', () => {
@@ -150,27 +259,31 @@ describe('buildResultMessage', () => {
     });
     expect(result).toContain('"status":"BLOCKED"');
     expect(result).toContain('"taskId":"task-001"');
+    expect(parseAgnesMessage(result)).not.toBeNull();
   });
 });
 
 describe('buildTaskMessage', () => {
   test('builds valid task message with skill and payload', () => {
     const result = buildTaskMessage({
-      skill: 'builder',
+      skill: 'general',
       payload: { file: 'src/module.ts' },
       config: { tags: ['refactor'] },
     });
-    expect(result).toContain('<agnes:message>');
-    expect(result).toContain('"skill":"builder"');
+    expect(result.startsWith('<!-- <agnes:message>')).toBe(true);
+    expect(result.endsWith('</agnes:message> -->')).toBe(true);
+    expect(result).toContain('"skill":"general"');
     expect(result).toContain('"file":"src/module.ts"');
     expect(result).toContain('"schema":"agnes/message-v1"');
+    expect(parseAgnesMessage(result)).not.toBeNull();
   });
 
   test('builds valid task message with defaults', () => {
     const result = buildTaskMessage({ skill: 'explorer', payload: { query: 'Find auth patterns' } });
-    const parsed = JSON.parse(result.replace(/<\/?agnes:message>/g, ''));
+    const parsed = parseSerializedEnvelope(result);
     expect(parsed.skill).toBe('explorer');
     expect(parsed.payload).toEqual({ query: 'Find auth patterns' });
+    expect(parseAgnesMessage(result)).not.toBeNull();
   });
 });
 
@@ -182,6 +295,23 @@ describe('parseAgnesMessage', () => {
     expect(result!.type).toBe('completion');
     expect((result as CompletionMessage).status).toBe('DONE');
     expect((result as CompletionMessage).summary).toBe('all done');
+  });
+
+  test('parses canonical HTML-commented agnes:message tags', () => {
+    const msg = `<!-- <agnes:message>${JSON.stringify({
+      schema: 'agnes/message-v1',
+      type: 'completion',
+      id: generateMessageId(),
+      timestamp: validTimestamp(),
+      status: 'DONE',
+      summary: 'html round trip',
+    })}</agnes:message> -->`;
+
+    const result = parseAgnesMessage(msg);
+
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe('completion');
+    expect((result as CompletionMessage).summary).toBe('html round trip');
   });
 
   test('parses valid completion JSON with extra whitespace and newlines', () => {
@@ -310,7 +440,7 @@ describe('parseAgnesMessage', () => {
 });
 
 describe('serializeAgnesMessage', () => {
-  test('wraps JSON in agnes:message tags', () => {
+  test('wraps JSON in canonical HTML-commented agnes:message envelope', () => {
     const msg: CompletionMessage = {
       type: 'completion',
       id: 'abc',
@@ -319,8 +449,9 @@ describe('serializeAgnesMessage', () => {
       summary: 'done',
     };
     const result = serializeAgnesMessage(msg);
-    expect(result.startsWith('<agnes:message>')).toBe(true);
-    expect(result.endsWith('</agnes:message>')).toBe(true);
+    expect(result.startsWith('<!-- <agnes:message>')).toBe(true);
+    expect(result.endsWith('</agnes:message> -->')).toBe(true);
+    expect(parseSerializedEnvelope(result).schema).toBe('agnes/message-v1');
   });
 
   test('serializes completion message correctly', () => {
@@ -415,7 +546,7 @@ describe('isValidAgnesMessage', () => {
       type: 'task',
       id: 't1',
       timestamp: validTimestamp(),
-      skill: 'builder',
+      skill: 'general',
       payload: {},
     };
     expect(isValidAgnesMessage(msg)).toBe(true);
@@ -514,7 +645,7 @@ describe('Zod strict path vs legacy path parity', () => {
       const strictMsg = `<agnes:message>${JSON.stringify({
         schema: 'agnes/message-v1',
         type: 'result', id: uuid, timestamp: ts,
-        status, summary: 'test',
+        taskId: 't1', status, content: 'test',
       })}</agnes:message>`;
       const legacyMsg = `<agnes:message>${JSON.stringify({
         type: 'result', id: 'abc', timestamp: ts,
@@ -531,7 +662,7 @@ describe('Zod strict path vs legacy path parity', () => {
     const strictMsg = `<agnes:message>${JSON.stringify({
       schema: 'agnes/message-v1',
       type: 'result', id: uuid, timestamp: ts,
-      status: 'INVALID', summary: 'test',
+      taskId: 't1', status: 'INVALID', content: 'test',
     })}</agnes:message>`;
     const legacyMsg = `<agnes:message>${JSON.stringify({
       type: 'result', id: 'abc', timestamp: ts,

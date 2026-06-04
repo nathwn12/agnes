@@ -2,8 +2,6 @@ import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import {
   checkIterationCompletion,
-  buildIterationReport,
-  mergeIterationIntoState,
   buildExecutionContext,
   recordAttempt,
   classifyIntent,
@@ -15,17 +13,21 @@ import {
   checkPlanDrift,
   assertTaskScope,
   runWaveGates,
-  executeWave,
+
   getPlanGateFromState,
 } from './runtime.js';
 import type { AgnesRuntimeState, ProcessMessageResult } from './runtime.js';
-import { FlowController } from './flowcontrol.js';
+
 import type { PlanIndex } from './state.js';
 import { freshStruggleMetrics, createPlan, getExecutionArtifacts } from './state.js';
 import { createTempProject, writeIndex, readIndex } from './test-utils';
 import type { Gate, GateResult } from './verification.js';
-import { MiddlewareChain, defaultMiddlewareChain } from './middleware.js';
-import type { TaskDescriptor } from './schema.js';
+
+
+
+function canonicalCompletion(status = 'DONE'): string {
+  return `<!-- <agnes:message>${JSON.stringify({ type: 'completion', id: randomUUID(), timestamp: new Date().toISOString(), status, summary: status.toLowerCase(), schema: 'agnes/message-v1' })}</agnes:message> -->`;
+}
 
 function makeGateResult(overrides: Partial<GateResult>): GateResult {
   return {
@@ -49,36 +51,6 @@ function makeGate(result: GateResult, isBlocking = true): Gate {
 }
 
 describe('ExecutionOutcome', () => {
-  test('buildIterationReport returns valid ExecutionOutcome shape', () => {
-    const report = buildIterationReport({
-      iteration: 3,
-      durationMs: 30000,
-      filesChanged: 5,
-      errors: [],
-      output: '<promise>DONE</promise>',
-      exitCode: 0,
-    });
-    expect(report).toHaveProperty('attempt', 3);
-    expect(report).toHaveProperty('completed', true);
-    expect(report).toHaveProperty('promiseTag', 'DONE');
-    expect(report).toHaveProperty('summary');
-    expect(report).not.toHaveProperty('error');
-  });
-
-  test('ExecutionOutcome carries error when errors present', () => {
-    const report = buildIterationReport({
-      iteration: 1,
-      durationMs: 5000,
-      filesChanged: 0,
-      errors: ['Runtime error occurred'],
-      output: 'Runtime error occurred',
-      exitCode: 1,
-    });
-    expect(report.completed).toBe(false);
-    expect(report.error).toBe('Runtime error occurred');
-    expect(report.summary).toMatch(/not yet completed/);
-  });
-
   test('recordAttempt returns ExecutionOutcome with summary', () => {
     const outcome = recordAttempt(randomUUID(), 'DONE');
     expect(outcome).toHaveProperty('completed', true);
@@ -90,13 +62,13 @@ describe('ExecutionOutcome', () => {
 
 describe('checkIterationCompletion', () => {
   test('detects completion with expected promise', () => {
-    const result = checkIterationCompletion('some work\n<promise>DONE</promise>', 'DONE');
+    const result = checkIterationCompletion(`some work\n${canonicalCompletion()}`, 'DONE');
     expect(result.detected).toBe(true);
     expect(result.tag).toBe('DONE');
   });
 
   test('detects completion without expected promise', () => {
-    const result = checkIterationCompletion('<promise>DONE</promise>');
+    const result = checkIterationCompletion(canonicalCompletion());
     expect(result.detected).toBe(true);
     expect(result.tag).toBe('DONE');
   });
@@ -107,134 +79,13 @@ describe('checkIterationCompletion', () => {
     expect(result.tag).toBeNull();
   });
 
-  test('legacy fallback ignores expected — detects any promise tag', () => {
+  test('legacy promise tag is not detected', () => {
     const result = checkIterationCompletion('<promise>DONE</promise>', 'COMPLETE');
-    expect(result.detected).toBe(true);
-    expect(result.tag).toBe('DONE');
+    expect(result.detected).toBe(false);
+    expect(result.tag).toBeNull();
   });
 });
 
-describe('buildIterationReport', () => {
-  test('builds report with completion detected', () => {
-    const report = buildIterationReport({
-      iteration: 1,
-      durationMs: 45000,
-      filesChanged: 3,
-      errors: [],
-      output: 'work done\n<promise>DONE</promise>',
-      exitCode: 0,
-      completionPromise: 'DONE',
-    });
-    expect(report.attempt).toBe(1);
-    expect(report.completed).toBe(true);
-    expect(report.promiseTag).toBe('DONE');
-    expect(report.summary).toMatch(/completed/);
-  });
-
-  test('builds report with no completion', () => {
-    const report = buildIterationReport({
-      iteration: 2,
-      durationMs: 15000,
-      filesChanged: 0,
-      errors: ['Error: something'],
-      output: 'Error: something',
-      exitCode: 1,
-    });
-    expect(report.completed).toBe(false);
-    expect(report.promiseTag).toBeNull();
-    expect(report.error).toMatch(/something/);
-  });
-});
-
-describe('mergeIterationIntoState', () => {
-  test('merges report into state and detects completion', () => {
-    const state: AgnesRuntimeState = {
-      hasActivePlan: true,
-      activePlanId: 'plan-001',
-      planContent: 'Goal: Test',
-      planEntry: null,
-    };
-
-    const report = buildIterationReport({
-      iteration: 1,
-      durationMs: 45000,
-      filesChanged: 2,
-      errors: [],
-      output: '<promise>DONE</promise>',
-      exitCode: 0,
-      completionPromise: 'DONE',
-    });
-
-    const result = mergeIterationIntoState(state, report);
-    expect(result.completed).toBe(true);
-    expect(result.struggleWarnings).toEqual([]);
-    expect(state.iteration).toBe(1);
-    expect(state.struggle?.lastPromiseTag).toBe('DONE');
-  });
-
-  test('accumulates struggle across iterations', () => {
-    const state: AgnesRuntimeState = {
-      hasActivePlan: true,
-      activePlanId: 'plan-001',
-      planContent: 'Goal: Test',
-      planEntry: null,
-    };
-
-    // First: no progress, short iteration
-    const r1 = buildIterationReport({
-      iteration: 1,
-      durationMs: 10000,
-      filesChanged: 0,
-      errors: ['Error: failed'],
-      output: 'Error: failed',
-      exitCode: 1,
-    });
-    mergeIterationIntoState(state, r1);
-
-    // Second: same pattern
-    const r2 = buildIterationReport({
-      iteration: 2,
-      durationMs: 5000,
-      filesChanged: 0,
-      errors: ['Error: failed'],
-      output: 'Error: failed',
-      exitCode: 1,
-    });
-    const result = mergeIterationIntoState(state, r2);
-
-    expect(state.struggle?.noProgressIterations).toBe(2);
-    expect(state.struggle?.shortIterations).toBe(2);
-    expect(state.struggle?.repeatedErrors['Error: failed']).toBe(2);
-    // Repeated error threshold is >=2, so one warning already
-    expect(result.struggleWarnings.length).toBeGreaterThanOrEqual(1);
-  });
-
-  test('produces struggle warnings at threshold', () => {
-    const state: AgnesRuntimeState = {
-      hasActivePlan: true,
-      activePlanId: 'plan-001',
-      planContent: 'Goal: Test',
-      planEntry: null,
-    };
-
-    // Three iterations of no progress
-    for (let i = 1; i <= 3; i++) {
-      const report = buildIterationReport({
-        iteration: i,
-        durationMs: 10000,
-        filesChanged: 0,
-        errors: [],
-        output: 'no progress',
-        exitCode: 1,
-      });
-      const result = mergeIterationIntoState(state, report);
-      if (i === 3) {
-        expect(result.struggleWarnings.length).toBeGreaterThanOrEqual(1);
-        expect(result.struggleWarnings[0]).toMatch(/no progress/i);
-      }
-    }
-  });
-});
 
 describe('buildExecutionContext', () => {
   test('includes attempt info when present', () => {
@@ -252,7 +103,7 @@ describe('buildExecutionContext', () => {
       struggle: freshStruggleMetrics(),
     });
     expect(ctx).toContain('Current attempt: 3');
-    expect(ctx).toContain('{"type":"completion","status":"DONE","summary":"..."}');
+    expect(ctx).toContain('<!-- <agnes:message>{"type":"completion","id":"<uuid>","timestamp":"<iso>","status":"DONE","summary":"...","schema":"agnes/message-v1"}</agnes:message> -->');
   });
 
   test('includes struggle warnings when thresholds reached', () => {
@@ -297,7 +148,8 @@ describe('buildExecutionContext', () => {
         lastPromiseTag: 'DONE',
       },
     });
-    expect(ctx).toContain('{"type":"completion","status":"DONE","summary":"..."}');
+    expect(ctx).toContain('Last canonical completion status seen: DONE');
+    expect(ctx).toContain('<!-- <agnes:message>{"type":"completion","id":"<uuid>","timestamp":"<iso>","status":"DONE","summary":"...","schema":"agnes/message-v1"}</agnes:message> -->');
   });
 });
 
@@ -722,129 +574,7 @@ describe('assertTaskScope', () => {
   });
 });
 
-describe('runWaveGates', () => {
-  test('blocks the flow on failing blocking gates', async () => {
-    const flow = new FlowController();
-    const failingResult = makeGateResult({
-      gateId: 'required-review',
-      status: 'FAIL',
-      evidence: { errors: ['tests failed'] },
-    });
 
-    const { results, evidence } = await runWaveGates([makeGate(failingResult)], flow);
-
-    expect(results).toEqual([failingResult]);
-    expect(evidence).toHaveLength(1);
-    expect(evidence[0].gateId).toBe('required-review');
-    expect(evidence[0].status).toBe('FAIL');
-    expect(flow.isBlocked()).toBe(true);
-  });
-
-  test('does not block the flow on failing non-blocking gates', async () => {
-    const flow = new FlowController();
-    const failingResult = makeGateResult({
-      gateId: 'advisory-review',
-      status: 'FAIL',
-      evidence: { errors: ['advisory failed'] },
-    });
-
-    const { results, evidence } = await runWaveGates([makeGate(failingResult, false)], flow);
-
-    expect(results).toEqual([failingResult]);
-    expect(evidence).toHaveLength(1);
-    expect(evidence[0].status).toBe('FAIL');
-    expect(flow.isBlocked()).toBe(false);
-  });
-});
-
-describe('executeWave', () => {
-  const sampleTasks: TaskDescriptor[] = [
-    { skill: 'builder', payload: { file: 'src/main.ts' } },
-    { skill: 'verifier', payload: {} },
-  ];
-
-  test('returns results for each task', async () => {
-    const flow = new FlowController();
-    const result = await executeWave('plan-001', sampleTasks, defaultMiddlewareChain, flow);
-    expect(result.results).toHaveLength(2);
-    expect(result.results[0]).toHaveProperty('taskId', 'task-builder');
-    expect(result.results[1]).toHaveProperty('taskId', 'task-verifier');
-    expect(result.nextAction).toBeNull();
-  });
-
-  test('each result has NEEDS_CONTEXT status (task dispatched)', async () => {
-    const flow = new FlowController();
-    const result = await executeWave('plan-001', sampleTasks, defaultMiddlewareChain, flow);
-    const statuses = result.results.map(r => r.status);
-    expect(statuses).toEqual(['NEEDS_CONTEXT', 'NEEDS_CONTEXT']);
-  });
-
-  test('stops early when flow is blocked', async () => {
-    const flow = new FlowController();
-    flow.setJump('blocked', 'prerequisite_failed');
-    const result = await executeWave('plan-001', sampleTasks, defaultMiddlewareChain, flow);
-    expect(result.results).toHaveLength(0);
-    expect(result.nextAction).toBe('blocked');
-  });
-
-  test('skips tasks when flow signal is skip', async () => {
-    const flow = new FlowController();
-    flow.setJump('skip', 'not_needed');
-    const result = await executeWave('plan-001', sampleTasks, defaultMiddlewareChain, flow);
-    expect(result.results).toHaveLength(0);
-    expect(result.nextAction).toBe('skip');
-  });
-
-  test('respects skip signal between tasks', async () => {
-    const flow = new FlowController();
-    flow.setJump('skip', 'skip-this-wave');
-    const result = await executeWave('plan-001', sampleTasks, defaultMiddlewareChain, flow);
-    expect(result.results).toHaveLength(0);
-  });
-
-  test('handles empty task list', async () => {
-    const flow = new FlowController();
-    const result = await executeWave('plan-001', [], defaultMiddlewareChain, flow);
-    expect(result.results).toHaveLength(0);
-    expect(result.nextAction).toBeNull();
-  });
-
-  test('executes middleware beforeWave hook', async () => {
-    const flow = new FlowController();
-    let beforeRan = false;
-    const customChain = new MiddlewareChain([
-      { name: 'test', beforeWave: async (ctx) => { beforeRan = true; return ctx; } },
-    ]);
-    await executeWave('plan-001', sampleTasks, customChain, flow);
-    expect(beforeRan).toBe(true);
-  });
-
-  test('executes middleware afterWave hook', async () => {
-    const flow = new FlowController();
-    let afterRan = false;
-    const customChain = new MiddlewareChain([
-      {
-        name: 'test',
-        afterWave: async (ctx, _results) => { afterRan = true; return ctx; },
-      },
-    ]);
-    await executeWave('plan-001', sampleTasks, customChain, flow);
-    expect(afterRan).toBe(true);
-  });
-
-  test('passes wave index through middleware', async () => {
-    const flow = new FlowController();
-    let capturedIndex = -1;
-    const customChain = new MiddlewareChain([
-      {
-        name: 'test',
-        beforeWave: async (ctx) => { capturedIndex = ctx.waveIndex; return ctx; },
-      },
-    ]);
-    await executeWave('plan-001', sampleTasks, customChain, flow);
-    expect(capturedIndex).toBe(0);
-  });
-});
 
 describe('getPlanGateFromState', () => {
   test('returns block message when no active plan', () => {

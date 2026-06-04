@@ -4,6 +4,17 @@ function formatMessage(level: string, message: string): string {
   return `${PREFIX} [${level}] ${new Date().toISOString()} ${message}\n`;
 }
 
+function formatError(err: unknown): string {
+  if (err === undefined) return '';
+  if (err instanceof Error) return `: ${err.name}: ${err.message}`;
+  if (typeof err === 'string') return `: ${err}`;
+  try {
+    return `: ${JSON.stringify(err)}`;
+  } catch {
+    return ': [unserializable error]';
+  }
+}
+
 export function debug(message: string): void {
   process.stderr.write(formatMessage('debug', message));
 }
@@ -13,17 +24,9 @@ export function info(message: string): void {
 }
 
 export function warn(message: string, err?: unknown): void {
-  let text = message;
-  if (err) {
-    text += err instanceof Error ? ` — ${err.message}` : ` — ${String(err)}`;
-  }
-  process.stderr.write(formatMessage('warn', text));
+  process.stderr.write(formatMessage('warn', message + formatError(err)));
 }
 
 export function error(message: string, err?: unknown): void {
-  let text = message;
-  if (err) {
-    text += err instanceof Error ? ` — ${err.message}` : ` — ${String(err)}`;
-  }
-  process.stderr.write(formatMessage('error', text));
+  process.stderr.write(formatMessage('error', message + formatError(err)));
 }

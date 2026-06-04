@@ -1,4 +1,5 @@
 import type { GateEvidence } from './schema.js';
+import { parseAgnesMessage } from './protocol.js';
 
 type GateStatus = 'PASS' | 'FAIL' | 'SKIP';
 
@@ -79,30 +80,30 @@ export function registerGate(
   return [...gates, gate];
 }
 
+function extractCanonicalAgnesMessageEnvelope(text: string): string | null {
+  const match = text.match(/<!--\s*<agnes:message>[\s\S]*?<\/agnes:message>\s*-->/);
+  return match?.[0] ?? null;
+}
+
 function hasCompletionSignal(text: string): boolean {
-  if (text.includes('<promise>')) return true;
-  if (!text.includes('<agnes:message>')) return false;
-  try {
-    const match = text.match(/<agnes:message>([\s\S]*?)<\/agnes:message>/);
-    if (!match) return false;
-    const parsed = JSON.parse(match[1]);
-    return parsed?.type === 'completion' || parsed?.type === 'result';
-  } catch {
-    return false;
-  }
+  const envelope = extractCanonicalAgnesMessageEnvelope(text);
+  if (!envelope) return false;
+  const parsed = parseAgnesMessage(envelope);
+  if (parsed?.type !== 'completion' && parsed?.type !== 'result') return false;
+  return (parsed as { schema?: string }).schema === 'agnes/message-v1';
 }
 
 export const promiseComplianceGate: Gate = {
   id: 'promise-compliance',
   name: 'Promise Compliance',
-  description: 'Checks that output contains a completion signal (<promise> or <agnes:message>) before allowing completion',
+  description: 'Checks that output contains a canonical HTML-commented completion or result <agnes:message> before allowing completion',
   isBlocking: true,
   run: async () => {
     const start = Date.now();
     const errors: string[] = [];
     const output = process.env.AGNES_LAST_OUTPUT || '';
     if (!hasCompletionSignal(output)) {
-      errors.push('Output does not contain a completion signal (<promise> or <agnes:message>)');
+      errors.push('Output does not contain a valid canonical HTML-commented completion or result <agnes:message> with schema agnes/message-v1');
     }
     return {
       gateId: 'promise-compliance',
@@ -118,13 +119,13 @@ export function createPromiseComplianceGate(output: string): Gate {
   return {
     id: 'promise-compliance',
     name: 'Promise Compliance',
-    description: 'Checks that output contains a completion signal (<promise> or <agnes:message>)',
+    description: 'Checks that output contains a canonical HTML-commented completion or result <agnes:message>',
     isBlocking: true,
     run: async () => {
       const start = Date.now();
       const errors: string[] = [];
       if (!hasCompletionSignal(output)) {
-        errors.push('Output does not contain a completion signal (<promise> or <agnes:message>)');
+        errors.push('Output does not contain a valid canonical HTML-commented completion or result <agnes:message> with schema agnes/message-v1');
       }
       return {
         gateId: 'promise-compliance',

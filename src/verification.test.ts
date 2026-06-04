@@ -1,4 +1,5 @@
 import { describe, expect, test, afterEach, beforeEach } from 'bun:test';
+import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -173,29 +174,62 @@ describe('pre-registered gates', () => {
 });
 
 describe('createPromiseComplianceGate', () => {
-  test('passes when output contains promise tag', async () => {
+  const completion = () => `<!-- <agnes:message>${JSON.stringify({ type: 'completion', id: randomUUID(), timestamp: new Date().toISOString(), status: 'DONE', summary: 'done', schema: 'agnes/message-v1' })}</agnes:message> -->`;
+  const resultMessage = () => `<!-- <agnes:message>${JSON.stringify({ type: 'result', id: randomUUID(), taskId: 't1', timestamp: new Date().toISOString(), status: 'DONE', content: 'ok', schema: 'agnes/message-v1' })}</agnes:message> -->`;
+
+  test('fails when output contains legacy promise tag', async () => {
     const gate = createPromiseComplianceGate('<promise>DONE</promise>');
     const result = await gate.run();
-    expect(result.status).toBe('PASS');
+    expect(result.status).toBe('FAIL');
   });
 
-  test('passes when output contains agnes:message completion', async () => {
-    const gate = createPromiseComplianceGate(`<agnes:message>${JSON.stringify({ type: 'completion', id: 'x', timestamp: new Date().toISOString(), status: 'DONE', summary: 'done' })}</agnes:message>`);
+  test('fails when output contains bare agnes:message completion', async () => {
+    const gate = createPromiseComplianceGate(`<agnes:message>${JSON.stringify({ type: 'completion', id: randomUUID(), timestamp: new Date().toISOString(), status: 'DONE', summary: 'done', schema: 'agnes/message-v1' })}</agnes:message>`);
+    const result = await gate.run();
+    expect(result.status).toBe('FAIL');
+  });
+
+  test('fails when output contains HTML-commented agnes:message without schema', async () => {
+    const gate = createPromiseComplianceGate(`<!-- <agnes:message>${JSON.stringify({ type: 'completion', id: randomUUID(), timestamp: new Date().toISOString(), status: 'DONE', summary: 'done' })}</agnes:message> -->`);
+    const result = await gate.run();
+    expect(result.status).toBe('FAIL');
+  });
+
+  test('passes when output contains canonical HTML-commented agnes:message completion', async () => {
+    const gate = createPromiseComplianceGate(completion());
     const result = await gate.run();
     expect(result.status).toBe('PASS');
   });
 
-  test('passes when output contains agnes:message result', async () => {
-    const gate = createPromiseComplianceGate(`<agnes:message>${JSON.stringify({ type: 'result', id: 'x', taskId: 't1', timestamp: new Date().toISOString(), status: 'DONE', content: 'ok' })}</agnes:message>`);
+  test('passes when output contains canonical HTML-commented agnes:message result', async () => {
+    const gate = createPromiseComplianceGate(resultMessage());
     const result = await gate.run();
     expect(result.status).toBe('PASS');
+  });
+
+  test('fails when output contains raw JSON completion without agnes:message envelope', async () => {
+    const gate = createPromiseComplianceGate(JSON.stringify({ type: 'completion', id: 'x', timestamp: new Date().toISOString(), status: 'DONE', summary: 'done' }));
+    const result = await gate.run();
+    expect(result.status).toBe('FAIL');
+  });
+
+  test('fails when output contains fenced JSON completion without agnes:message envelope', async () => {
+    const gate = createPromiseComplianceGate(`\`\`\`json\n${JSON.stringify({ type: 'completion', id: 'x', timestamp: new Date().toISOString(), status: 'DONE', summary: 'done' })}\n\`\`\``);
+    const result = await gate.run();
+    expect(result.status).toBe('FAIL');
+  });
+
+  test('fails when agnes:message completion is malformed', async () => {
+    const gate = createPromiseComplianceGate(`<!-- <agnes:message>${JSON.stringify({ type: 'completion', id: randomUUID(), timestamp: new Date().toISOString(), status: 'INVALID', summary: 'bad', schema: 'agnes/message-v1' })}</agnes:message> -->`);
+    const result = await gate.run();
+    expect(result.status).toBe('FAIL');
   });
 
   test('fails when output has no completion signal', async () => {
     const gate = createPromiseComplianceGate('just some text');
     const result = await gate.run();
     expect(result.status).toBe('FAIL');
-    expect(result.evidence.errors).toContain('Output does not contain a completion signal (<promise> or <agnes:message>)');
+    expect(result.evidence.errors).toContain('Output does not contain a valid canonical HTML-commented completion or result <agnes:message> with schema agnes/message-v1');
   });
 
   test('fails when output is empty', async () => {
@@ -266,20 +300,26 @@ describe('promiseComplianceGate acceptance', () => {
     process.env.AGNES_LAST_OUTPUT = OLD_ENV;
   });
 
-  test('passes when output contains legacy <promise> tag', async () => {
+  test('fails when output contains legacy <promise> tag', async () => {
     process.env.AGNES_LAST_OUTPUT = '<promise>DONE</promise>';
     const result = await promiseComplianceGate.run();
-    expect(result.status).toBe('PASS');
+    expect(result.status).toBe('FAIL');
   });
 
-  test('passes when output contains <agnes:message> completion (JSON protocol)', async () => {
-    process.env.AGNES_LAST_OUTPUT = `<agnes:message>${JSON.stringify({ type: 'completion', id: 'x', timestamp: new Date().toISOString(), status: 'DONE', summary: 'done' })}</agnes:message>`;
+  test('passes when output contains canonical HTML-commented completion', async () => {
+    process.env.AGNES_LAST_OUTPUT = `<!-- <agnes:message>${JSON.stringify({ type: 'completion', id: randomUUID(), timestamp: new Date().toISOString(), status: 'DONE', summary: 'done', schema: 'agnes/message-v1' })}</agnes:message> -->`;
     const result = await promiseComplianceGate.run();
     expect(result.status).toBe('PASS');
   });
 
-  test('passes when output contains <agnes:message> result (JSON protocol)', async () => {
-    process.env.AGNES_LAST_OUTPUT = `<agnes:message>${JSON.stringify({ type: 'result', id: 'x', taskId: 't1', timestamp: new Date().toISOString(), status: 'DONE', content: 'ok' })}</agnes:message>`;
+  test('fails when output contains raw JSON completion without agnes:message envelope', async () => {
+    process.env.AGNES_LAST_OUTPUT = JSON.stringify({ type: 'completion', id: 'x', timestamp: new Date().toISOString(), status: 'DONE', summary: 'done' });
+    const result = await promiseComplianceGate.run();
+    expect(result.status).toBe('FAIL');
+  });
+
+  test('passes when output contains canonical HTML-commented result', async () => {
+    process.env.AGNES_LAST_OUTPUT = `<!-- <agnes:message>${JSON.stringify({ type: 'result', id: randomUUID(), taskId: 't1', timestamp: new Date().toISOString(), status: 'DONE', content: 'ok', schema: 'agnes/message-v1' })}</agnes:message> -->`;
     const result = await promiseComplianceGate.run();
     expect(result.status).toBe('PASS');
   });
@@ -288,7 +328,7 @@ describe('promiseComplianceGate acceptance', () => {
     process.env.AGNES_LAST_OUTPUT = 'just some text';
     const result = await promiseComplianceGate.run();
     expect(result.status).toBe('FAIL');
-    expect(result.evidence.errors).toContain('Output does not contain a completion signal (<promise> or <agnes:message>)');
+    expect(result.evidence.errors).toContain('Output does not contain a valid canonical HTML-commented completion or result <agnes:message> with schema agnes/message-v1');
   });
 
   test('fails when AGNES_LAST_OUTPUT is empty', async () => {

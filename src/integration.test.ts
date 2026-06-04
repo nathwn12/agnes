@@ -10,7 +10,7 @@ import type { ProcessMessageResult } from './runtime';
 import { createAutoPlan, createBuiltinPlan, assessPlanQuality, transitionPlanStatus, createPlan, getExecutionArtifacts } from './state';
 import type { PlanIndex } from './state';
 import { serializeAgnesMessage, parseAgnesMessage } from './protocol';
-import { createFlowController } from './flowcontrol';
+
 import type { Gate } from './verification';
 
 afterAll(() => {
@@ -359,8 +359,6 @@ describe('harness renovation integration', () => {
 
   test('gate evidence feeds into execution outcome', () => {
     const tmp = createTempProject();
-    const flow = createFlowController();
-
     const passingGate: Gate = {
       id: 'integration-test-gate',
       name: 'Integration Test Gate',
@@ -375,7 +373,7 @@ describe('harness renovation integration', () => {
       }),
     };
 
-    return runWaveGates([passingGate], flow).then(({ results, evidence }) => {
+    return runWaveGates([passingGate]).then(({ results, evidence }) => {
       expect(results.length).toBe(1);
       expect(results[0].status).toBe('PASS');
       expect(evidence.length).toBe(1);

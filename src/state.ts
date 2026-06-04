@@ -160,15 +160,26 @@ function serializePlan(plan: Plan): string {
 function readPlanArtifact(plansDir: string, planId: string): { content: string; plan: Plan } | null {
   const yamlPath = path.join(plansDir, `${planId}.yaml`);
   if (fs.existsSync(yamlPath)) {
-    const content = fs.readFileSync(yamlPath, 'utf8');
-    return { content, plan: PlanSchema.parse(yamlParse(content)) };
+    try {
+      const content = fs.readFileSync(yamlPath, 'utf8');
+      return { content, plan: PlanSchema.parse(yamlParse(content)) };
+    } catch (err) {
+      logger.warn(`Failed to read or parse active plan artifact ${planId}.yaml`, err instanceof Error ? err.message : String(err));
+      return null;
+    }
   }
 
   const mdPath = path.join(plansDir, `${planId}.md`);
   if (fs.existsSync(mdPath)) {
-    return { content: fs.readFileSync(mdPath, 'utf8'), plan: parseLegacyMdPlan(mdPath) };
+    try {
+      return { content: fs.readFileSync(mdPath, 'utf8'), plan: parseLegacyMdPlan(mdPath) };
+    } catch (err) {
+      logger.warn(`Failed to read or parse active plan artifact ${planId}.md`, err instanceof Error ? err.message : String(err));
+      return null;
+    }
   }
 
+  logger.warn(`Active plan artifact not found for ${planId}`);
   return null;
 }
 
@@ -362,11 +373,22 @@ export function writePlanIndex(index: PlanIndex, projectRoot?: string): void {
   const root = projectRoot ?? findProjectRoot();
   if (!root) throw new Error('Cannot write plan index: no project root found');
   const dir = path.join(root, AGNES_DIR);
-  fs.mkdirSync(dir, { recursive: true });
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch (err) {
+    logger.warn('Failed to create plan index directory', err);
+    throw err;
+  }
   const filePath = path.join(dir, 'index.json');
   const tmp = filePath + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(index, null, 2), 'utf8');
-  fs.renameSync(tmp, filePath);
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(index, null, 2), 'utf8');
+    fs.renameSync(tmp, filePath);
+  } catch (err) {
+    try { fs.rmSync(tmp, { force: true }); } catch { /* clean up tmp on failure */ }
+    logger.warn('Failed to write plan index', err);
+    throw err;
+  }
 }
 
 function writePlanFile(plan: Plan, plansDir: string): string {
@@ -374,15 +396,26 @@ function writePlanFile(plan: Plan, plansDir: string): string {
   const filePath = path.join(plansDir, `${parsed.id}.yaml`);
   const yaml = yamlStringify(JSON.parse(JSON.stringify(parsed)), null, { indent: 2 });
   const tmpPath = filePath + '.tmp';
-  fs.writeFileSync(tmpPath, yaml, 'utf-8');
-  fs.renameSync(tmpPath, filePath);
+  try {
+    fs.writeFileSync(tmpPath, yaml, 'utf-8');
+    fs.renameSync(tmpPath, filePath);
+  } catch (err) {
+    try { fs.rmSync(tmpPath, { force: true }); } catch { /* clean up tmp on failure */ }
+    logger.warn(`Failed to write plan file ${filePath}`, err);
+    throw err;
+  }
   return filePath;
 }
 
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?/;
 
 function parseLegacyMdPlan(filePath: string): Plan {
-  const raw = fs.readFileSync(filePath, 'utf-8');
+  let raw: string;
+  try {
+    raw = fs.readFileSync(filePath, 'utf-8');
+  } catch {
+    raw = '';
+  }
   const fm = raw.match(FRONTMATTER_RE);
   let frontmatter: Record<string, unknown> = {};
   let body = raw;
@@ -545,7 +578,11 @@ export function getNextPlanId(projectRoot?: string): string {
   if (!root) return 'plan-001';
 
   const cache = path.join(root, AGNES_DIR, PLANS_DIR);
-  fs.mkdirSync(cache, { recursive: true });
+  try {
+    fs.mkdirSync(cache, { recursive: true });
+  } catch {
+    return 'plan-001';
+  }
 
   let max = 0;
   try {
@@ -782,44 +819,32 @@ export function updatePlanStatus(input: {
   return entry;
 }
 
-const PROMISE_TAG_PATTERN = /<promise>\s*(\S+)\s*<\/promise>/i;
+const CANONICAL_AGNES_MESSAGE_PATTERN = /<!--\s*<agnes:message>[\s\S]*?<\/agnes:message>\s*-->/;
+
+function parseCanonicalCompletionSignal(output: string): CompletionStatus | null {
+  const envelope = output.match(CANONICAL_AGNES_MESSAGE_PATTERN)?.[0];
+  if (!envelope) return null;
+
+  const msg = parseAgnesMessage(envelope);
+  if ((msg?.type === 'completion' || msg?.type === 'result') && (msg as { schema?: string }).schema === 'agnes/message-v1') {
+    return msg.status;
+  }
+  return null;
+}
 
 export function detectPromiseTag(output: string, expected?: string): boolean {
-  const cleaned = output.replace(/<!--[\s\S]*?-->/g, '');
-  // Check JSON protocol first
-  const msg = parseAgnesMessage(cleaned);
-  if (msg?.type === 'completion') return msg.status === (expected ?? 'DONE');
-  // When expected is provided, also check legacy regex
-  if (expected) {
-    const match = cleaned.match(PROMISE_TAG_PATTERN);
-    if (match) {
-      return match[1] === expected;
-    }
-    return false;
-  }
-  // Fall back to legacy regex
-  return PROMISE_TAG_PATTERN.test(cleaned);
+  const status = parseCanonicalCompletionSignal(output);
+  if (!status) return false;
+  return status === (expected ?? 'DONE');
 }
 
 /**
  * Extract completion status from output text.
- * Tries JSON protocol first, falls back to legacy <promise> regex.
+ * Requires the canonical HTML-commented AGNES message protocol.
  * @deprecated Use parseAgnesMessage for new code
  */
 export function extractPromiseTag(text: string): CompletionStatus | null {
-  const cleaned = text.replace(/<!--[\s\S]*?-->/g, '');
-  const msg = parseAgnesMessage(cleaned);
-  if (msg?.type === 'completion') return msg.status;
-  if (msg?.type === 'result') return msg.status;
-  // Fall back to legacy <promise> tag regex
-  const match = cleaned.match(PROMISE_TAG_PATTERN);
-  if (match) {
-    const tag = match[1].trim();
-    const statuses: CompletionStatus[] = ['DONE', 'DONE_WITH_CONCERNS', 'NEEDS_CONTEXT', 'BLOCKED'];
-    if (statuses.includes(tag as CompletionStatus)) return tag as CompletionStatus;
-    return 'DONE'; // legacy: treat any non-empty match as DONE
-  }
-  return null;
+  return parseCanonicalCompletionSignal(text);
 }
 
 export function freshStruggleMetrics(): StruggleMetrics {

@@ -1,4 +1,5 @@
 import { describe, expect, test, afterAll } from 'bun:test';
+import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -1225,8 +1226,10 @@ describe('getPlanGate', () => {
   });
 
 describe('detectPromiseTag', () => {
-  test('detects promise tag in output', () => {
-    expect(detectPromiseTag('some output\n<promise>DONE</promise>\nmore')).toBe(true);
+  const completion = (status = 'DONE') => `<!-- <agnes:message>${JSON.stringify({ type: 'completion', status, id: randomUUID(), timestamp: new Date().toISOString(), summary: 'done', schema: 'agnes/message-v1' })}</agnes:message> -->`;
+
+  test('does not detect legacy promise tag in output', () => {
+    expect(detectPromiseTag('some output\n<promise>DONE</promise>\nmore')).toBe(false);
   });
 
   test('returns false when no promise tag', () => {
@@ -1234,38 +1237,51 @@ describe('detectPromiseTag', () => {
   });
 
   test('matches exact expected tag', () => {
-    expect(detectPromiseTag('<promise>DONE</promise>', 'DONE')).toBe(true);
+    expect(detectPromiseTag(completion('DONE'), 'DONE')).toBe(true);
   });
 
   test('rejects wrong expected tag in legacy tag format', () => {
     expect(detectPromiseTag('<promise>DONE</promise>', 'FAIL')).toBe(false);
   });
 
-  test('rejects wrong expected status via JSON completion message', () => {
+  test('rejects raw JSON completion message', () => {
     const json = JSON.stringify({ type: 'completion', status: 'DONE', id: '1', timestamp: new Date().toISOString(), summary: 'done' });
-    expect(detectPromiseTag(json, 'FAIL')).toBe(false);
+    expect(detectPromiseTag(json, 'DONE')).toBe(false);
   });
 
-  test('tolerates whitespace around tag value', () => {
-    expect(detectPromiseTag('<promise>  DONE  </promise>', 'DONE')).toBe(true);
+  test('detects canonical HTML-commented JSON protocol completion', () => {
+    const json = completion('DONE');
+    expect(detectPromiseTag(json, 'DONE')).toBe(true);
   });
 
-  test('accepts any tag when no expected value given', () => {
-    expect(detectPromiseTag('<promise>ANYTHING</promise>')).toBe(true);
+  test('rejects whitespace-padded legacy tag value', () => {
+    expect(detectPromiseTag('<promise>  DONE  </promise>', 'DONE')).toBe(false);
+  });
+
+  test('requires DONE when no expected value given', () => {
+    expect(detectPromiseTag(completion('DONE'))).toBe(true);
+    expect(detectPromiseTag(completion('BLOCKED'))).toBe(false);
   });
 });
 
 describe('extractPromiseTag', () => {
-  test('extracts promise tag value', () => {
-    expect(extractPromiseTag('<promise>DONE</promise>')).toBe('DONE');
+  const completion = (status = 'DONE') => `<!-- <agnes:message>${JSON.stringify({ type: 'completion', status, id: randomUUID(), timestamp: new Date().toISOString(), summary: status.toLowerCase(), schema: 'agnes/message-v1' })}</agnes:message> -->`;
+
+  test('does not extract legacy promise tag value', () => {
+    expect(extractPromiseTag('<promise>DONE</promise>')).toBeNull();
   });
 
   test('returns null when no tag', () => {
     expect(extractPromiseTag('no tag')).toBeNull();
   });
 
-  test('extracts first tag when multiple', () => {
-    expect(extractPromiseTag('<promise>DONE</promise> more <promise>BLOCKED</promise>')).toBe('DONE');
+  test('ignores legacy tags when multiple', () => {
+    expect(extractPromiseTag('<promise>DONE</promise> more <promise>BLOCKED</promise>')).toBeNull();
+  });
+
+  test('extracts canonical HTML-commented JSON protocol completion', () => {
+    const json = completion('BLOCKED');
+    expect(extractPromiseTag(json)).toBe('BLOCKED');
   });
 });
 

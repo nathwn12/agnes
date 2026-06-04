@@ -4,9 +4,9 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPlanSummary, getLatestActivePlan } from './state.js';
 import type { PlanIndex, PlannerRoutingContext } from './state.js';
-import { resolveSkillName } from './schema.js';
+
 import { detectShell } from './shell.js';
-import { parse as yamlParse, stringify as yamlDump } from 'yaml';
+import { stringify as yamlDump } from 'yaml';
 import type { CompactionPolicyState } from './compaction.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -68,7 +68,12 @@ export function getStaticBootstrapContent(): string | null {
   }
 
   const version = getPackageVersion();
-  const fullContent = fs.readFileSync(soulPath, 'utf8');
+  let fullContent: string;
+  try {
+    fullContent = fs.readFileSync(soulPath, 'utf8');
+  } catch {
+    return null;
+  }
   const cacheKey = `${version}:${simpleHash(fullContent)}`;
 
   if (_bootstrapCache?.key === cacheKey) {
@@ -96,12 +101,19 @@ You are AGNES.
 - If the user explicitly asks to clear or nuke AGNES's OpenCode cache, remove the installed AGNES cache directory or use: \`${cacheNukeCommand}\`, then restart OpenCode.
 
 === AGNES ENFORCEMENT (HARD RULES) ===
-READ-ONLY tools (safe in main context): read, grep, glob, webfetch, websearch, skill, todowrite, question, lsp
-MUTATION tools (MUST delegate): edit, write, bash, apply_patch
-To delegate: ask a subagent in natural language via @builder / @executor
+READ-ONLY tools (direct use): read, grep, glob, webfetch, websearch, skill, todowrite, question, lsp
+- Quick lookups: answer directly
+- Complex multi-file research: delegate to @explore
+  - Run shallow-first (glob → grep → read, stop when answered)
+  - Batch independent searches. Ignore node_modules/dist/build/.git/cache
+  - Cite exact file:line for all findings. No speculation.
+
+MUTATION tools (delegate): edit, write, bash, apply_patch
+- Complex multi-step implementation: delegate to @general
+- Domain specialists: @refactor-cleaner, @security-reviewer, @e2e-runner, @build-error-resolver
 === END AGNES ENFORCEMENT ===
 
-**IMPORTANT: AGNES SOUL.md is loaded below. Orchestrator skill available via \`skill\` tool.**
+**IMPORTANT: AGNES SOUL.md is loaded below.**
 
 ${fullContent.trim()}
 
@@ -120,8 +132,6 @@ export function getBootstrapContent(planner?: PlannerRoutingContext): string | n
 
   const shell = detectShell();
 
-  const skillRegistryText = buildSkillRegistryText();
-
   let content = `${staticContent}
 
 <AGNES_PLAN_STATE>
@@ -133,30 +143,13 @@ ${shell.guidance}
 Anti-pattern commands to avoid: ${shell.antiPatterns.join(', ')}
 </SHELL_ENVIRONMENT>`;
 
-  if (skillRegistryText) {
-    content += `\n\n${skillRegistryText}\n`;
-  }
-
   return content;
 }
 
-// ── Wave 3: Structured Protocol block builders ───────────────────────────────
-
-export interface OrchestratorRules {
-  delegate: boolean;
-  parallelize: boolean;
-  onePercent: boolean;
-  verify: boolean;
-  noSharedEdits: boolean;
-  freshSubagents: boolean;
-  scarcity: boolean;
-  answerDirectly: boolean;
-  namedRoles: Record<string, string>;
-}
+// ── Structured Protocol block builders ───────────────────────────────────────
 
 export interface BootstrapContext {
   pkg: { version: string; root: string; skillsDir: string; cacheRoot: string };
-  rules: OrchestratorRules;
   index: PlanIndex | null;
   planner?: PlannerRoutingContext;
   shell: { name: string; version: string; antiPatterns: string[]; preferredSyntax: string };
@@ -174,29 +167,6 @@ export function buildRuntimeBlock(pkg: { version: string; root: string; skillsDi
     package_root: pkg.root,
     skills_dir: pkg.skillsDir,
     cache_root: pkg.cacheRoot,
-  }));
-}
-
-export function buildOrchestratorBlock(rules: OrchestratorRules): string {
-  return wrapStructured("orchestrator", yamlDump({
-    type: "orchestrator",
-    rules: {
-      delegate_or_die: rules.delegate,
-      parallelize_by_default: rules.parallelize,
-      one_percent_rule: rules.onePercent,
-      verify_before_claiming: rules.verify,
-      no_shared_file_edits: rules.noSharedEdits,
-      fresh_subagents_per_wave: rules.freshSubagents,
-      scarcity_principle: rules.scarcity,
-    },
-  }));
-}
-
-export function buildNamedRolesBlock(rules: OrchestratorRules): string {
-  return wrapStructured("named_roles", yamlDump({
-    type: "named_roles",
-    roles: rules.namedRoles,
-    answer_directly: rules.answerDirectly,
   }));
 }
 
@@ -268,92 +238,7 @@ export function buildExecutionContextBlock(ctx: {
   }));
 }
 
-export function buildProtocolBlock(): string {
-  return wrapStructured("protocol", yamlDump({
-    type: "protocol",
-    marker_prefix: "agnes:message",
-    types: ["task", "result", "error", "status", "completion"],
-  }));
-}
 
-export function buildToolAccessBlock(): string {
-  return wrapStructured("tool_access", yamlDump({
-    type: "tool_access",
-    rule: "READ-ONLY tools are safe in main context. MUTATION tools MUST be delegated to subagents.",
-    read_only: {
-      allowed: ["read", "grep", "glob", "webfetch", "websearch", "skill", "todowrite", "question", "lsp"],
-      description: "Read-only tools: safe to call from main context. No side effects.",
-    },
-    mutation: {
-      allowed: ["edit", "write", "bash", "apply_patch"],
-      description: "MUTATION tools: MUST be delegated to a @builder or @executor subagent via natural language. Never called from main context.",
-    },
-  }));
-}
-
-// ── Skill registry (compact, auto-discovered from frontmatter) ─────────────
-
-  const SKILL_SUGGEST_NEXT: Record<string, string[]> = {
-  'clarify': ['explorer', 'planner'],
-  'explorer': ['architect', 'planner'],
-  'architect': ['planner'],
-  'planner': ['multi-reviewer'],
-  'multi-reviewer': ['tdd', 'builder'],
-  'prd': ['planner'],
-  'prototype': ['tdd', 'builder'],
-  'builder': ['tester', 'verifier'],
-  'tdd': ['verifier'],
-  'tester': ['reviewer'],
-  'verifier': ['reviewer', 'shipper'],
-  'reviewer': ['documenter', 'shipper'],
-  'process-feedback': ['builder', 'debugger'],
-  'debugger': ['verifier'],
-  'grill-me': ['debugger', 'verifier'],
-  'shipper': ['documenter', 'retro'],
-  'triage': ['planner', 'debugger'],
-  'documenter': ['retro'],
-  'retro': [],
-  'write-skill': ['tdd'],
-  'brand-designer': ['prototype', 'builder'],
-  'init': ['clarify', 'explorer'],
-};
-
-function readSkillRegistry(): Array<{ id: string; phase: string; suggest_next: string[] }> {
-  if (!fs.existsSync(skillsDir)) return [];
-  const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
-  const skills: Array<{ id: string; phase: string; suggest_next: string[] }> = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const sp = path.join(skillsDir, entry.name, 'SKILL.md');
-    if (!fs.existsSync(sp)) continue;
-    try {
-      const raw = fs.readFileSync(sp, 'utf8');
-      const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-      if (!m) continue;
-      const fm = yamlParse(m[1]) as Record<string, unknown>;
-      if (typeof fm.id !== 'string' || typeof fm.phase !== 'string') continue;
-      const id = resolveSkillName(fm.id);
-      skills.push({ id, phase: fm.phase.toUpperCase(), suggest_next: (SKILL_SUGGEST_NEXT[id] || []).map(resolveSkillName) });
-    } catch { /* skip unparseable skills */ }
-  }
-  return skills.sort((a, b) => a.id.localeCompare(b.id));
-}
-
-export function buildSkillRegistryBlock(): string {
-  const skills = readSkillRegistry();
-  if (!skills.length) return '';
-  return wrapStructured('skill_registry', yamlDump({ type: 'skill_registry', skills }));
-}
-
-export function buildSkillRegistryText(): string {
-  const skills = readSkillRegistry();
-  if (!skills.length) return '';
-  const lines = ['### Skill Registry (next-skill suggestions)\n'];
-  for (const s of skills) {
-    if (s.suggest_next.length) lines.push(`- **${s.id}** (${s.phase}) → next: ${s.suggest_next.join(', ')}`);
-  }
-  return lines.join('\n');
-}
 
 export function getBootstrapPackageInfo(): { version: string; root: string; skillsDir: string; cacheRoot: string } {
   return {
@@ -367,14 +252,9 @@ export function getBootstrapPackageInfo(): { version: string; root: string; skil
 export function buildBootstrap(context: BootstrapContext): string {
   const blocks: string[] = [
     buildRuntimeBlock(context.pkg),
-    buildOrchestratorBlock(context.rules),
-    buildNamedRolesBlock(context.rules),
-    buildToolAccessBlock(),
     ...(context.index || context.planner ? [buildPlanStateBlock(context.index, context.planner)] : []),
     buildShellBlock(context.shell),
     buildExecutionContextBlock(context.exec),
-    buildProtocolBlock(),
-    buildSkillRegistryBlock(),
   ];
   return blocks.filter(Boolean).join("\n");
 }

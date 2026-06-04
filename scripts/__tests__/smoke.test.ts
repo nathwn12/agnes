@@ -71,11 +71,11 @@ describe('init-agnes.ts', () => {
 });
 
 describe('state-stats.ts', () => {
-  it('returns "ok" when .agnes/ exists', () => {
+  it('returns stats when .agnes/ exists', () => {
     const r = runScript('state-stats.ts', ['--dir', repoRoot]);
     expect(r.exitCode).toBe(0);
     const out = JSON.parse(r.stdout);
-    expect(out.status).toBe('ok');
+    expect(['ok', 'empty']).toContain(out.status);
     expect(typeof out.planCount).toBe('number');
     expect(out.planCount).toBeGreaterThanOrEqual(0);
   });

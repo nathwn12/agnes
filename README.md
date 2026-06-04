@@ -1,7 +1,7 @@
 <h1 align="center">AGNES — OpenCode Native Plugin</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.19.1-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.20.0-blue" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
   <img src="https://img.shields.io/badge/skills-30-orange" alt="30 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
@@ -9,7 +9,7 @@
 
 <p align="center">
   <b>Swarm orchestrator for OpenCode.</b><br>
-  Routes every engineering task across 30 specialized skills. Delegates relentlessly. Parallelizes by default. Never writes code directly.
+  Routes engineering work across 30 specialized skills. Delegates aggressively. Parallelizes by default. Coordinates while subagents execute.
 </p>
 
 ---
@@ -36,7 +36,7 @@ Restart OpenCode. AGNES injects its bootstrap and registers all 30 skills automa
 
 ## Pipeline
 
-AGNES routes every task through a default chronological pipeline. The flow is linear by default — each phase feeds into the next. Side skills (Design, Debug, Process, Meta) fire on demand when their trigger conditions are met.
+AGNES routes engineering work through a default chronological pipeline. The flow is linear when phases depend on each other, and parallel when work can safely run at the same time. Side skills (Design, Debug, Process, Meta) fire on demand when their trigger conditions are met.
 
 ### Default Flow (chronological order)
 
@@ -49,7 +49,7 @@ AGNES routes every task through a default chronological pipeline. The flow is li
 7. **SHIP** → `shipper` (PR → merge)
 8. **REFLECT** → `documenter` → `retro`
 
-**Gates** block progression until they pass. AGNES will NOT skip a gate.
+**Gates** block progression until they pass. AGNES uses them to keep high-throughput delegation tied to verified evidence.
 
 ### Side Branches (fire when trigger condition is met)
 
@@ -90,7 +90,7 @@ All 30 bundled skills with concrete trigger conditions and outputs. "When to Use
 | **debugger** | DEBUG | Bug report comes in. Or a test fails and root cause isn't obvious. Collaborative investigation: reproduce → isolate → regression test → fix. | Root cause analysis + regression test + fix |
 | **grill-me** | DEBUG | debugger tried 3 approaches and failed. Bug spans multiple modules. Or the failure is intermittent and hard to reproduce. Adversarial: generates and tests hypotheses systematically. | Architecture finding or fix + hypothesis log |
 | **triage** | SHIP / PROCESS | Incoming issue, PR, or feature request needs routing. Validates completeness, assigns labels, sets priority, routes to appropriate skill. | State-machine triage: validated → labeled → assigned |
-| **shipper** | SHIP | Code is reviewed, all gates pass, ready to deliver. Creates PR, runs final verification, merges or discards. Do NOT use before verification gates pass. | Merged PR or discarded branch + changelog entry |
+| **shipper** | SHIP | Code is reviewed, all gates pass, and the work is ready to deliver. Creates PRs, runs final verification, then merges or discards according to the workflow. | Merged PR or discarded branch + changelog entry |
 | **documenter** | REFLECT | Post-ship. Code is landed, needs docs. Or changelog needs updating. Or architecture decisions need ADRs. Follows Diataxis: tutorials, how-to, reference, explanation. | Diataxis docs (tutorials, how-to, reference, explanation) + ADRs + changelog |
 | **retro** | REFLECT | Sprint or milestone completed. Or a pattern keeps repeating (good or bad). Facilitates retrospective: what worked, what didn't, what to change. | Learnings document → stored in `.agnes/learnings/` |
 | **write-skill** | REFLECT / META | AGNES is missing a capability. Or an existing skill needs refinement. Creates a new skill or refines an existing one via TDD. | New/refined SKILL.md + tests |
@@ -109,7 +109,7 @@ All 30 bundled skills with concrete trigger conditions and outputs. "When to Use
 4. **Review** — reviewer gate-checks before any merge
 5. **Reflect** — retro captures learnings, documenter produces docs
 
-AGNES never writes code directly. Every task is delegated to a subagent or specialized skill.
+AGNES coordinates work. Simple questions can be answered directly. Repository work, command execution, and mutation work are delegated to the right subagent or specialized skill.
 
 ---
 
@@ -117,15 +117,15 @@ AGNES never writes code directly. Every task is delegated to a subagent or speci
 
 | Principle | Meaning |
 |-----------|---------|
-| **Delegate or die** | If you're writing code directly, STOP. Spawn a subagent. |
+| **Coordinator coordinates** | AGNES routes, merges, and reports while specialist subagents execute. |
 | **Parallelize by default** | Scan every task set for independence. Sequential is the exception. |
-| **1% Rule** | If even 1% chance a skill applies, invoke it. Wrong invocation costs nothing. |
+| **Specialize every task** | Match each work item to the role with the right context, tools, and responsibility. |
 | **Verify before claiming** | Run the command. Read the output. Then speak. |
 | **Scarcity** | Cheapest sufficient path first — shallow-first, compact outputs, context as budget. |
 | **Work-steal** | Subagent finished early? Dispatch it with the next task immediately. |
 | **Promise-driven execution** | Tracks subagent progress via promise tags, detects struggle patterns, and retries with session-aware backoff. |
 | **Contract assertions** | Evidence-backed Definition of Done protocol. No partial credit for failing assertions. |
-| **Caveman default style** | All AGNES reports use ultra-compressed style — drop articles, filler, pleasantries, hedging. |
+| **Direct when simple** | If the user asks a simple question that needs no tools or state changes, answer directly and briefly. |
 
 ---
 

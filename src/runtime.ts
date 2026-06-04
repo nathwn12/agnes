@@ -1,7 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-
 import {
   findProjectRoot,
   getLatestActivePlan,
@@ -12,23 +10,27 @@ import {
   extractPromiseTag,
   freshStruggleMetrics,
   updateStruggleMetrics,
-  detectStruggle,
   cacheDir,
   sortPlansByDate,
   appendExecutionArtifact,
 } from './state.js';
 import type { PlanIndexEntry, PlanIndex, ActivePlan, StruggleMetrics, PlannerRoutingContext } from './state.js';
-import { MiddlewareChain } from './middleware.js';
-import type { WaveContext, SubagentContext } from './middleware.js';
-import { FlowController } from './flowcontrol.js';
-import type { JumpTarget } from './flowcontrol.js';
-import type { TaskDescriptor, GateEvidence, RetryClassification, ExecutionArtifact } from './schema.js';
-import type { ResultMessage, CompletionStatus } from './protocol.js';
+import type { GateEvidence, RetryClassification, ExecutionArtifact } from './schema.js';
+import type { CompletionStatus } from './protocol.js';
 import { detectShell } from './shell.js';
 import type { ShellType } from './shell.js';
 import * as logger from './logger.js';
 import { runGates, gateResultToEvidence } from './verification.js';
 import type { Gate, GateResult } from './verification.js';
+
+export type JumpTarget = 'retry' | 'skip' | 'blocked' | 'next_wave' | 'end';
+
+export interface WaveSignal {
+  jumpTo: JumpTarget | null;
+  reason?: string;
+  metadata?: Record<string, unknown>;
+}
+
 
 const RETRY_BUDGETS: Record<RetryClassification, number> = {
   retryable: 3,
@@ -258,17 +260,6 @@ export function getPlanGate(workspaceRoot?: string | null): string | null {
   return null;
 }
 
-/** @deprecated Use ExecutionOutcome instead */
-export interface IterationReport {
-  iteration: number;
-  durationMs: number;
-  hadProgress: boolean;
-  errors: string[];
-  promiseTag: CompletionStatus | null;
-  completionDetected: boolean;
-  exitCode: number;
-}
-
 export function checkIterationCompletion(
   output: string,
   _promise?: string,
@@ -276,44 +267,6 @@ export function checkIterationCompletion(
   const tag = extractPromiseTag(output);
   const detected = tag !== null;
   return { detected, tag };
-}
-
-export function buildIterationReport(input: {
-  iteration: number;
-  durationMs: number;
-  filesChanged: number;
-  errors: string[];
-  output: string;
-  exitCode: number;
-  completionPromise?: string;
-}): ExecutionOutcome {
-  const { detected, tag } = checkIterationCompletion(input.output, input.completionPromise);
-  return {
-    attempt: input.iteration,
-    completed: detected,
-    promiseTag: tag,
-    summary: detected ? `completed after ${input.iteration} iteration(s)` : `not yet completed (attempt ${input.iteration})`,
-    ...(input.errors.length > 0 ? { error: input.errors[0] } : {}),
-  };
-}
-
-export function mergeIterationIntoState(
-  state: AgnesRuntimeState,
-  outcome: ExecutionOutcome,
-): {
-  struggleWarnings: string[];
-  completed: boolean;
-} {
-  state.iteration = outcome.attempt;
-  state.struggle = state.struggle ?? freshStruggleMetrics();
-  state.struggle = updateStruggleMetrics(state.struggle, {
-    hadProgress: outcome.completed ? true : false,
-    durationMs: 0,
-    errors: outcome.error ? [outcome.error] : [],
-    promiseTag: outcome.promiseTag,
-  });
-  const struggleWarnings = detectStruggle(state.struggle);
-  return { struggleWarnings, completed: outcome.completed };
 }
 
 export function recordAttempt(
@@ -560,11 +513,11 @@ export function buildExecutionContext(entry: PlanIndexEntry): string {
       lines.push(...warnings.map(w => `  - ${w}`));
     }
     if (s.lastPromiseTag) {
-      lines.push(`Last promise tag seen: <promise>${s.lastPromiseTag}</promise>`);
+      lines.push(`Last canonical completion status seen: ${s.lastPromiseTag}`);
     }
   }
 
-  lines.push('Output {"type":"completion","status":"DONE","summary":"..."} when the task is genuinely complete.');
+  lines.push('Output <!-- <agnes:message>{"type":"completion","id":"<uuid>","timestamp":"<iso>","status":"DONE","summary":"...","schema":"agnes/message-v1"}</agnes:message> --> when the task is genuinely complete.');
 
   return lines.join('\n');
 }
@@ -588,7 +541,7 @@ export interface IntentClassification {
 }
 
 const INTENT_SKILL_MAP: Record<string, string[]> = {
-  implement: ['builder'],
+  implement: ['general'],
   clarify: ['clarify'],
   plan: ['planner', 'prd'],
   review: ['reviewer', 'verifier'],
@@ -829,99 +782,10 @@ export function assertTaskScope(editedFiles: string[], planScope: string[]): { o
   return { ok: true, inScope, outOfScope };
 }
 
-export async function executeWave(
-  planId: string,
-  tasks: TaskDescriptor[],
-  middleware: MiddlewareChain,
-  flow: FlowController,
-): Promise<{ results: ResultMessage[]; nextAction: JumpTarget | null }> {
-  let waveCtx: WaveContext = {
-    planId,
-    waveIndex: 0,
-    tasks,
-    state: {},
-  };
-
-  waveCtx = await middleware.executeBeforeWave(waveCtx);
-
-  const beforeJump = flow.getJump();
-  if (beforeJump) {
-    return { results: [], nextAction: beforeJump };
-  }
-
-  const results: ResultMessage[] = [];
-
-  for (const task of tasks) {
-    const subCtx: SubagentContext = { task, wave: waveCtx };
-
-    if (flow.shouldSkip()) {
-      flow.consumeSignal();
-      continue;
-    }
-    if (flow.isBlocked()) {
-      break;
-    }
-
-    // Wave dispatch: each task is formatted as PENDING. Actual subagent
-    // spawning occurs at the LLM level via prompt-injected wave context.
-    // The middleware chain processes each task; collectResults will
-    // aggregate completed results as they come back.
-    const handler = async (_ctx: SubagentContext): Promise<ResultMessage> => ({
-      type: 'result',
-      id: randomUUID(),
-      timestamp: new Date().toISOString(),
-      taskId: `task-${_ctx.task.skill}`,
-      status: 'NEEDS_CONTEXT' as CompletionStatus,
-      content: JSON.stringify({
-        skill: _ctx.task.skill,
-        goal: _ctx.task.payload || _ctx.task,
-        waveIndex: _ctx.wave.waveIndex,
-        dispatch: 'awaiting-subagent',
-      }),
-      artifact: { skill: _ctx.task.skill, waveIndex: _ctx.wave.waveIndex },
-    });
-
-    try {
-      const result = await middleware.executeSubagent(subCtx, handler);
-      results.push(result);
-    } catch (err) {
-      results.push({
-        type: 'result',
-        id: randomUUID(),
-        timestamp: new Date().toISOString(),
-        taskId: `task-${task.skill}`,
-        status: 'BLOCKED',
-        content: err instanceof Error ? err.message : String(err),
-      });
-    }
-
-    const jump = flow.getJump();
-    if (jump) {
-      return { results, nextAction: jump };
-    }
-  }
-
-  waveCtx = await middleware.executeAfterWave(waveCtx, results);
-
-  const finalJump = flow.getJump();
-  return { results, nextAction: finalJump };
-}
-
 export async function runWaveGates(
   gates: Gate[],
-  flow: FlowController,
 ): Promise<{ results: GateResult[]; evidence: GateEvidence[] }> {
   const results = await runGates(gates);
-  const blockingFailure = results.find((result) => {
-    const gate = gates.find(candidate => candidate.id === result.gateId);
-    return gate?.isBlocking === true && result.status === 'FAIL';
-  });
-
-  if (blockingFailure) {
-    flow.setJump('blocked', `blocking_gate_failed:${blockingFailure.gateId}`, {
-      gateId: blockingFailure.gateId,
-    });
-  }
 
   const evidence = results.map(r => gateResultToEvidence(r));
 

@@ -21433,19 +21433,50 @@ var BaseMessageSchema = exports_external.object({
 }).passthrough();
 var TaskMessageSchema = BaseMessageSchema.extend({
   type: exports_external.literal("task"),
-  goal: exports_external.string().min(1),
-  files: exports_external.array(exports_external.string()),
-  constraints: exports_external.object({
-    no_shared_edits: exports_external.boolean().default(true),
-    read_only: exports_external.boolean().default(false)
+  skill: exports_external.string().min(1).optional(),
+  payload: exports_external.unknown().optional(),
+  goal: exports_external.string().min(1).optional(),
+  files: exports_external.array(exports_external.string()).optional(),
+  constraints: exports_external.union([exports_external.array(exports_external.string()), exports_external.record(exports_external.string(), exports_external.unknown())]).optional(),
+  config: exports_external.object({
+    tags: exports_external.array(exports_external.string()).optional(),
+    metadata: exports_external.record(exports_external.string(), exports_external.unknown()).optional(),
+    maxDurationMs: exports_external.number().optional()
   }).optional()
+}).refine((msg) => Boolean(msg.skill || msg.goal), {
+  message: "Task message requires either skill or goal"
 });
 var ResultMessageSchema = BaseMessageSchema.extend({
   type: exports_external.literal("result"),
+  taskId: exports_external.string().min(1),
   status: CompletionStatusSchema,
-  summary: exports_external.string().min(1),
-  artifact: exports_external.record(exports_external.string(), exports_external.unknown()).optional(),
+  content: exports_external.string().min(1).optional(),
+  summary: exports_external.string().min(1).optional(),
+  artifact: exports_external.unknown().optional(),
   reasoning_content: exports_external.string().optional()
+}).refine((msg) => Boolean(msg.content || msg.summary), {
+  message: "Result message requires either content or summary"
+});
+var ErrorMessageSchema = BaseMessageSchema.extend({
+  type: exports_external.literal("error"),
+  taskId: exports_external.string().min(1),
+  errorType: exports_external.string().min(1),
+  detail: exports_external.string().min(1),
+  stack: exports_external.string().optional()
+});
+var StatusMessageSchema = BaseMessageSchema.extend({
+  type: exports_external.literal("status"),
+  taskId: exports_external.string().min(1),
+  phase: exports_external.string().min(1),
+  progress: exports_external.object({
+    current: exports_external.number(),
+    total: exports_external.number()
+  }).optional()
+});
+var CompletionMessageSchema = BaseMessageSchema.extend({
+  type: exports_external.literal("completion"),
+  status: CompletionStatusSchema,
+  summary: exports_external.string().min(1)
 });
 
 // src/logger.ts
@@ -21454,12 +21485,21 @@ function formatMessage(level, message) {
   return `${PREFIX} [${level}] ${new Date().toISOString()} ${message}
 `;
 }
-function warn(message, err) {
-  let text = message;
-  if (err) {
-    text += err instanceof Error ? ` \u2014 ${err.message}` : ` \u2014 ${String(err)}`;
+function formatError2(err) {
+  if (err === undefined)
+    return "";
+  if (err instanceof Error)
+    return `: ${err.name}: ${err.message}`;
+  if (typeof err === "string")
+    return `: ${err}`;
+  try {
+    return `: ${JSON.stringify(err)}`;
+  } catch {
+    return ": [unserializable error]";
   }
-  process.stderr.write(formatMessage("warn", text));
+}
+function warn(message, err) {
+  process.stderr.write(formatMessage("warn", message + formatError2(err)));
 }
 
 // src/protocol.ts
@@ -21471,40 +21511,6 @@ var VALID_TYPES = new Set([
   "status",
   "completion"
 ]);
-function validCompletionStatus(s) {
-  return CompletionStatusSchema.safeParse(s).success;
-}
-var REQUIRED_FIELDS = {
-  task: { skill: "string" },
-  result: { taskId: "string", status: "string", content: "string" },
-  error: { taskId: "string", errorType: "string", detail: "string" },
-  status: { taskId: "string", phase: "string" },
-  completion: { status: "string", summary: "string" }
-};
-function isValidAgnesMessage(obj) {
-  if (!obj || typeof obj !== "object")
-    return false;
-  const msg = obj;
-  if (typeof msg.type !== "string" || !VALID_TYPES.has(msg.type))
-    return false;
-  if (typeof msg.id !== "string")
-    return false;
-  if (typeof msg.timestamp !== "string")
-    return false;
-  const type = msg.type;
-  const required2 = REQUIRED_FIELDS[type];
-  if (required2) {
-    for (const [field, expectedType] of Object.entries(required2)) {
-      if (typeof msg[field] !== expectedType)
-        return false;
-    }
-    if (type === "completion" || type === "result") {
-      if (!validCompletionStatus(msg.status))
-        return false;
-    }
-  }
-  return true;
-}
 function serializeAgnesMessage(msg) {
   const m = msg;
   const enhanced = {
@@ -21513,12 +21519,8 @@ function serializeAgnesMessage(msg) {
     id: m.id ?? randomUUID(),
     timestamp: m.timestamp ?? new Date().toISOString()
   };
-  if (!isValidAgnesMessage(enhanced)) {
-    process.stderr.write(`[agnes] validateMessage failed for message type "${m.type}": missing required fields
-`);
-  }
   const json2 = JSON.stringify(enhanced);
-  return `<agnes:message>${json2}</agnes:message>`;
+  return `<!-- <agnes:message>${json2}</agnes:message> -->`;
 }
 
 // src/state.ts
@@ -21603,13 +21605,24 @@ function serializePlan(plan) {
 function readPlanArtifact(plansDir, planId) {
   const yamlPath = path.join(plansDir, `${planId}.yaml`);
   if (fs.existsSync(yamlPath)) {
-    const content = fs.readFileSync(yamlPath, "utf8");
-    return { content, plan: PlanSchema.parse($parse(content)) };
+    try {
+      const content = fs.readFileSync(yamlPath, "utf8");
+      return { content, plan: PlanSchema.parse($parse(content)) };
+    } catch (err) {
+      warn(`Failed to read or parse active plan artifact ${planId}.yaml`, err instanceof Error ? err.message : String(err));
+      return null;
+    }
   }
   const mdPath = path.join(plansDir, `${planId}.md`);
   if (fs.existsSync(mdPath)) {
-    return { content: fs.readFileSync(mdPath, "utf8"), plan: parseLegacyMdPlan(mdPath) };
+    try {
+      return { content: fs.readFileSync(mdPath, "utf8"), plan: parseLegacyMdPlan(mdPath) };
+    } catch (err) {
+      warn(`Failed to read or parse active plan artifact ${planId}.md`, err instanceof Error ? err.message : String(err));
+      return null;
+    }
   }
+  warn(`Active plan artifact not found for ${planId}`);
   return null;
 }
 var _cachedProjectRoot = null;
@@ -21736,24 +21749,50 @@ function writePlanIndex(index, projectRoot) {
   if (!root)
     throw new Error("Cannot write plan index: no project root found");
   const dir = path.join(root, AGNES_DIR);
-  fs.mkdirSync(dir, { recursive: true });
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch (err) {
+    warn("Failed to create plan index directory", err);
+    throw err;
+  }
   const filePath = path.join(dir, "index.json");
   const tmp = filePath + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(index, null, 2), "utf8");
-  fs.renameSync(tmp, filePath);
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(index, null, 2), "utf8");
+    fs.renameSync(tmp, filePath);
+  } catch (err) {
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {}
+    warn("Failed to write plan index", err);
+    throw err;
+  }
 }
 function writePlanFile(plan, plansDir) {
   const parsed = PlanSchema.parse(plan);
   const filePath = path.join(plansDir, `${parsed.id}.yaml`);
   const yaml = $stringify(JSON.parse(JSON.stringify(parsed)), null, { indent: 2 });
   const tmpPath = filePath + ".tmp";
-  fs.writeFileSync(tmpPath, yaml, "utf-8");
-  fs.renameSync(tmpPath, filePath);
+  try {
+    fs.writeFileSync(tmpPath, yaml, "utf-8");
+    fs.renameSync(tmpPath, filePath);
+  } catch (err) {
+    try {
+      fs.rmSync(tmpPath, { force: true });
+    } catch {}
+    warn(`Failed to write plan file ${filePath}`, err);
+    throw err;
+  }
   return filePath;
 }
 var FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?/;
 function parseLegacyMdPlan(filePath) {
-  const raw = fs.readFileSync(filePath, "utf-8");
+  let raw;
+  try {
+    raw = fs.readFileSync(filePath, "utf-8");
+  } catch {
+    raw = "";
+  }
   const fm = raw.match(FRONTMATTER_RE);
   let frontmatter = {};
   let body = raw;
@@ -21905,7 +21944,11 @@ function getNextPlanId(projectRoot) {
   if (!root)
     return "plan-001";
   const cache = path.join(root, AGNES_DIR, PLANS_DIR);
-  fs.mkdirSync(cache, { recursive: true });
+  try {
+    fs.mkdirSync(cache, { recursive: true });
+  } catch {
+    return "plan-001";
+  }
   let max = 0;
   try {
     const files = fs.readdirSync(cache);
@@ -22174,7 +22217,12 @@ function getStaticBootstrapContent() {
     return null;
   }
   const version2 = getPackageVersion();
-  const fullContent = fs2.readFileSync(soulPath, "utf8");
+  let fullContent;
+  try {
+    fullContent = fs2.readFileSync(soulPath, "utf8");
+  } catch {
+    return null;
+  }
   const cacheKey = `${version2}:${simpleHash(fullContent)}`;
   if (_bootstrapCache?.key === cacheKey) {
     return _bootstrapCache.content;
@@ -22199,7 +22247,8 @@ You are AGNES.
 - If the user explicitly asks to clear or nuke AGNES's OpenCode cache, remove the installed AGNES cache directory or use: \`${cacheNukeCommand}\`, then restart OpenCode.
 
 === AGNES ENFORCEMENT (HARD RULES) ===
-READ-ONLY tools (safe in main context): read, grep, glob, webfetch, websearch, skill, todowrite, question, lsp
+READ-ONLY tools (technically safe in main context): read, grep, glob, webfetch, websearch, skill, todowrite, question, lsp
+Default behavior: delegate discovery/research to subagents whenever practical.
 MUTATION tools (MUST delegate): edit, write, bash, apply_patch
 To delegate: ask a subagent in natural language via @builder / @executor
 === END AGNES ENFORCEMENT ===
@@ -22343,14 +22392,14 @@ function buildProtocolBlock() {
 function buildToolAccessBlock() {
   return wrapStructured("tool_access", $stringify({
     type: "tool_access",
-    rule: "READ-ONLY tools are safe in main context. MUTATION tools MUST be delegated to subagents.",
+    rule: "READ-ONLY tools are technically safe in main context, but delegation remains the default for discovery and research. MUTATION tools MUST be delegated to subagents.",
     read_only: {
       allowed: ["read", "grep", "glob", "webfetch", "websearch", "skill", "todowrite", "question", "lsp"],
-      description: "Read-only tools: safe to call from main context. No side effects."
+      description: "Read-only tools: technically safe in main context. Prefer subagents for discovery/research so the primary agent stays orchestration-first."
     },
     mutation: {
       allowed: ["edit", "write", "bash", "apply_patch"],
-      description: "MUTATION tools: MUST be delegated to a @builder or @executor subagent via natural language. Never called from main context."
+      description: "MUTATION tools: delegate-only. Hand them to a @builder or @executor subagent via natural language. Never call them from main context."
     }
   }));
 }
@@ -22381,7 +22430,12 @@ var SKILL_SUGGEST_NEXT = {
 function readSkillRegistry() {
   if (!fs2.existsSync(skillsDir))
     return [];
-  const entries = fs2.readdirSync(skillsDir, { withFileTypes: true });
+  let entries;
+  try {
+    entries = fs2.readdirSync(skillsDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
   const skills = [];
   for (const entry of entries) {
     if (!entry.isDirectory())
@@ -22486,11 +22540,43 @@ function inferAgentDesc(name, prompt) {
   return name.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 function inferAgentPermission(name) {
+  if (name === "builder") {
+    return {
+      bash: "deny",
+      task: "allow"
+    };
+  }
+  if (name === "executor") {
+    return {
+      edit: "deny",
+      bash: {
+        "*": "allow",
+        "git commit*": "deny",
+        "git push*": "deny",
+        "rm *": "deny"
+      },
+      task: "deny"
+    };
+  }
+  if (name === "explorer") {
+    return {
+      edit: "deny",
+      bash: "deny",
+      task: "deny"
+    };
+  }
+  if (name === "reviewer") {
+    return {
+      edit: "deny",
+      bash: "deny",
+      task: "deny"
+    };
+  }
   if (name === "search-agent" || name === "docs-lookup") {
     return { edit: "deny", write: "deny", bash: "deny", task: "deny" };
   }
   if (name === "code-reviewer" || name === "planner" || name === "architect" || name.startsWith("plan-") && name.endsWith("-reviewer")) {
-    return { edit: "deny", write: "deny", task: "deny" };
+    return { edit: "deny", write: "deny", bash: "deny", task: "deny" };
   }
   return;
 }
@@ -22585,32 +22671,43 @@ function globalDir(sub) {
 function workspaceDir(worktree, sub) {
   return path3.join(worktree, ".opencode", sub);
 }
-var cachedAgents = null;
-var cachedCommands = null;
-var cachedSkills = null;
+var cachedAgents = new Map;
+var cachedCommands = new Map;
+var cachedSkills = new Map;
+function cacheKey(worktreePath) {
+  return path3.resolve(worktreePath);
+}
 function discoverAgents(worktreePath) {
-  if (cachedAgents)
-    return cachedAgents;
-  cachedAgents = mergeByName([
+  const key = cacheKey(worktreePath);
+  const cached2 = cachedAgents.get(key);
+  if (cached2)
+    return cached2;
+  const discovered = mergeByName([
     scanAgentDir(BUNDLED_AGENTS_DIR, "agnes"),
     scanAgentDir(globalDir(path3.join("prompts", "agents")), "global"),
     scanAgentDir(workspaceDir(worktreePath, path3.join("prompts", "agents")), "workspace")
   ]);
-  return cachedAgents;
+  cachedAgents.set(key, discovered);
+  return discovered;
 }
 function discoverCommands(worktreePath) {
-  if (cachedCommands)
-    return cachedCommands;
-  cachedCommands = mergeByName([
+  const key = cacheKey(worktreePath);
+  const cached2 = cachedCommands.get(key);
+  if (cached2)
+    return cached2;
+  const discovered = mergeByName([
     scanCommandDir(BUNDLED_COMMANDS_DIR, "agnes"),
     scanCommandDir(globalDir("commands"), "global"),
     scanCommandDir(workspaceDir(worktreePath, "commands"), "workspace")
   ]);
-  return cachedCommands;
+  cachedCommands.set(key, discovered);
+  return discovered;
 }
 function discoverSkills(worktreePath) {
-  if (cachedSkills)
-    return cachedSkills;
+  const key = cacheKey(worktreePath);
+  const cached2 = cachedSkills.get(key);
+  if (cached2)
+    return cached2;
   const bundled = scanSkillDir(BUNDLED_SKILLS_DIR);
   const global = scanSkillDir(globalDir("skills"));
   const workspace = scanSkillDir(workspaceDir(worktreePath, "skills"));
@@ -22622,8 +22719,8 @@ function discoverSkills(worktreePath) {
       results.push(dir);
     }
   }
-  cachedSkills = results;
-  return cachedSkills;
+  cachedSkills.set(key, results);
+  return results;
 }
 
 // src/runtime.ts
@@ -22747,10 +22844,10 @@ function buildExecutionContext(entry) {
       lines.push(...warnings.map((w) => `  - ${w}`));
     }
     if (s.lastPromiseTag) {
-      lines.push(`Last promise tag seen: <promise>${s.lastPromiseTag}</promise>`);
+      lines.push(`Last canonical completion status seen: ${s.lastPromiseTag}`);
     }
   }
-  lines.push('Output {"type":"completion","status":"DONE","summary":"..."} when the task is genuinely complete.');
+  lines.push('Output <!-- <agnes:message>{"type":"completion","id":"<uuid>","timestamp":"<iso>","status":"DONE","summary":"...","schema":"agnes/message-v1"}</agnes:message> --> when the task is genuinely complete.');
   return lines.join(`
 `);
 }
@@ -22933,9 +23030,13 @@ function getConfigPath() {
 }
 function writeConfig(configPath, config2) {
   const dir = path5.dirname(configPath);
-  if (!fs5.existsSync(dir))
-    fs5.mkdirSync(dir, { recursive: true });
-  fs5.writeFileSync(configPath, JSON.stringify(config2, null, 2), "utf8");
+  try {
+    if (!fs5.existsSync(dir))
+      fs5.mkdirSync(dir, { recursive: true });
+    fs5.writeFileSync(configPath, JSON.stringify(config2, null, 2), "utf8");
+  } catch (err) {
+    warn(`Failed to write model routing config at ${configPath}`, err);
+  }
 }
 function loadModelRoutingConfig() {
   const configPath = getConfigPath();
@@ -22949,7 +23050,9 @@ function loadModelRoutingConfig() {
         return parsed;
       }
     }
-  } catch {}
+  } catch (err) {
+    warn(`Failed to read model routing config at ${configPath}; regenerating defaults`, err);
+  }
   const defaults = generateDefaultConfig();
   writeConfig(configPath, defaults);
   return defaults;
@@ -22994,7 +23097,9 @@ function buildCompactionContext(input) {
   out.push("# AGNES Context (preserve across compaction)");
   out.push("", `## AGNES v${input.pkg.version}`);
   out.push(`- Package root: ${input.pkg.root}`);
-  out.push("- Primary role: delegate to subagents, synthesize results, verify before claiming");
+  out.push("- Primary role: orchestrate subagents, synthesize results, verify before claiming");
+  out.push("- Read-only tools are technically safe in main context, but default to delegating discovery and research");
+  out.push("- Mutation always delegates to subagents");
   out.push("- Soul: Think Before Coding, Simplicity First, Surgical Changes, Goal-Driven Execution");
   out.push("- Route by task type: planning, review, build-fix, TDD, docs, language-specific");
   out.push("- Answer directly when no tools are needed", "");
@@ -23135,8 +23240,10 @@ function buildCompactionAdvisory(action, reason) {
 // src/plugin.ts
 var __dirname4 = path7.dirname(fileURLToPath4(import.meta.url));
 var skillsDir2 = path7.resolve(__dirname4, "../skills");
+var BUILD_MUTATION_PERMISSION = "edit";
 var _modelName;
 var _plannerMode = "auto";
+var _injectedSessions = new Set;
 function buildStructuredBootstrap(planner) {
   const proseBootstrap = getBootstrapContent(planner);
   if (!proseBootstrap)
@@ -23152,11 +23259,11 @@ function buildStructuredBootstrap(planner) {
     scarcity: true,
     answerDirectly: true,
     namedRoles: {
-      executor: "Runs commands, tests, builds. Returns compact pass/fail + file refs. Never suggests fixes.",
-      explorer: "Codebase research only. Glob \u2192 grep \u2192 selective read. Read-only. Never edits.",
-      planner: "Creates/refreshes plan-NNN.yaml from task requirements using planner skill.",
-      builder: "Implements one sub-task from plan. Delegates bash to executor and review to reviewer.",
-      reviewer: "Reviews diff against sub-task scope using reviewer skill. Writes findings."
+      executor: "Runs one command/test/build chunk. Returns compact pass/fail, key output, and file refs. Never suggests fixes.",
+      explorer: "Owns one discovery chunk. Uses glob \u2192 grep \u2192 selective read. Read-only. Reports evidence only.",
+      planner: "Turns a goal into small, verifiable chunks with file scope, dependencies, and checkpoints.",
+      builder: "Implements one scoped chunk at a time. Keeps edits minimal. Delegates commands to executor and sends diffs to reviewer.",
+      reviewer: "Reviews one diff chunk against scope, regressions, and verification. Returns findings with file refs."
     }
   };
   let index = null;
@@ -23220,7 +23327,8 @@ var AgnesPlugin = async ({ client, directory, worktree }) => {
       ])];
       configObj.skills = { ...configObj.skills || {}, paths: allPaths };
       const agentCfgObj = configObj.agent || {};
-      for (const agent of discoverAgents(worktreePath)) {
+      const discoveredAgents = discoverAgents(worktreePath);
+      for (const agent of discoveredAgents) {
         if (!agentCfgObj[agent.name]) {
           const agentCfg = { description: agent.desc, mode: "subagent", prompt: agent.prompt };
           if (agent.permission)
@@ -23228,6 +23336,16 @@ var AgnesPlugin = async ({ client, directory, worktree }) => {
           agentCfgObj[agent.name] = agentCfg;
         }
       }
+      const buildAgentCfg = agentCfgObj.build ?? {};
+      const buildPermission = buildAgentCfg.permission ?? {};
+      agentCfgObj.build = {
+        ...buildAgentCfg,
+        permission: {
+          ...buildPermission,
+          [BUILD_MUTATION_PERMISSION]: "deny",
+          bash: "deny"
+        }
+      };
       configObj.agent = agentCfgObj;
       const cmdCfgObj = configObj.command || {};
       for (const cmd of discoverCommands(worktreePath)) {
@@ -23263,14 +23381,12 @@ $ARGUMENTS`,
       }
     },
     "tool.definition": async (input, output) => {
-      if (input.toolID === "edit" || input.toolID === "write" || input.toolID === "apply_patch") {
-        output.description = `!!! AGNES ENFORCEMENT !!! MUTATION tool \u2014 must delegate to @builder. VIOLATION = BUG. | ${output.description}`;
+      if (input.toolID === "edit" || input.toolID === "write" || input.toolID === "apply_patch" || input.toolID === "bash") {
+        output.description = `[AGNES ENFORCEMENT] Delegate-only mutation tool \u2014 use via @builder / @executor, not from the primary agent. | ${output.description}`;
+        return;
       }
-      if (input.toolID === "glob" || input.toolID === "grep") {
-        output.description = `[AGNES ENFORCEMENT] Read-only tool \u2014 safe in main context. Prefer @explorer for complex searches. | ${output.description}`;
-      }
-      if (input.toolID === "bash") {
-        output.description = `!!! AGNES ENFORCEMENT !!! MUTATION tool \u2014 must delegate to @executor. VIOLATION = BUG. | ${output.description}`;
+      if (input.toolID === "read" || input.toolID === "glob" || input.toolID === "grep" || input.toolID === "webfetch" || input.toolID === "websearch" || input.toolID === "skill" || input.toolID === "todowrite" || input.toolID === "question" || input.toolID === "lsp") {
+        output.description = `[AGNES ENFORCEMENT] Read-only tool \u2014 technically safe in main context, but delegation is preferred for discovery/research. Prefer @explorer when practical. | ${output.description}`;
       }
     },
     "file.edited": async (event) => {
@@ -23294,6 +23410,10 @@ $ARGUMENTS`,
         return;
       if (firstUser.parts.some((p) => p.type === "text" && typeof p.text === "string" && p.text.includes("EXTREMELY_IMPORTANT")))
         return;
+      const sessionID = firstUser.parts[0].sessionID ?? "";
+      if (_injectedSessions.has(sessionID))
+        return;
+      _injectedSessions.add(sessionID);
       let planGate = "";
       let execContext = "";
       let plannerState;
@@ -23371,11 +23491,11 @@ ${execContext}
 
 ## Completion Protocol
 When all tasks are complete, place this HTML comment at the very end of your response (invisible to users, parsed by AGNES):
-<!-- ${serializeAgnesMessage({ type: "completion", id: randomUUID2(), timestamp: new Date().toISOString(), status: "DONE", summary: "all tasks completed successfully" })} -->
+${serializeAgnesMessage({ type: "completion", id: randomUUID2(), timestamp: new Date().toISOString(), status: "DONE", summary: "all tasks completed successfully" })}
 For partial results:
-<!-- ${serializeAgnesMessage({ type: "result", taskId: "task-000", id: randomUUID2(), timestamp: new Date().toISOString(), status: "DONE", content: "...", artifact: {} })} -->
+${serializeAgnesMessage({ type: "result", taskId: "task-000", id: randomUUID2(), timestamp: new Date().toISOString(), status: "DONE", content: "...", artifact: {} })}
 `;
-      const { sessionID, messageID } = firstUser.parts[0];
+      const messageID = firstUser.parts[0].messageID ?? "";
       firstUser.parts.unshift({
         id: randomUUID2(),
         sessionID,

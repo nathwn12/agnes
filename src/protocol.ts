@@ -1,5 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { TaskMessageSchema, ResultMessageSchema, BaseMessageSchema, CompletionStatusSchema } from './schema.js';
+import {
+  TaskMessageSchema,
+  ResultMessageSchema,
+  ErrorMessageSchema,
+  StatusMessageSchema,
+  CompletionMessageSchema,
+  CompletionStatusSchema,
+} from './schema.js';
 
 type MessageType = 'task' | 'result' | 'error' | 'status' | 'completion';
 // Must stay in sync with CompletionStatusSchema in schema.ts
@@ -13,8 +20,11 @@ interface AgnesMessage {
 
 interface TaskMessage extends AgnesMessage {
   type: 'task';
-  skill: string;
-  payload: unknown;
+  skill?: string;
+  payload?: unknown;
+  goal?: string;
+  files?: string[];
+  constraints?: string[] | Record<string, unknown>;
   config?: {
     tags?: string[];
     metadata?: Record<string, unknown>;
@@ -24,9 +34,10 @@ interface TaskMessage extends AgnesMessage {
 
 export interface ResultMessage extends AgnesMessage {
   type: 'result';
-  taskId: string;
+  taskId?: string;
   status: CompletionStatus;
-  content: string;
+  content?: string;
+  summary?: string;
   artifact?: unknown;
   metrics?: {
     durationMs: number;
@@ -127,17 +138,15 @@ function validCompletionStatus(s: unknown): s is CompletionStatus {
 }
 
 const REQUIRED_FIELDS: Record<string, Record<string, string>> = {
-  task: { skill: 'string' },
-  result: { taskId: 'string', status: 'string', content: 'string' },
+  task: {},
+  result: { taskId: 'string', status: 'string' },
   error: { taskId: 'string', errorType: 'string', detail: 'string' },
   status: { taskId: 'string', phase: 'string' },
   completion: { status: 'string', summary: 'string' },
 };
 
 export function parseAgnesMessage(text: string): AnyAgnesMessage | null {
-  // Strip HTML comments — <agnes:message> wrappers should be invisible to users
-  const noComments = text.replace(/<!--[\s\S]*?-->/g, '');
-  const cleaned = stripCodeFences(noComments);
+  const cleaned = stripCodeFences(text);
   const jsonCandidate = findJsonInText(cleaned);
   if (!jsonCandidate) return null;
 
@@ -156,7 +165,10 @@ export function parseAgnesMessage(text: string): AnyAgnesMessage | null {
     try {
       if (obj.type === 'task') return TaskMessageSchema.parse(obj) as unknown as AnyAgnesMessage;
       if (obj.type === 'result') return ResultMessageSchema.parse(obj) as unknown as AnyAgnesMessage;
-      return BaseMessageSchema.parse(obj) as unknown as AnyAgnesMessage;
+      if (obj.type === 'error') return ErrorMessageSchema.parse(obj) as unknown as AnyAgnesMessage;
+      if (obj.type === 'status') return StatusMessageSchema.parse(obj) as unknown as AnyAgnesMessage;
+      if (obj.type === 'completion') return CompletionMessageSchema.parse(obj) as unknown as AnyAgnesMessage;
+      return null;
     } catch {
       return null;
     }
@@ -172,6 +184,12 @@ export function parseAgnesMessage(text: string): AnyAgnesMessage | null {
   if (required) {
     for (const [field, expectedType] of Object.entries(required)) {
       if (typeof obj[field] !== expectedType) return null;
+    }
+    if (type === 'task' && typeof obj.skill !== 'string' && typeof obj.goal !== 'string') {
+      return null;
+    }
+    if (type === 'result' && typeof obj.content !== 'string' && typeof obj.summary !== 'string') {
+      return null;
     }
     if (type === 'completion' || type === 'result') {
       if (!validCompletionStatus(obj.status)) return null;
@@ -197,6 +215,12 @@ export function isValidAgnesMessage(obj: unknown): obj is AnyAgnesMessage {
     for (const [field, expectedType] of Object.entries(required)) {
       if (typeof msg[field] !== expectedType) return false;
     }
+    if (type === 'task' && typeof msg.skill !== 'string' && typeof msg.goal !== 'string') {
+      return false;
+    }
+    if (type === 'result' && typeof msg.content !== 'string' && typeof msg.summary !== 'string') {
+      return false;
+    }
     if (type === 'completion' || type === 'result') {
       if (!validCompletionStatus(msg.status)) return false;
     }
@@ -213,11 +237,8 @@ export function serializeAgnesMessage(msg: object): string {
     id: m.id ?? randomUUID(),
     timestamp: m.timestamp ?? new Date().toISOString(),
   };
-  if (!isValidAgnesMessage(enhanced)) {
-    process.stderr.write(`[agnes] validateMessage failed for message type "${m.type}": missing required fields\n`);
-  }
   const json = JSON.stringify(enhanced);
-  return `<agnes:message>${json}</agnes:message>`;
+  return `<!-- <agnes:message>${json}</agnes:message> -->`;
 }
 
 export function generateMessageId(): string {

@@ -3,29 +3,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-import { getBootstrapContent, buildRuntimeBlock, buildOrchestratorBlock, buildNamedRolesBlock, buildToolAccessBlock, buildPlanStateBlock, buildShellBlock, buildProtocolBlock, buildExecutionContextBlock, buildSkillRegistryBlock, buildSkillRegistryText, buildBootstrap } from './bootstrap.js';
-import type { OrchestratorRules } from './bootstrap.js';
+import { getBootstrapContent, buildRuntimeBlock, buildPlanStateBlock, buildShellBlock, buildExecutionContextBlock, buildBootstrap } from './bootstrap.js';
 import type { PlanIndex } from './state.js';
 
 describe('structured block builders', () => {
   const pkg = { version: '0.10.2', root: '/test/root', skillsDir: '/test/skills', cacheRoot: '/test/cache' };
-  const rules: OrchestratorRules = {
-    delegate: true,
-    parallelize: true,
-    onePercent: true,
-    verify: true,
-    noSharedEdits: true,
-    freshSubagents: true,
-    scarcity: true,
-    answerDirectly: true,
-    namedRoles: {
-      executor: 'Runs commands',
-      explorer: 'Codebase research only',
-      planner: 'Creates plans',
-      builder: 'Implements tasks',
-      reviewer: 'Reviews diffs',
-    },
-  };
   const shell = { name: 'powershell', version: '7.4', antiPatterns: ['Get-Content', 'Set-Content'], preferredSyntax: 'cmdlets' };
   const exec = { attempt: 2, struggleDetected: true, lastPromiseTag: 'DONE' };
 
@@ -41,18 +23,6 @@ describe('structured block builders', () => {
     expect(block).toContain('package_root:');
     expect(block).toContain('skills_dir:');
     expect(block).toContain('cache_root:');
-  });
-
-  test('buildOrchestratorBlock produces correct type tag and rules', () => {
-    const block = buildOrchestratorBlock(rules);
-    expect(block).toContain('<structured type="orchestrator">');
-    expect(block).toContain('delegate_or_die: true');
-    expect(block).toContain('parallelize_by_default: true');
-    expect(block).toContain('one_percent_rule: true');
-    expect(block).toContain('verify_before_claiming: true');
-    expect(block).toContain('no_shared_file_edits: true');
-    expect(block).toContain('fresh_subagents_per_wave: true');
-    expect(block).toContain('scarcity_principle: true');
   });
 
   test('buildPlanStateBlock says no active plan when index empty', () => {
@@ -102,21 +72,6 @@ describe('structured block builders', () => {
     expect(block).toContain('<structured type="shell">');
   });
 
-  test('buildProtocolBlock includes marker_prefix and types array', () => {
-    const block = buildProtocolBlock();
-    expect(block).toContain('marker_prefix:');
-    expect(block).toContain('agnes:message');
-    expect(block).toContain('types:');
-    expect(block).toContain('task');
-    expect(block).toContain('result');
-    expect(block).toContain('completion');
-  });
-
-  test('buildProtocolBlock produces correct type tag', () => {
-    const block = buildProtocolBlock();
-    expect(block).toContain('<structured type="protocol">');
-  });
-
   test('buildExecutionContextBlock includes attempt info', () => {
     const block = buildExecutionContextBlock(exec);
     expect(block).toContain('attempt: 2');
@@ -135,11 +90,10 @@ describe('structured block builders', () => {
 });
 
 describe('getBootstrapContent', () => {
-  test('returns content including the orchestrator skill instructions', () => {
+  test('returns content including AGNES identity', () => {
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
     expect(content!).toContain('AGNES');
-    expect(content!).toContain('Orchestrator');
   });
 
   test('includes the version string from package.json', () => {
@@ -161,6 +115,14 @@ describe('getBootstrapContent', () => {
     const content = getBootstrapContent({ mode: 'builtin', route: 'builtin', reason: 'eligible lightweight boundary' });
     expect(content).not.toBeNull();
     expect(content!).toContain('Planner: route:builtin, mode:builtin, reason:eligible lightweight boundary');
+  });
+
+  test('includes the new simplified enforcement rules', () => {
+    const content = getBootstrapContent();
+    expect(content).not.toBeNull();
+    expect(content!).toContain('READ-ONLY tools (direct use):');
+    expect(content!).toContain('MUTATION tools (delegate):');
+    expect(content!).toContain('Complex multi-file research: delegate to @explore');
   });
 
   test('returns appropriate content even without a plan', () => {
@@ -187,163 +149,28 @@ describe('getBootstrapContent', () => {
   });
 });
 
-describe('buildSkillRegistryBlock', () => {
-  test('produces correct structured type tag', () => {
-    const block = buildSkillRegistryBlock();
-    expect(block).toContain('<structured type="skill_registry">');
-    expect(block).toContain('</structured>');
-  });
-
-  test('contains known skills (planner, tdd, builder, verifier, debugger)', () => {
-    const block = buildSkillRegistryBlock();
-    expect(block).toContain('planner');
-    expect(block).toContain('tdd');
-    expect(block).toContain('builder');
-    expect(block).toContain('verifier');
-    expect(block).toContain('debugger');
-  });
-
-  test('includes suggest_next with known downstream skills', () => {
-    const block = buildSkillRegistryBlock();
-    expect(block).toContain('multi-reviewer');
-    expect(block).toContain('verifier');
-  });
-
-  test('yields valid YAML structure inside the tag', () => {
-    const block = buildSkillRegistryBlock();
-    const match = block.match(/<structured type="skill_registry">\n([\s\S]*?)\n<\/structured>/);
-    expect(match).not.toBeNull();
-    expect(match![1]).toContain('type: skill_registry');
-    expect(match![1]).toContain('skills:');
-  });
-});
-
-describe('buildToolAccessBlock', () => {
-  test('produces correct structured type tag', () => {
-    const block = buildToolAccessBlock();
-    expect(block).toContain('<structured type="tool_access">');
-    expect(block).toContain('</structured>');
-  });
-
-  test('partitions subagent-only tools', () => {
-    const block = buildToolAccessBlock();
-    expect(block).toContain('edit');
-    expect(block).toContain('write');
-    expect(block).toContain('glob');
-    expect(block).toContain('grep');
-    expect(block).toContain('bash');
-  });
-
-  test('lists main-context allowed tools', () => {
-    const block = buildToolAccessBlock();
-    expect(block).toContain('todowrite');
-    expect(block).toContain('skill');
-  });
-
-  test('includes shared tools (read, webfetch)', () => {
-    const block = buildToolAccessBlock();
-    expect(block).toContain('read');
-    expect(block).toContain('webfetch');
-  });
-
-  test('yields valid YAML inside the tag', () => {
-    const block = buildToolAccessBlock();
-    const match = block.match(/<structured type="tool_access">\n([\s\S]*?)\n<\/structured>/);
-    expect(match).not.toBeNull();
-    expect(match![1]).toContain('type: tool_access');
-    expect(match![1]).toContain('mutation');
-    expect(match![1]).toContain('read_only');
-  });
-});
-
-describe('buildNamedRolesBlock', () => {
-  const rules: OrchestratorRules = {
-    delegate: true,
-    parallelize: true,
-    onePercent: true,
-    verify: true,
-    noSharedEdits: true,
-    freshSubagents: true,
-    scarcity: true,
-    answerDirectly: true,
-    namedRoles: {
-      executor: 'Runs commands',
-      explorer: 'Codebase research only',
-      planner: 'Creates plans',
-      builder: 'Implements tasks',
-      reviewer: 'Reviews diffs',
-    },
-  };
-
-  test('produces correct structured type tag', () => {
-    const block = buildNamedRolesBlock(rules);
-    expect(block).toContain('<structured type="named_roles">');
-    expect(block).toContain('</structured>');
-  });
-
-  test('includes all named roles', () => {
-    const block = buildNamedRolesBlock(rules);
-    expect(block).toContain('Runs commands');
-    expect(block).toContain('Codebase research only');
-    expect(block).toContain('Creates plans');
-    expect(block).toContain('Implements tasks');
-    expect(block).toContain('Reviews diffs');
-  });
-
-  test('includes answer_directly flag', () => {
-    const block = buildNamedRolesBlock(rules);
-    expect(block).toContain('answer_directly: true');
-  });
-
-  test('yields valid YAML structure inside the tag', () => {
-    const block = buildNamedRolesBlock(rules);
-    const match = block.match(/<structured type="named_roles">\n([\s\S]*?)\n<\/structured>/);
-    expect(match).not.toBeNull();
-    expect(match![1]).toContain('type: named_roles');
-    expect(match![1]).toContain('roles:');
-  });
-});
-
 describe('buildBootstrap', () => {
   const pkg = { version: '0.10.2', root: '/test/root', skillsDir: '/test/skills', cacheRoot: '/test/cache' };
-  const rules: OrchestratorRules = {
-    delegate: true,
-    parallelize: true,
-    onePercent: true,
-    verify: true,
-    noSharedEdits: true,
-    freshSubagents: true,
-    scarcity: true,
-    answerDirectly: true,
-    namedRoles: {
-      executor: 'Runs commands',
-      explorer: 'Codebase research only',
-      planner: 'Creates plans',
-      builder: 'Implements tasks',
-      reviewer: 'Reviews diffs',
-    },
-  };
   const shell = { name: 'powershell', version: '7.4', antiPatterns: ['Get-Content'], preferredSyntax: 'cmdlets' };
   const exec = { attempt: 1, struggleDetected: false, lastPromiseTag: null };
 
-  test('assembles all structured blocks in order', () => {
-    const result = buildBootstrap({ pkg, rules, index: null, shell, exec });
+  test('assembles structured blocks without orchestration layers', () => {
+    const result = buildBootstrap({ pkg, index: null, shell, exec });
     const blockTypes = [...result.matchAll(/type="(\w+)"/g)].map(m => m[1]);
-    expect(blockTypes.length).toBeGreaterThanOrEqual(8);
+    expect(blockTypes.length).toBeGreaterThanOrEqual(3);
     expect(blockTypes[0]).toBe('runtime');
-    expect(blockTypes[1]).toBe('orchestrator');
-    expect(blockTypes[2]).toBe('named_roles');
-    expect(blockTypes[3]).toBe('tool_access');
-    expect(blockTypes[4]).toBe('shell');
-    expect(blockTypes[5]).toBe('execution');
-    expect(blockTypes[6]).toBe('protocol');
+    expect(blockTypes).toContain('shell');
+    expect(blockTypes).toContain('execution');
   });
 
-  test('includes delegator rules in the output', () => {
-    const result = buildBootstrap({ pkg, rules, index: null, shell, exec });
-    expect(result).toContain('delegate_or_die: true');
-    expect(result).toContain('parallelize_by_default: true');
-    expect(result).toContain('verify_before_claiming: true');
+  test('does not include removed blocks', () => {
+    const result = buildBootstrap({ pkg, index: null, shell, exec });
+    expect(result).not.toContain('orchestrator');
+    expect(result).not.toContain('delegate_or_die');
+    expect(result).not.toContain('named_roles');
+    expect(result).not.toContain('tool_access');
+    expect(result).not.toContain('protocol');
+    expect(result).not.toContain('skill_registry');
   });
 
   test('includes plan_state block when index is provided', () => {
@@ -358,7 +185,7 @@ describe('buildBootstrap', () => {
         activePlanId: null,
         plans: [],
       };
-      const result = buildBootstrap({ pkg, rules, index, shell, exec });
+      const result = buildBootstrap({ pkg, index, shell, exec });
       expect(result).toContain('type="plan_state"');
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -366,33 +193,7 @@ describe('buildBootstrap', () => {
   });
 
   test('excludes plan_state block when no index and no planner', () => {
-    const result = buildBootstrap({ pkg, rules, index: null, shell, exec });
+    const result = buildBootstrap({ pkg, index: null, shell, exec });
     expect(result).not.toContain('type="plan_state"');
-  });
-});
-
-describe('buildSkillRegistryText', () => {
-  test('returns markdown with skill names', () => {
-    const text = buildSkillRegistryText();
-    expect(text).toContain('planner');
-    expect(text).toContain('tdd');
-    expect(text).toContain('builder');
-  });
-
-  test('includes suggest_next arrows for skills with downstream suggestions', () => {
-    const text = buildSkillRegistryText();
-    expect(text).toContain('→ next:');
-    expect(text).toContain('multi-reviewer');
-  });
-
-  test('does NOT contain structured tags', () => {
-    const text = buildSkillRegistryText();
-    expect(text).not.toContain('<structured');
-    expect(text).not.toContain('</structured>');
-  });
-
-  test('starts with a skill registry header', () => {
-    const text = buildSkillRegistryText();
-    expect(text).toMatch(/^### Skill Registry/);
   });
 });

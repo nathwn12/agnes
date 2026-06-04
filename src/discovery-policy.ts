@@ -27,13 +27,56 @@ export function inferAgentDesc(name: string, prompt: string): string {
   return name.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function inferAgentPermission(name: string): Record<string, string> | undefined {
+export type AgentPermissionValue = string | Record<string, string>;
+
+export function inferAgentPermission(name: string): Record<string, AgentPermissionValue> | undefined {
+  if (name === "executor") {
+    return {
+      edit: "deny",
+      bash: {
+        "*": "allow",
+        "git commit*": "deny",
+        "git push*": "deny",
+        "rm *": "deny",
+      },
+      task: "deny",
+    };
+  }
+  if (name === "explorer") {
+    return {
+      edit: "deny",
+      bash: "deny",
+      task: "deny",
+    };
+  }
+  if (name === "reviewer") {
+    return {
+      edit: "deny",
+      bash: "deny",
+      task: "deny",
+    };
+  }
   if (name === "search-agent" || name === "docs-lookup") {
     return { edit: "deny", write: "deny", bash: "deny", task: "deny" };
   }
   if (name === "code-reviewer" || name === "planner" || name === "architect" ||
-      (name.startsWith("plan-") && name.endsWith("-reviewer"))) {
-    return { edit: "deny", write: "deny", task: "deny" };
+       (name.startsWith("plan-") && name.endsWith("-reviewer"))) {
+    return { edit: "deny", write: "deny", bash: "deny", task: "deny" };
+  }
+  if (name === "security-reviewer" || name === "database-reviewer") {
+    return { edit: "deny", write: "deny", bash: "deny", task: "deny" };
+  }
+  if (name === "tdd-guide" || name === "loop-operator" || name === "doc-updater") {
+    return { edit: "deny", write: "deny", bash: "deny", task: "deny" };
+  }
+  if (name === "build-error-resolver") {
+    return { bash: { "*": "allow" }, edit: "deny", write: "deny", task: "deny" };
+  }
+  if (name === "e2e-runner") {
+    return { bash: { "*": "allow" }, edit: "deny", write: "deny", task: "deny" };
+  }
+  if (name === "refactor-cleaner") {
+    return { bash: { "*": "allow" }, edit: "allow", write: "allow", task: "deny" };
   }
   return undefined;
 }

@@ -44,7 +44,7 @@ describe('validateMessage', () => {
       type: 'task',
       id: 't1',
       timestamp: validTimestamp(),
-      skill: 'builder',
+      skill: 'general',
       payload: { command: 'test' },
     };
     const result = validateMessage(msg);

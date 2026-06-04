@@ -63,7 +63,9 @@ export function buildCompactionContext(input: {
   out.push("# AGNES Context (preserve across compaction)");
   out.push("", `## AGNES v${input.pkg.version}`);
   out.push(`- Package root: ${input.pkg.root}`);
-  out.push("- Primary role: delegate to subagents, synthesize results, verify before claiming");
+  out.push("- Primary role: orchestrate subagents, synthesize results, verify before claiming");
+  out.push("- Read-only tools are technically safe in main context, but default to delegating discovery and research");
+  out.push("- Mutation always delegates to subagents");
   out.push("- Soul: Think Before Coding, Simplicity First, Surgical Changes, Goal-Driven Execution");
   out.push("- Route by task type: planning, review, build-fix, TDD, docs, language-specific");
   out.push("- Answer directly when no tools are needed", "");

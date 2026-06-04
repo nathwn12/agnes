@@ -7,9 +7,8 @@ import {
   buildBootstrap,
   getBootstrapPackageInfo,
 } from './bootstrap.js';
-import type { OrchestratorRules } from './bootstrap.js';
+
 import {
-  discoverAgents,
   discoverCommands,
   discoverSkills,
 } from './discovery.js';
@@ -22,13 +21,7 @@ import {
 import type { PlannerRoutingContext } from './state.js';
 import { getPlanGate, buildExecutionContext, classifyPlannerRoute } from './runtime.js';
 import { serializeAgnesMessage } from './protocol.js';
-import {
-  applyModelRouting,
-  loadModelRoutingConfig,
-  getConfigPath,
-  writeConfig,
-  populateAgentList,
-} from './model-routing.js';
+
 import {
   buildCompactionContext,
   detectProject,
@@ -48,29 +41,12 @@ const skillsDir = path.resolve(__dirname, '../skills');
 
 let _modelName: string | undefined;
 let _plannerMode: 'auto' | 'builtin' | 'full' = 'auto';
-
+const _injectedSessions = new Set<string>();
 function buildStructuredBootstrap(planner?: PlannerRoutingContext): string {
   const proseBootstrap = getBootstrapContent(planner);
   if (!proseBootstrap) return '';
 
   const pkg = getBootstrapPackageInfo();
-  const rules: OrchestratorRules = {
-    delegate: true,
-    parallelize: true,
-    onePercent: true,
-    verify: true,
-    noSharedEdits: true,
-    freshSubagents: true,
-    scarcity: true,
-    answerDirectly: true,
-    namedRoles: {
-      executor: "Runs commands, tests, builds. Returns compact pass/fail + file refs. Never suggests fixes.",
-      explorer: "Codebase research only. Glob → grep → selective read. Read-only. Never edits.",
-      planner: "Creates/refreshes plan-NNN.yaml from task requirements using planner skill.",
-      builder: "Implements one sub-task from plan. Delegates bash to executor and review to reviewer.",
-      reviewer: "Reviews diff against sub-task scope using reviewer skill. Writes findings.",
-    },
-  };
 
   let index: PlanIndex | null = null;
   try {
@@ -86,7 +62,6 @@ function buildStructuredBootstrap(planner?: PlannerRoutingContext): string {
 
   const structuredBlocks = buildBootstrap({
     pkg,
-    rules,
     index,
     planner,
     shell: {
@@ -138,15 +113,7 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
       ])];
       configObj.skills = { ...(configObj.skills as Record<string, unknown> || {}), paths: allPaths };
 
-      const agentCfgObj = (configObj.agent || {}) as Record<string, unknown>;
-      for (const agent of discoverAgents(worktreePath)) {
-        if (!agentCfgObj[agent.name]) {
-          const agentCfg: Record<string, unknown> = { description: agent.desc, mode: "subagent", prompt: agent.prompt };
-          if (agent.permission) agentCfg.permission = agent.permission;
-          agentCfgObj[agent.name] = agentCfg;
-        }
-      }
-      configObj.agent = agentCfgObj;
+      configObj.agent = (configObj.agent || {}) as Record<string, unknown>;
 
       const cmdCfgObj = (configObj.command || {}) as Record<string, unknown>;
       for (const cmd of discoverCommands(worktreePath)) {
@@ -160,12 +127,7 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
         }
       }
       configObj.command = cmdCfgObj;
-      // ── Model Routing (Win #3) ─────────────────────────────────────
-      const routing = loadModelRoutingConfig();
-      const agentNames = Object.keys((configObj.agent || {}) as Record<string, unknown>);
-      const populated = populateAgentList(routing, agentNames);
-      writeConfig(getConfigPath(), populated);
-      applyModelRouting(configObj, populated);
+
     },
 
     "session.created": async (_event: any) => {
@@ -180,14 +142,13 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
     },
 
     "tool.definition": async (input, output) => {
-      if (input.toolID === 'edit' || input.toolID === 'write' || input.toolID === 'apply_patch') {
-        output.description = `!!! AGNES ENFORCEMENT !!! MUTATION tool — must delegate to @builder. VIOLATION = BUG. | ${output.description}`;
+      if (input.toolID === 'edit' || input.toolID === 'write' || input.toolID === 'apply_patch' || input.toolID === 'bash') {
+        output.description = `[AGNES ENFORCEMENT] Delegate-only mutation tool — use via @general, not from the primary agent. | ${output.description}`;
+        return;
       }
-      if (input.toolID === 'glob' || input.toolID === 'grep') {
-        output.description = `[AGNES ENFORCEMENT] Read-only tool — safe in main context. Prefer @explorer for complex searches. | ${output.description}`;
-      }
-      if (input.toolID === 'bash') {
-        output.description = `!!! AGNES ENFORCEMENT !!! MUTATION tool — must delegate to @executor. VIOLATION = BUG. | ${output.description}`;
+
+      if (input.toolID === 'read' || input.toolID === 'glob' || input.toolID === 'grep' || input.toolID === 'webfetch' || input.toolID === 'websearch' || input.toolID === 'skill' || input.toolID === 'todowrite' || input.toolID === 'question' || input.toolID === 'lsp') {
+        output.description = `[AGNES ENFORCEMENT] Read-only tool — use directly for quick lookups; delegate complex searches to @explore. | ${output.description}`;
       }
     },
 
@@ -214,6 +175,10 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
       if (!firstUser?.parts?.length) return;
 
       if (firstUser.parts.some((p) => p.type === 'text' && typeof p.text === 'string' && p.text.includes('EXTREMELY_IMPORTANT'))) return;
+
+      const sessionID = (firstUser.parts[0] as { sessionID?: string }).sessionID ?? '';
+      if (_injectedSessions.has(sessionID)) return;
+      _injectedSessions.add(sessionID);
 
       let planGate = '';
       let execContext = '';
@@ -287,10 +252,10 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
         fullBootstrap += '\n\n' + compactionAdvisory + '\n';
       }
 
-      fullBootstrap += `\n\n## Completion Protocol\nWhen all tasks are complete, place this HTML comment at the very end of your response (invisible to users, parsed by AGNES):\n<!-- ${serializeAgnesMessage({type:'completion',id:randomUUID(),timestamp:new Date().toISOString(),status:'DONE',summary:'all tasks completed successfully'})} -->\nFor partial results:\n<!-- ${serializeAgnesMessage({type:'result',taskId:'task-000',id:randomUUID(),timestamp:new Date().toISOString(),status:'DONE',content:'...',artifact:{}})} -->\n`;
+      fullBootstrap += `\n\n## Completion Protocol\nWhen all tasks are complete, place this HTML comment at the very end of your response (invisible to users, parsed by AGNES):\n${serializeAgnesMessage({type:'completion',id:randomUUID(),timestamp:new Date().toISOString(),status:'DONE',summary:'all tasks completed successfully'})}\nFor partial results:\n${serializeAgnesMessage({type:'result',taskId:'task-000',id:randomUUID(),timestamp:new Date().toISOString(),status:'DONE',content:'...',artifact:{}})}\n`;
 
 
-      const { sessionID, messageID } = firstUser.parts[0];
+      const messageID = (firstUser.parts[0] as { messageID?: string }).messageID ?? '';
       firstUser.parts.unshift({
         id: randomUUID(),
         sessionID,
