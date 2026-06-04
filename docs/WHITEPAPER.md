@@ -151,16 +151,28 @@ bun test              # 473 tests across 15 suites
 
 ### Clear cached installation
 
+> **Root cause**: The cache folder has deep `node_modules` trees. The `+` / `@` / `#` chars in the path and Windows MAX_PATH (260-char limit) cause most one-liners to silently fail.
+
+#### PowerShell (reliable)
+> Uses `-LiteralPath` (required by the `\\?\` long-path prefix — Microsoft docs state `\\?\` only works with `-LiteralPath`), and drops the `*` wildcard since the directory name is exact.
 ```powershell
-Remove-Item -LiteralPath "$env:USERPROFILE\.cache\opencode\packages\agnes@git+https_*" -Recurse -Force
+Remove-Item -LiteralPath "\\?\$env:USERPROFILE\.cache\opencode\packages\agnes@git+https_" -Recurse -Force
 ```
 
+#### cmd.exe (run from actual cmd, not PowerShell)
+> `rmdir` is a cmd builtin; PowerShell's `rmdir` is an alias for `Remove-Item` and behaves differently. Only actual `cmd.exe` handles `\\?\` correctly here.
 ```cmd
-rmdir /s /q "%USERPROFILE%\.cache\opencode\packages\agnes@git+https_"
+rmdir /s /q "\\?\%USERPROFILE%\.cache\opencode\packages\agnes@git+https_"
 ```
 
+#### Bash (Linux / macOS)
 ```bash
 rm -rf "$HOME/.cache/opencode/packages"/agnes@git+https_*
 ```
+
+> **Windows (Git Bash / WSL)**: Even bash on Windows hits MAX_PATH. Use the PowerShell command from any shell:
+> ```powershell
+> powershell -Command "Remove-Item -LiteralPath \"\\?\$env:USERPROFILE\.cache\opencode\packages\agnes@git+https_\" -Recurse -Force"
+> ```
 
 Then restart OpenCode.

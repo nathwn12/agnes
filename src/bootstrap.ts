@@ -79,7 +79,7 @@ export function getStaticBootstrapContent(): string | null {
   if (_bootstrapCache?.key === cacheKey) {
     return _bootstrapCache.content;
   }
-  const cacheNukeCommand = `rm -rf "$HOME/.cache/opencode/packages"/agnes@git+https_*`;
+  const cacheNukeCommand = `powershell -Command "Remove-Item -LiteralPath \\"\\\\?\\$env:USERPROFILE\\.cache\\opencode\\packages\\agnes@git+https_\\" -Recurse -Force"`;
 
   const toolMapping = `**Tool Mapping for OpenCode:**
 When skills reference tools you don't have, substitute OpenCode equivalents:
