@@ -2,6 +2,12 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.18.3 (2026-06-04)
+
+### Changed
+
+- **SKILL.md compression**: Compressed all 26 bundled skill SKILL.md files using caveman prose style — removed filler, articles, hedging, and pleasantries while preserving full technical accuracy. Reduced total skill size by ~22.5%. (verified: `bun test`, `bun run typecheck`)
+
 ## 0.15.0 (2026-05-25)
 
 ### Added
