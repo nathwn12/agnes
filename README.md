@@ -1,7 +1,7 @@
 <h1 align="center">AGNES — OpenCode Native Plugin</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.15.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.18.3-blue" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
   <img src="https://img.shields.io/badge/skills-30-orange" alt="30 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
@@ -194,7 +194,7 @@ bun run bundle:watch  # watch mode for development
 bun run lint          # lint source files
 bun run lint:fix      # auto-fix lint issues
 bun run typecheck     # type-safety gate
-bun test              # 390 tests across 13 suites
+bun test              # 490 tests across 16 suites
 ```
 
 ---

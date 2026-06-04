@@ -2,6 +2,13 @@
 
 All notable changes to AGNES are documented here.
 
+## 0.18.4 (2026-06-04)
+
+### Changed
+
+- **AGENTS.md rewrite**: Replaced 173-line generic swarm ethos document with 59-line repo-specific developer handbook — module map, quick commands, testing quirks, state system, CI pipeline, code conventions, generated-file list. Preserved verified facts, dropped fluff. (verified: `bun test`, `bun run typecheck`)
+- **README refresh**: Version badge 0.15.0 → 0.18.3, test count 390/13 → 490/16. (verified: `bun test`)
+
 ## 0.18.3 (2026-06-04)
 
 ### Changed
