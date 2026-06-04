@@ -180,14 +180,14 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
     },
 
     "tool.definition": async (input, output) => {
-      if (input.toolID === 'edit' || input.toolID === 'write') {
-        output.description = `[AGNES ENFORCEMENT] This tool MUST be called inside a @builder subagent, not in main context. In main context, delegate via the \`task\` tool. Rule: delegate_or_die. | ${output.description}`;
+      if (input.toolID === 'edit' || input.toolID === 'write' || input.toolID === 'apply_patch') {
+        output.description = `!!! AGNES ENFORCEMENT !!! MUTATION tool — must delegate to @builder. VIOLATION = BUG. | ${output.description}`;
       }
       if (input.toolID === 'glob' || input.toolID === 'grep') {
-        output.description = `[AGNES ENFORCEMENT] Searching the codebase must be delegated to an @explorer subagent. In main context, delegate via \`task\`. Rule: no analysis in main context. | ${output.description}`;
+        output.description = `[AGNES ENFORCEMENT] Read-only tool — safe in main context. Prefer @explorer for complex searches. | ${output.description}`;
       }
       if (input.toolID === 'bash') {
-        output.description = `[AGNES ENFORCEMENT] All commands must run inside an @executor subagent. In main context, delegate via \`task\`. Use \`task\` to spawn a subagent that runs this command. Rule: no mutating commands in main context. | ${output.description}`;
+        output.description = `!!! AGNES ENFORCEMENT !!! MUTATION tool — must delegate to @executor. VIOLATION = BUG. | ${output.description}`;
       }
     },
 

@@ -95,6 +95,12 @@ You are AGNES.
 - OpenCode package cache root: \`${opencodePackageCache}\`
 - If the user explicitly asks to clear or nuke AGNES's OpenCode cache, remove the installed AGNES cache directory or use: \`${cacheNukeCommand}\`, then restart OpenCode.
 
+=== AGNES ENFORCEMENT (HARD RULES) ===
+READ-ONLY tools (safe in main context): read, grep, glob, webfetch, websearch, skill, todowrite, question, lsp
+MUTATION tools (MUST delegate): edit, write, bash, apply_patch
+To delegate: ask a subagent in natural language via @builder / @executor
+=== END AGNES ENFORCEMENT ===
+
 **IMPORTANT: AGNES SOUL.md is loaded below. Orchestrator skill available via \`skill\` tool.**
 
 ${fullContent.trim()}
@@ -116,19 +122,7 @@ export function getBootstrapContent(planner?: PlannerRoutingContext): string | n
 
   const skillRegistryText = buildSkillRegistryText();
 
-  const enforcementBlock = `=== AGNES DELEGATION ENFORCEMENT (HARD RULES) ===
-You are AGNES. These rules are NOT optional. They are structural constraints. Violations are bugs.
-
-1. NEVER call edit/write/glob/grep/bash in main context. These tools are FORBIDDEN here.
-2. ALWAYS use the \`task\` tool to spawn a subagent for any work.
-3. If you catch yourself thinking, analyzing, or planning in main context — STOP. Delegate via \`task\`.
-4. Main context is TALK + DELEGATE only. All tools except \`task\`, \`skill\`, and \`read\` (state only) must go through subagents.
-5. The \`tool.definition\` hook prepends warnings to work tools. Read those warnings. Obey them.
-=== END AGNES DELEGATION ENFORCEMENT ===`;
-
   let content = `${staticContent}
-
-${enforcementBlock}
 
 <AGNES_PLAN_STATE>
 ${planSummary}
@@ -285,18 +279,14 @@ export function buildProtocolBlock(): string {
 export function buildToolAccessBlock(): string {
   return wrapStructured("tool_access", yamlDump({
     type: "tool_access",
-    rule: "Main context is TALK + DELEGATE only. Tools are partitioned by context.",
-    main_context_only: {
-      allowed: ["task", "skill", "todowrite", "question", "analyze-task", "auto-delegate"],
-      description: "Spawn subagents, load skills, track todos, ask user questions. NO source mutations.",
+    rule: "READ-ONLY tools are safe in main context. MUTATION tools MUST be delegated to subagents.",
+    read_only: {
+      allowed: ["read", "grep", "glob", "webfetch", "websearch", "skill", "todowrite", "question", "lsp"],
+      description: "Read-only tools: safe to call from main context. No side effects.",
     },
-    subagent_only: {
-      allowed: ["edit", "write", "glob", "grep", "bash"],
-      description: "All source code work — editing, searching, building, testing. NEVER called in main context.",
-    },
-    shared: {
-      allowed: ["read", "webfetch"],
-      description: "Read: .agnes/ state files only, never source analysis. webfetch: external docs only. Prefer to delegate to @explorer.",
+    mutation: {
+      allowed: ["edit", "write", "bash", "apply_patch"],
+      description: "MUTATION tools: MUST be delegated to a @builder or @executor subagent via natural language. Never called from main context.",
     },
   }));
 }

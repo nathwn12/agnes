@@ -236,7 +236,7 @@ describe('buildToolAccessBlock', () => {
 
   test('lists main-context allowed tools', () => {
     const block = buildToolAccessBlock();
-    expect(block).toContain('task');
+    expect(block).toContain('todowrite');
     expect(block).toContain('skill');
   });
 
@@ -251,8 +251,8 @@ describe('buildToolAccessBlock', () => {
     const match = block.match(/<structured type="tool_access">\n([\s\S]*?)\n<\/structured>/);
     expect(match).not.toBeNull();
     expect(match![1]).toContain('type: tool_access');
-    expect(match![1]).toContain('subagent_only');
-    expect(match![1]).toContain('main_context_only');
+    expect(match![1]).toContain('mutation');
+    expect(match![1]).toContain('read_only');
   });
 });
 

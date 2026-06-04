@@ -186,7 +186,7 @@ describe('tool.definition hook', () => {
     const output = { description: 'Edit a file', parameters: {} };
     await (plugin as any)['tool.definition']({ toolID: 'edit' }, output);
     expect(output.description).toContain('AGNES ENFORCEMENT');
-    expect(output.description).toContain('delegate_or_die');
+    expect(output.description).toContain('must delegate');
     expect(output.description).toContain('Edit a file');
   });
 
@@ -238,9 +238,8 @@ describe('bootstrap delegation enforcement', () => {
     const { getBootstrapContent } = require('./bootstrap.js');
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
-    expect(content).toContain('AGNES DELEGATION ENFORCEMENT');
-    expect(content).toContain('HARD RULES');
-    expect(content).toContain('NEVER call edit/write/glob/grep/bash');
-    expect(content).toContain('ALWAYS use the `task` tool');
+    expect(content).toContain('AGNES ENFORCEMENT');
+    expect(content).toContain('MUTATION tools (MUST delegate): edit, write, bash, apply_patch');
+    expect(content).toContain('To delegate: ask a subagent in natural language via @builder / @executor');
   });
 });
