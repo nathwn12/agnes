@@ -151,7 +151,7 @@ For issue trackers: vertical-slice issues. Each independently completable, adds 
 
 ## When NOT to Use
 
-- Requirements unclear (use clarifier first)
+- Requirements unclear (use clarify first)
 - No implementation following planning
 - Architecture decisions don't need formal docs
 - Purely exploratory, no design decisions

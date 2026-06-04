@@ -1,6 +1,6 @@
 ---
-id: feedback-receiver
-name: feedback-receiver
+id: process-feedback
+name: process-feedback
 description: 'Received code review feedback (from human or automated reviewer), need to evaluate and act on comments without blind acceptance.'
 phase: "REVIEW"
 use_when: "Received code review feedback (from human or automated reviewer), needing to evaluate or merge external review feedback and act on comments without blind acceptance."

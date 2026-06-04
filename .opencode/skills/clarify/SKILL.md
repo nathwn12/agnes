@@ -1,6 +1,6 @@
 ---
-id: clarifier
-name: clarifier
+id: clarify
+name: clarify
 description: 'Vague requests, incomplete bug reports, cross-domain terminology conflicts, before planning to ensure shared understanding.'
 phase: "THINK"
 use_when: "Vague requests, incomplete bug reports, cross-domain terminology conflicts, before planning to ensure shared understanding."

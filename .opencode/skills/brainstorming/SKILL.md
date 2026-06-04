@@ -13,13 +13,13 @@ Ambiguous creative direction, no clear path, need to explore design space before
 
 ## Core Concept
 
-Collaborative exploration turning fuzzy ideas into concrete designs via forcing questions and iterative proposals. Brainstorming **generates** creative/design space — does not resolve existing ambiguity (clarifier's job).
+Collaborative exploration turning fuzzy ideas into concrete designs via forcing questions and iterative proposals. Brainstorming **generates** creative/design space — does not resolve existing ambiguity (clarify's job).
 
 **Brainstorming** = explore creative space when no clear path exists. Propose approaches, generate alternatives, reframe. Output: design ready for planning.
 
-**Clarifier** = resolve existing ambiguity. Socratic questioning, terminology sharpening, glossary-first. Output: clarified task description.
+**Clarify** = resolve existing ambiguity. Socratic questioning, terminology sharpening, glossary-first. Output: clarified task description.
 
-Brainstorming asks "what should we build?" Clarifier asks "what exactly did you mean?"
+Brainstorming asks "what should we build?" Clarify asks "what exactly did you mean?"
 
 **Hard gate**: no implementation until user approves written design.
 
@@ -172,6 +172,6 @@ Once approved, route to planner. No skip to implementation.
 
 - Task already precisely specified with no creative decisions
 - Purely operational ("run this", "fix typo")
-- Only ambiguity is terminology — clarifier's job
+- Only ambiguity is terminology — clarify's job
 - BUILD or SHIP phase — THINK only
 - User already decided approach, needs execution

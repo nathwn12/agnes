@@ -2,12 +2,20 @@
 
 All notable changes to AGNES are documented here.
 
-## 0.18.4 (2026-06-04)
+## 0.19.0 (2026-06-04)
+
+### Added
+
+- **8 behavioral rules to SOUL.md**: Reads fragmented across subagents, edits split across builders. PLAN→REVIEW→BUILD→FIX→ENDORSE workflow cycle. Goal-first instruction-later execution (Karpathy). Don't fix what isn't broken. Declarative over imperative. If blocked, ask user. (from Karpathy skills + gstack inspiration)
+- **3 automation scripts**: `scripts/release.ts` (dry-run tag/release), `scripts/state-stats.ts` (plan analytics JSON), `scripts/init-agnes.ts` (AI-callable project state initializer with 19 edge-case guards). Package scripts: `bun run release`, `state-stats`, `init-agnes`.
+- **Smoke tests**: `scripts/__tests__/smoke.test.ts` — 7 tests covering all 3 scripts, run via `bun test`.
+- **AGENTS.md Operational workflow section**: 5 rules — always delegate+parallelize, never one big task, three-step cycle, blocked→ASK, LEAN.
 
 ### Changed
 
-- **AGENTS.md rewrite**: Replaced 173-line generic swarm ethos document with 59-line repo-specific developer handbook — module map, quick commands, testing quirks, state system, CI pipeline, code conventions, generated-file list. Preserved verified facts, dropped fluff. (verified: `bun test`, `bun run typecheck`)
-- **README refresh**: Version badge 0.15.0 → 0.18.3, test count 390/13 → 490/16. (verified: `bun test`)
+- **5 skills renamed for clarity**: `clarifier` → `clarify`, `griller` → `grill-me`, `feedback-receiver` → `process-feedback`, `skillwriter` → `write-skill`, `brandkit` → `brand-designer`. All cross-references updated across 13+ files (src/ bootstrap/runtime, README, orchestrator skill, 6 other SKILL.md files, CHANGELOG). (verified: `bun test` — 497 pass, 0 fail)
+- **Orchestrator SKILL.md wenyan conversion**: 404→398 lines, version 1.2→2.0. Full classical Chinese with English technical term retention. (3 parallel subagents, assembled coherently)
+- **SOUL.md expanded**: 41→49 lines with 8 new wenyan rules, now covering all 4 Karpathy principles.
 
 ## 0.18.3 (2026-06-04)
 
@@ -20,7 +28,7 @@ All notable changes to AGNES are documented here.
 ### Added
 
 - **2 new skills**: `brainstorming` (THINK — design-before-build gate with forcing questions) and `instinct` (META — cross-session context retention and pattern learning with confidence/decay model). Fused from Superpowers, GStack, ECC instinct system, and Hermes autonomous creation. (24 → 26 standalone skills, 30 effective with enhanced merges)
-- **4 skills enhanced**: shipper (finishing-branch PR/merge/cleanup), feedback-receiver (receiving-review behavioral reviewee discipline), verifier (contract/DoD evidence-backed assertions), builder (git-worktree workspace isolation). Merged proven patterns from Superpowers, SmallCode, and ECC verification.
+- **4 skills enhanced**: shipper (finishing-branch PR/merge/cleanup), process-feedback (receiving-review behavioral reviewee discipline), verifier (contract/DoD evidence-backed assertions), builder (git-worktree workspace isolation). Merged proven patterns from Superpowers, SmallCode, and ECC verification.
 - **Caveman default style**: Orchestrator now mandates ultra-compressed reporting — drop articles, filler, pleasantries, hedging. Fragments OK. Short synonyms. Auto-clarity exception for security warnings.
 
 ### Changed
@@ -208,7 +216,7 @@ All notable changes to AGNES are documented here.
 
 ### Changed
 
-- **classifyIntent now returns structured object**: Returns `IntentClassification` with `.category` and `.suggestedSkills` array mapping to skill names (implement→ag-builder, debug→ag-debugger/ag-griller, etc.).
+- **classifyIntent now returns structured object**: Returns `IntentClassification` with `.category` and `.suggestedSkills` array mapping to skill names (implement→ag-builder, debug→ag-debugger/ag-grill-me, etc.).
 - **SKILL_REGISTRY populated**: 7 core skills registered with payload schemas — SKILL_REGISTRY.size > 0 conditional in plugin.ts now activates.
 - **executeWave returns blocked result instead of throwing**: Subagent handler stub produces `ResultMessage` with `status: 'BLOCKED'` instead of crashing.
 - **Architecture wiring**: Verification gates, middleware chain, and flow controller now execute during the plugin transform lifecycle — gates run post-response, middleware hooks fire, flow control signals active.

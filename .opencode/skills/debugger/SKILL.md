@@ -112,7 +112,7 @@ Preference:
 
 Share findings, ask next question, repeat until root cause found. Verify after each instrumentation.
 
-3 rounds and still unclear? STOP. Count fixes attempted. < 3 → return to Phase 2. ≥ 3 → handoff to griller.
+3 rounds and still unclear? STOP. Count fixes attempted. < 3 → return to Phase 2. ≥ 3 → handoff to grill-me.
 
 ### Phase 7: Fix + Regression Test
 
@@ -158,7 +158,7 @@ If fix involves architectural change, hand off to architect.
 - **explorer**: Understand affected code
 - **hypothesis-testing**: Ranked falsifiable hypotheses
 - **feedback-loop**: Fast deterministic pass/fail
-- **griller**: Handoff when 3+ narrowing rounds fail
+- **grill-me**: Handoff when 3+ narrowing rounds fail
 
 ## Output
 
@@ -180,5 +180,5 @@ Bug report: root cause (one sentence), reproduction, fix reference, defense summ
 
 - No reproduction steps available
 - Third-party dependency without workaround — report upstream
-- After 3 narrowing rounds without root cause → handoff to griller
+- After 3 narrowing rounds without root cause → handoff to grill-me
 - User asking for architectural improvement, not bug diagnosis

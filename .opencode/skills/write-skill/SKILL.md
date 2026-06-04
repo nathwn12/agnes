@@ -1,6 +1,6 @@
 ---
-id: skillwriter
-name: skillwriter
+id: write-skill
+name: write-skill
 description: 'Creating a brand-new AGNES skill, editing/improving an existing skill, closing a gap identified during retro, or when an agent demonstrably behaves wrongly without documented guidance.'
 phase: "REFLECT / META"
 use_when: "Creating a brand-new AGNES skill, editing/improving an existing skill, closing a gap identified during retro, or when an agent demonstrably behaves wrongly without documented guidance."
@@ -26,7 +26,7 @@ Applies to new skills AND edits. If you can't describe scenario where agent beha
 | **Pressure scenario** | Concrete test case capturing one specific failure mode skill must prevent |
 | **Rationalization** | Excuse agent might use to bypass skill's rules |
 | **Skill type** | Classification: discipline-enforcing, technique, pattern, reference |
-| **Verb-first gerund naming** | Named after ACTION not THING (skillwriter not skill-creation) |
+| **Verb-first gerund naming** | Named after ACTION not THING (write-skill not skill-creation) |
 
 ## Context Requirements
 
@@ -141,9 +141,9 @@ Close loopholes before shipping:
 
 ### Active Naming
 
-- Verb-first gerunds: skillwriter (not skill-creation)
+- Verb-first gerunds: write-skill (not skill-creation)
 - Names describe ACTION, not THING
-- Existing examples: clarifier, explorer, shipper
+- Existing examples: clarify, explorer, shipper
 
 ## When NOT to Use
 

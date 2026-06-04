@@ -41,7 +41,7 @@ AGNES routes every task through a default chronological pipeline. The flow is li
 ### Default Flow (chronological order)
 
 1. **SETUP** → `init`
-2. **CLARIFY** → `clarifier` ← **GATE:** spec must be approved
+2. **CLARIFY** → `clarify` ← **GATE:** spec must be approved
 3. **RESEARCH** → `explorer` → `architect` (optional deepening)
 4. **PLAN** → `planner` (builtin fast path for lightweight tasks; full planner + `multi-reviewer` for complex work)
 5. **BUILD** → `tdd` (new features) or `builder` (plan execution) → `tester` (coverage)
@@ -55,10 +55,10 @@ AGNES routes every task through a default chronological pipeline. The flow is li
 
 | Branch | Entry Trigger | Skills Used |
 |--------|--------------|-------------|
-| **Design** | New UI project, need brand identity | brandkit → prototype → prd |
-| **Debug** | Bug report, test failure, crash | debugger → griller (if debugger fails) |
+| **Design** | New UI project, need brand identity | brand-designer → prototype → prd |
+| **Debug** | Bug report, test failure, crash | debugger → grill-me (if debugger fails) |
 | **Process** | Incoming issue needs triage | triage |
-| **Meta** | AGNES is missing a capability | skillwriter |
+| **Meta** | AGNES is missing a capability | write-skill |
 
 ---
 
@@ -72,10 +72,10 @@ All 30 bundled skills with concrete trigger conditions and outputs. "When to Use
 | **instinct** | META | Cross-session context retention and learned pattern memory. Agents observe patterns, create instincts with confidence scores, promote or decay them over time. | Learned patterns with confidence scores, promoted/decayed instincts |
 | **init** | SETUP | First time running AGNES in a project. Or existing state files are corrupted/missing. | `.agnes/` directory with `index.json` + `AGENTS.md` |
 | **brainstorming** | THINK | Ambiguous creative direction, no clear implementation path, need to explore design space before committing to a plan. | Design doc with forcing questions, 2-3 approach proposals, approved spec |
-| **clarifier** | THINK | Request is vague ("make it better"), ambiguous ("fix the issue"), or has terminology conflicts between team members. Sharpens until executable. | Written, user-approved specification |
+| **clarify** | THINK | Request is vague ("make it better"), ambiguous ("fix the issue"), or has terminology conflicts between team members. Sharpens until executable. | Written, user-approved specification |
 | **explorer** | RESEARCH | Need to understand unfamiliar code before making changes. Or need to find where a thing lives, how data flows, what conventions exist. | Structured findings report: file map, dependency chains, pattern analysis |
 | **architect** | RESEARCH / DESIGN | Codebase feels hard to change — adding features requires touching 5 files, tests are brittle, module boundaries are blurry. Finds deepening opportunities. | Seam map, interface proposals, Design It Twice alternatives |
-| **brandkit** | DESIGN | Starting a UI-heavy project. Need logo, color palette, typography, design system, or brand guidelines. Not for backend-only work. | Brand assets, color system, typography scale, component mockups |
+| **brand-designer** | DESIGN | Starting a UI-heavy project. Need logo, color palette, typography, design system, or brand guidelines. Not for backend-only work. | Brand assets, color system, typography scale, component mockups |
 | **prototype** | DESIGN / BUILD | Need to validate a design decision with throwaway code. Not sure if the state machine is right, or if that UX pattern works. | Runnable prototype + documented answer (discarded after) |
 | **prd** | PLAN | Requirements are clear but need formal capture. Stakeholders need a documented PRD with stories, acceptance criteria, and priorities. | Published PRD with user stories, acceptance criteria, priority matrix |
 | **planner** | PLAN | Spec or PRD is approved. Need to break it into actionable implementation steps with dependencies and ordering. `planner.mode=auto|builtin|full` selects builtin vs full routing. | Bite-sized implementation checklist (plan-NNN.yaml) |
@@ -86,14 +86,14 @@ All 30 bundled skills with concrete trigger conditions and outputs. "When to Use
 | **tester** | TEST | Features are built, need comprehensive test coverage. Or coverage gaps are identified and need filling. Not for test-first workflows. | Unit/integration/edge case tests + coverage gap report |
 | **verifier** | VERIFY | Before claiming any task is done. Runs type check, lint, full test suite, and build in sequence. Captures pass/fail with timing. Rejects claims without fresh evidence. | Pass/fail evidence log: type check → lint → test → build |
 | **reviewer** | REVIEW | Code is written, tests pass, ready for review. Checks spec compliance, project conventions, API design, error handling, and test quality. | Spec compliance score + actionable findings list |
-| **feedback-receiver** | REVIEW | Received PR/code review feedback from a human or external reviewer. Processes each comment, categorizes, produces fix plan, coordinates changes. | Categorized feedback + fix implementation plan |
+| **process-feedback** | REVIEW | Received PR/code review feedback from a human or external reviewer. Processes each comment, categorizes, produces fix plan, coordinates changes. | Categorized feedback + fix implementation plan |
 | **debugger** | DEBUG | Bug report comes in. Or a test fails and root cause isn't obvious. Collaborative investigation: reproduce → isolate → regression test → fix. | Root cause analysis + regression test + fix |
-| **griller** | DEBUG | debugger tried 3 approaches and failed. Bug spans multiple modules. Or the failure is intermittent and hard to reproduce. Adversarial: generates and tests hypotheses systematically. | Architecture finding or fix + hypothesis log |
+| **grill-me** | DEBUG | debugger tried 3 approaches and failed. Bug spans multiple modules. Or the failure is intermittent and hard to reproduce. Adversarial: generates and tests hypotheses systematically. | Architecture finding or fix + hypothesis log |
 | **triage** | SHIP / PROCESS | Incoming issue, PR, or feature request needs routing. Validates completeness, assigns labels, sets priority, routes to appropriate skill. | State-machine triage: validated → labeled → assigned |
 | **shipper** | SHIP | Code is reviewed, all gates pass, ready to deliver. Creates PR, runs final verification, merges or discards. Do NOT use before verification gates pass. | Merged PR or discarded branch + changelog entry |
 | **documenter** | REFLECT | Post-ship. Code is landed, needs docs. Or changelog needs updating. Or architecture decisions need ADRs. Follows Diataxis: tutorials, how-to, reference, explanation. | Diataxis docs (tutorials, how-to, reference, explanation) + ADRs + changelog |
 | **retro** | REFLECT | Sprint or milestone completed. Or a pattern keeps repeating (good or bad). Facilitates retrospective: what worked, what didn't, what to change. | Learnings document → stored in `.agnes/learnings/` |
-| **skillwriter** | REFLECT / META | AGNES is missing a capability. Or an existing skill needs refinement. Creates a new skill or refines an existing one via TDD. | New/refined SKILL.md + tests |
+| **write-skill** | REFLECT / META | AGNES is missing a capability. Or an existing skill needs refinement. Creates a new skill or refines an existing one via TDD. | New/refined SKILL.md + tests |
 
 ---
 
@@ -102,10 +102,10 @@ All 30 bundled skills with concrete trigger conditions and outputs. "When to Use
 1. **Install** — add to `opencode.json` and restart
 2. **Init** — run `init` in any project to create `.agnes/` and `AGENTS.md`
 3. **Work** — every engineering task routes through the pipeline automatically:
-   - Vague request? → clarifier sharpens it
+   - Vague request? → clarify sharpens it
    - Need to understand code? → explorer researches
    - Ready to build? → builder dispatches subagents
-   - Bugs? → griller systematically debugs
+   - Bugs? → grill-me systematically debugs
 4. **Review** — reviewer gate-checks before any merge
 5. **Reflect** — retro captures learnings, documenter produces docs
 

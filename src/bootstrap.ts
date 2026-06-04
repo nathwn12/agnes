@@ -304,7 +304,7 @@ export function buildToolAccessBlock(): string {
 // ── Skill registry (compact, auto-discovered from frontmatter) ─────────────
 
   const SKILL_SUGGEST_NEXT: Record<string, string[]> = {
-  'clarifier': ['explorer', 'planner'],
+  'clarify': ['explorer', 'planner'],
   'explorer': ['architect', 'planner'],
   'architect': ['planner'],
   'planner': ['multi-reviewer'],
@@ -316,16 +316,16 @@ export function buildToolAccessBlock(): string {
   'tester': ['reviewer'],
   'verifier': ['reviewer', 'shipper'],
   'reviewer': ['documenter', 'shipper'],
-  'feedback-receiver': ['builder', 'debugger'],
+  'process-feedback': ['builder', 'debugger'],
   'debugger': ['verifier'],
-  'griller': ['debugger', 'verifier'],
+  'grill-me': ['debugger', 'verifier'],
   'shipper': ['documenter', 'retro'],
   'triage': ['planner', 'debugger'],
   'documenter': ['retro'],
   'retro': [],
-  'skillwriter': ['tdd'],
-  'brandkit': ['prototype', 'builder'],
-  'init': ['clarifier', 'explorer'],
+  'write-skill': ['tdd'],
+  'brand-designer': ['prototype', 'builder'],
+  'init': ['clarify', 'explorer'],
 };
 
 function readSkillRegistry(): Array<{ id: string; phase: string; suggest_next: string[] }> {

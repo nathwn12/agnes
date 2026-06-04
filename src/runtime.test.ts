@@ -379,7 +379,7 @@ describe('classifyIntent', () => {
   test('returns debug intent for debug requests', () => {
     const result = classifyIntent('debug the login issue');
     expect(result.category).toBe('debug');
-    expect(result.suggestedSkills).toEqual(['debugger', 'griller']);
+    expect(result.suggestedSkills).toEqual(['debugger', 'grill-me']);
   });
 
   test('returns review intent for review requests', () => {

@@ -155,6 +155,6 @@ Describe good test: test external behavior, not impl details.
 ## When NOT to Use
 
 - Feature insufficiently discussed, context too thin
-- User needs interviewing (use clarifier)
+- User needs interviewing (use clarify)
 - Task is implementation planning (use planner)
 - Writing tutorials, how-to guides, reference docs (use documenter)

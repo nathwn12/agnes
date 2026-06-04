@@ -1,6 +1,6 @@
 ---
-id: brandkit
-name: brandkit
+id: brand-designer
+name: brand-designer
 description: 'Starting a new project with no design system, redesigning existing UI, needing visual assets for marketing or docs, before planner if design direction affects architecture.'
 phase: "DESIGN"
 use_when: "Starting a new project with no design system, redesigning existing UI, needing visual assets for marketing or docs, before planner if design direction affects architecture."

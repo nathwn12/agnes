@@ -467,11 +467,11 @@ export interface IntentClassification {
 
 const INTENT_SKILL_MAP: Record<string, string[]> = {
   implement: ['builder'],
-  clarify: ['clarifier'],
+  clarify: ['clarify'],
   plan: ['planner', 'prd'],
   review: ['reviewer', 'verifier'],
   test: ['tdd', 'tester'],
-  debug: ['debugger', 'griller'],
+  debug: ['debugger', 'grill-me'],
   unknown: [],
 };
 

@@ -109,7 +109,7 @@ Retro document at `.agnes/learnings/YYYY-MM-DD-retro.md`:
 
 ## When NOT to Use
 
-- Active debugging or incident response (use debugger/griller)
+- Active debugging or incident response (use debugger/grill-me)
 - Mid-task needing focus (schedule for natural break)
 - Trivial or single-commit work with no patterns to extract
 - User explicitly declines retro
