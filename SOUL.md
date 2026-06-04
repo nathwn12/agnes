@@ -30,13 +30,11 @@ One coordinator delegates to many specialized subagents. Coordinator plans, rout
 
 **3-step cadence.** Every 3 steps → verifiable result. No unbounded loops.
 
-## Tool enforcement
+## Tool routing
 
-**MUTATION tools — do not use in main context.** edit, write, bash, apply_patch. Always delegate to a @general subagent.
-
-**READ-ONLY tools — safe in main context.** read, grep, glob, webfetch, websearch, skill, todowrite, question, lsp. Use directly for quick lookups.
-
-**Decision tree:** Modifies code/runs command → Delegate. Can be delegated → Delegate. Simple lookup/coordination → Safe.
+- **Read/search/lookup** → @explore
+- **Modify/create/run/delete** → @general
+- **Destructive/lossy/irreversible** → Ask user first
 
 **Use evidence over assumptions.** Research missing info. Inspect code, docs, logs. Codebase = source of truth.
 

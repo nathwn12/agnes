@@ -168,71 +168,58 @@ describe('experimental.chat.messages.transform hook', () => {
     expect(injected).toContain('<!-- <agnes:message>{"type":"completion"');
     expect(injected).toContain('</agnes:message> -->');
   });
+
+  test('skips bootstrap injection for subagent-directed messages with agent part', async () => {
+    const { AgnesPlugin } = await import('./plugin.js');
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
+    const output = {
+      messages: [
+        {
+          info: { role: 'user' },
+          parts: [
+            { type: 'text', text: 'search for X', sessionID: 'agent-guard-test' },
+            { type: 'agent', agent: 'explorer', session: 'test-session' },
+          ],
+        },
+      ],
+    };
+    await (plugin as any)['experimental.chat.messages.transform']({}, output);
+    // Should NOT have injected bootstrap (no EXTREMELY_IMPORTANT prefix)
+    const textParts = output.messages[0].parts.filter((p: any) => p.type === 'text');
+    const hasBootstrap = textParts.some((p: any) => p.text && p.text.includes('EXTREMELY_IMPORTANT'));
+    expect(hasBootstrap).toBe(false);
+  });
 });
 
 describe('tool.definition hook', () => {
-  test('marks edit tool as delegate-only', async () => {
+  test('tool.definition is a no-op (routing handled by bootstrap)', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
     const plugin = await AgnesPlugin({ directory: process.cwd() });
     const output = { description: 'Edit a file', parameters: {} };
     await (plugin as any)['tool.definition']({ toolID: 'edit' }, output);
-    expect(output.description).toContain('AGNES ENFORCEMENT');
-    expect(output.description).toContain('Delegate-only mutation tool');
+    expect(output.description).toBe('Edit a file');
   });
 
-  test('marks write tool as delegate-only', async () => {
-    const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin({ directory: process.cwd() });
-    const output = { description: 'Write a file', parameters: {} };
-    await (plugin as any)['tool.definition']({ toolID: 'write' }, output);
-    expect(output.description).toContain('Delegate-only mutation tool');
-  });
-
-  test('modifies glob tool description', async () => {
-    const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin({ directory: process.cwd() });
-    const output = { description: 'Search files', parameters: {} };
-    await (plugin as any)['tool.definition']({ toolID: 'glob' }, output);
-    expect(output.description).toContain('AGNES ENFORCEMENT');
-    expect(output.description).toContain('@explore');
-  });
-
-  test('modifies grep tool description', async () => {
-    const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin({ directory: process.cwd() });
-    const output = { description: 'Grep files', parameters: {} };
-    await (plugin as any)['tool.definition']({ toolID: 'grep' }, output);
-    expect(output.description).toContain('AGNES ENFORCEMENT');
-    expect(output.description).toContain('Read-only tool');
-  });
-
-  test('marks bash tool as delegate-only', async () => {
-    const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin({ directory: process.cwd() });
-    const output = { description: 'Run command', parameters: {} };
-    await (plugin as any)['tool.definition']({ toolID: 'bash' }, output);
-    expect(output.description).toContain('AGNES ENFORCEMENT');
-    expect(output.description).toContain('@general');
-  });
-
-  test('marks read tool as delegation-preferred', async () => {
-    const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin({ directory: process.cwd() });
-    const output = { description: 'Read a file', parameters: {} };
-    await (plugin as any)['tool.definition']({ toolID: 'read' }, output);
-    expect(output.description).toContain('AGNES ENFORCEMENT');
-    expect(output.description).toContain('Read-only tool');
+  test('bootstrap contains simplified routing rules', async () => {
+    const { getBootstrapContent } = await import('./bootstrap.js');
+    const content = getBootstrapContent();
+    expect(content).not.toBeNull();
+    expect(content).not.toContain('READ-ONLY tools');
+    expect(content).not.toContain('MUTATION tools');
+    expect(content).toContain('@explore');
+    expect(content).toContain('@general');
+    expect(content).toContain('Ask user');
   });
 });
 
 describe('bootstrap delegation enforcement', () => {
-  test('getBootstrapContent includes delegation enforcement rules', () => {
+  test('getBootstrapContent includes simplified routing rules', () => {
     
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
-    expect(content).toContain('AGNES ENFORCEMENT');
-    expect(content).toContain('MUTATION tools (delegate): edit, write, bash, apply_patch');
-    expect(content).toContain('READ-ONLY tools (direct use):');
-    expect(content).toContain('Complex multi-step implementation: delegate to @general');
+    expect(content!).toContain('=== AGNES ROUTING ===');
+    expect(content!).toContain('@explore');
+    expect(content!).toContain('@general');
+    expect(content!).toContain('Ask user');
   });
 });

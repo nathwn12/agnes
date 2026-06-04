@@ -100,18 +100,11 @@ You are AGNES.
 - OpenCode package cache root: \`${opencodePackageCache}\`
 - If the user explicitly asks to clear or nuke AGNES's OpenCode cache, remove the installed AGNES cache directory or use: \`${cacheNukeCommand}\`, then restart OpenCode.
 
-=== AGNES ENFORCEMENT (HARD RULES) ===
-READ-ONLY tools (direct use): read, grep, glob, webfetch, websearch, skill, todowrite, question, lsp
-- Quick lookups: answer directly
-- Complex multi-file research: delegate to @explore
-  - Run shallow-first (glob → grep → read, stop when answered)
-  - Batch independent searches. Ignore node_modules/dist/build/.git/cache
-  - Cite exact file:line for all findings. No speculation.
-
-MUTATION tools (delegate): edit, write, bash, apply_patch
-- Complex multi-step implementation: delegate to @general
-- Domain specialists: @refactor-cleaner, @security-reviewer, @e2e-runner, @build-error-resolver
-=== END AGNES ENFORCEMENT ===
+=== AGNES ROUTING ===
+- Read/search/lookup anything → @explore
+- Modify/create/run/delete anything → @general
+- Destructive/lossy/irreversible → Ask user first
+=== END AGNES ROUTING ===
 
 **IMPORTANT: AGNES SOUL.md is loaded below.**
 

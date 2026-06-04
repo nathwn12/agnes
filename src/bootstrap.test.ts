@@ -117,12 +117,13 @@ describe('getBootstrapContent', () => {
     expect(content!).toContain('Planner: route:builtin, mode:builtin, reason:eligible lightweight boundary');
   });
 
-  test('includes the new simplified enforcement rules', () => {
+  test('includes the simplified routing rules', () => {
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
-    expect(content!).toContain('READ-ONLY tools (direct use):');
-    expect(content!).toContain('MUTATION tools (delegate):');
-    expect(content!).toContain('Complex multi-file research: delegate to @explore');
+    expect(content!).toContain('=== AGNES ROUTING ===');
+    expect(content!).toContain('@explore');
+    expect(content!).toContain('@general');
+    expect(content!).toContain('Ask user');
   });
 
   test('returns appropriate content even without a plan', () => {

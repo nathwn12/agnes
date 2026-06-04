@@ -6959,7 +6959,7 @@ var require_public_api = __commonJS((exports) => {
 
 // src/plugin.ts
 import { randomUUID as randomUUID2 } from "crypto";
-import * as path7 from "path";
+import * as path6 from "path";
 import { fileURLToPath as fileURLToPath4 } from "url";
 
 // src/bootstrap.ts
@@ -21297,54 +21297,6 @@ function date4(params) {
 // node_modules/zod/v4/classic/external.js
 config(en_default());
 // src/schema.ts
-function createDefaultSkillEntry(name, description, phase) {
-  return {
-    name,
-    description,
-    phase,
-    inputSchema: {
-      type: "object",
-      properties: {
-        payload: { type: "object", description: `Payload for ${name}` }
-      },
-      required: ["payload"]
-    },
-    outputSchema: {
-      type: "object",
-      properties: {
-        result: { type: "object", description: `Result from ${name}` }
-      }
-    },
-    responseFormat: "content_and_artifact"
-  };
-}
-var SKILL_NAME_ALIASES = new Map([
-  ["ag-orchestrator", "orchestrator"],
-  ["ag-planner", "planner"],
-  ["ag-builder", "builder"],
-  ["ag-tdd", "tdd"],
-  ["ag-reviewer", "reviewer"],
-  ["ag-verifier", "verifier"],
-  ["ag-debugger", "debugger"]
-]);
-function resolveSkillName(name) {
-  return SKILL_NAME_ALIASES.get(name) ?? name;
-}
-var CANONICAL_SKILLS = [
-  ["orchestrator", createDefaultSkillEntry("orchestrator", "AGNES swarm brain \u2014 delegates, parallelizes, and orchestrates work across all fused skills", "META")],
-  ["planner", createDefaultSkillEntry("planner", "Writing specs and implementation plans with structured design documents", "PLAN")],
-  ["builder", createDefaultSkillEntry("builder", "Disciplined plan execution with worktree isolation and verify-review-commit cycle", "BUILD")],
-  ["tdd", createDefaultSkillEntry("tdd", "Red-green-refactor TDD through vertical slices with failing test first", "TEST")],
-  ["reviewer", createDefaultSkillEntry("reviewer", "Code quality gate with spec compliance and quality issue classification", "REVIEW")],
-  ["verifier", createDefaultSkillEntry("verifier", "Gate discipline enforcer running automated checks with evidence-based pass/fail", "VERIFY")],
-  ["debugger", createDefaultSkillEntry("debugger", "Collaborative debugging through reproduce-hypothesise-instrument-narrow-document", "DEBUG")]
-];
-var SKILL_REGISTRY = new Map(CANONICAL_SKILLS);
-for (const [legacyName, canonicalName] of SKILL_NAME_ALIASES) {
-  const entry = SKILL_REGISTRY.get(canonicalName);
-  if (entry)
-    SKILL_REGISTRY.set(legacyName, entry);
-}
 var GateEvidenceSchema = exports_external.object({
   gateId: exports_external.string(),
   status: exports_external.enum(["PASS", "FAIL", "SKIP"]),
@@ -22247,13 +22199,19 @@ You are AGNES.
 - If the user explicitly asks to clear or nuke AGNES's OpenCode cache, remove the installed AGNES cache directory or use: \`${cacheNukeCommand}\`, then restart OpenCode.
 
 === AGNES ENFORCEMENT (HARD RULES) ===
-READ-ONLY tools (technically safe in main context): read, grep, glob, webfetch, websearch, skill, todowrite, question, lsp
-Default behavior: delegate discovery/research to subagents whenever practical.
-MUTATION tools (MUST delegate): edit, write, bash, apply_patch
-To delegate: ask a subagent in natural language via @builder / @executor
+READ-ONLY tools (direct use): read, grep, glob, webfetch, websearch, skill, todowrite, question, lsp
+- Quick lookups: answer directly
+- Complex multi-file research: delegate to @explore
+  - Run shallow-first (glob \u2192 grep \u2192 read, stop when answered)
+  - Batch independent searches. Ignore node_modules/dist/build/.git/cache
+  - Cite exact file:line for all findings. No speculation.
+
+MUTATION tools (delegate): edit, write, bash, apply_patch
+- Complex multi-step implementation: delegate to @general
+- Domain specialists: @refactor-cleaner, @security-reviewer, @e2e-runner, @build-error-resolver
 === END AGNES ENFORCEMENT ===
 
-**IMPORTANT: AGNES SOUL.md is loaded below. Orchestrator skill available via \`skill\` tool.**
+**IMPORTANT: AGNES SOUL.md is loaded below.**
 
 ${fullContent.trim()}
 
@@ -22268,7 +22226,6 @@ function getBootstrapContent(planner) {
     return null;
   const planSummary = buildPlanSummary(process.cwd(), planner);
   const shell = detectShell();
-  const skillRegistryText = buildSkillRegistryText();
   let content = `${staticContent}
 
 <AGNES_PLAN_STATE>
@@ -22279,12 +22236,6 @@ ${planSummary}
 ${shell.guidance}
 Anti-pattern commands to avoid: ${shell.antiPatterns.join(", ")}
 </SHELL_ENVIRONMENT>`;
-  if (skillRegistryText) {
-    content += `
-
-${skillRegistryText}
-`;
-  }
   return content;
 }
 function wrapStructured(type, inner) {
@@ -22299,27 +22250,6 @@ function buildRuntimeBlock(pkg) {
     package_root: pkg.root,
     skills_dir: pkg.skillsDir,
     cache_root: pkg.cacheRoot
-  }));
-}
-function buildOrchestratorBlock(rules) {
-  return wrapStructured("orchestrator", $stringify({
-    type: "orchestrator",
-    rules: {
-      delegate_or_die: rules.delegate,
-      parallelize_by_default: rules.parallelize,
-      one_percent_rule: rules.onePercent,
-      verify_before_claiming: rules.verify,
-      no_shared_file_edits: rules.noSharedEdits,
-      fresh_subagents_per_wave: rules.freshSubagents,
-      scarcity_principle: rules.scarcity
-    }
-  }));
-}
-function buildNamedRolesBlock(rules) {
-  return wrapStructured("named_roles", $stringify({
-    type: "named_roles",
-    roles: rules.namedRoles,
-    answer_directly: rules.answerDirectly
   }));
 }
 function buildPlanStateBlock(index, planner) {
@@ -22382,100 +22312,6 @@ function buildExecutionContextBlock(ctx) {
     } : {}
   }));
 }
-function buildProtocolBlock() {
-  return wrapStructured("protocol", $stringify({
-    type: "protocol",
-    marker_prefix: "agnes:message",
-    types: ["task", "result", "error", "status", "completion"]
-  }));
-}
-function buildToolAccessBlock() {
-  return wrapStructured("tool_access", $stringify({
-    type: "tool_access",
-    rule: "READ-ONLY tools are technically safe in main context, but delegation remains the default for discovery and research. MUTATION tools MUST be delegated to subagents.",
-    read_only: {
-      allowed: ["read", "grep", "glob", "webfetch", "websearch", "skill", "todowrite", "question", "lsp"],
-      description: "Read-only tools: technically safe in main context. Prefer subagents for discovery/research so the primary agent stays orchestration-first."
-    },
-    mutation: {
-      allowed: ["edit", "write", "bash", "apply_patch"],
-      description: "MUTATION tools: delegate-only. Hand them to a @builder or @executor subagent via natural language. Never call them from main context."
-    }
-  }));
-}
-var SKILL_SUGGEST_NEXT = {
-  clarify: ["explorer", "planner"],
-  explorer: ["architect", "planner"],
-  architect: ["planner"],
-  planner: ["multi-reviewer"],
-  "multi-reviewer": ["tdd", "builder"],
-  prd: ["planner"],
-  prototype: ["tdd", "builder"],
-  builder: ["tester", "verifier"],
-  tdd: ["verifier"],
-  tester: ["reviewer"],
-  verifier: ["reviewer", "shipper"],
-  reviewer: ["documenter", "shipper"],
-  "process-feedback": ["builder", "debugger"],
-  debugger: ["verifier"],
-  "grill-me": ["debugger", "verifier"],
-  shipper: ["documenter", "retro"],
-  triage: ["planner", "debugger"],
-  documenter: ["retro"],
-  retro: [],
-  "write-skill": ["tdd"],
-  "brand-designer": ["prototype", "builder"],
-  init: ["clarify", "explorer"]
-};
-function readSkillRegistry() {
-  if (!fs2.existsSync(skillsDir))
-    return [];
-  let entries;
-  try {
-    entries = fs2.readdirSync(skillsDir, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  const skills = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory())
-      continue;
-    const sp = path2.join(skillsDir, entry.name, "SKILL.md");
-    if (!fs2.existsSync(sp))
-      continue;
-    try {
-      const raw = fs2.readFileSync(sp, "utf8");
-      const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-      if (!m)
-        continue;
-      const fm = $parse(m[1]);
-      if (typeof fm.id !== "string" || typeof fm.phase !== "string")
-        continue;
-      const id = resolveSkillName(fm.id);
-      skills.push({ id, phase: fm.phase.toUpperCase(), suggest_next: (SKILL_SUGGEST_NEXT[id] || []).map(resolveSkillName) });
-    } catch {}
-  }
-  return skills.sort((a, b) => a.id.localeCompare(b.id));
-}
-function buildSkillRegistryBlock() {
-  const skills = readSkillRegistry();
-  if (!skills.length)
-    return "";
-  return wrapStructured("skill_registry", $stringify({ type: "skill_registry", skills }));
-}
-function buildSkillRegistryText() {
-  const skills = readSkillRegistry();
-  if (!skills.length)
-    return "";
-  const lines = [`### Skill Registry (next-skill suggestions)
-`];
-  for (const s of skills) {
-    if (s.suggest_next.length)
-      lines.push(`- **${s.id}** (${s.phase}) \u2192 next: ${s.suggest_next.join(", ")}`);
-  }
-  return lines.join(`
-`);
-}
 function getBootstrapPackageInfo() {
   return {
     version: getPackageVersion(),
@@ -22487,14 +22323,9 @@ function getBootstrapPackageInfo() {
 function buildBootstrap(context) {
   const blocks = [
     buildRuntimeBlock(context.pkg),
-    buildOrchestratorBlock(context.rules),
-    buildNamedRolesBlock(context.rules),
-    buildToolAccessBlock(),
     ...context.index || context.planner ? [buildPlanStateBlock(context.index, context.planner)] : [],
     buildShellBlock(context.shell),
-    buildExecutionContextBlock(context.exec),
-    buildProtocolBlock(),
-    buildSkillRegistryBlock()
+    buildExecutionContextBlock(context.exec)
   ];
   return blocks.filter(Boolean).join(`
 `);
@@ -22531,55 +22362,6 @@ function parseCommandFrontmatter(content) {
   }
   return result;
 }
-function inferAgentDesc(name, prompt) {
-  const firstLine = prompt.split(`
-`)[0]?.trim() || "";
-  if (firstLine) {
-    return firstLine.replace(/^You are an?\s+/i, "").replace(/\.$/, "");
-  }
-  return name.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-function inferAgentPermission(name) {
-  if (name === "builder") {
-    return {
-      bash: "deny",
-      task: "allow"
-    };
-  }
-  if (name === "executor") {
-    return {
-      edit: "deny",
-      bash: {
-        "*": "allow",
-        "git commit*": "deny",
-        "git push*": "deny",
-        "rm *": "deny"
-      },
-      task: "deny"
-    };
-  }
-  if (name === "explorer") {
-    return {
-      edit: "deny",
-      bash: "deny",
-      task: "deny"
-    };
-  }
-  if (name === "reviewer") {
-    return {
-      edit: "deny",
-      bash: "deny",
-      task: "deny"
-    };
-  }
-  if (name === "search-agent" || name === "docs-lookup") {
-    return { edit: "deny", write: "deny", bash: "deny", task: "deny" };
-  }
-  if (name === "code-reviewer" || name === "planner" || name === "architect" || name.startsWith("plan-") && name.endsWith("-reviewer")) {
-    return { edit: "deny", write: "deny", bash: "deny", task: "deny" };
-  }
-  return;
-}
 function mergeByName(priorityGroups) {
   const seen = new Map;
   for (const group of priorityGroups) {
@@ -22607,22 +22389,6 @@ function readFileSafe(filePath) {
 }
 function homeDir() {
   return process.env.USERPROFILE || os4.homedir();
-}
-function scanAgentDir(dir, source) {
-  const results = [];
-  try {
-    const entries = fs3.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.endsWith(".txt"))
-        continue;
-      const name = entry.name.slice(0, -4);
-      const prompt = readFileSafe(path3.join(dir, entry.name));
-      if (!prompt)
-        continue;
-      results.push({ name, desc: inferAgentDesc(name, prompt), prompt, permission: inferAgentPermission(name), source });
-    }
-  } catch {}
-  return results;
 }
 function scanCommandDir(dir, source) {
   const results = [];
@@ -22676,19 +22442,6 @@ var cachedCommands = new Map;
 var cachedSkills = new Map;
 function cacheKey(worktreePath) {
   return path3.resolve(worktreePath);
-}
-function discoverAgents(worktreePath) {
-  const key = cacheKey(worktreePath);
-  const cached2 = cachedAgents.get(key);
-  if (cached2)
-    return cached2;
-  const discovered = mergeByName([
-    scanAgentDir(BUNDLED_AGENTS_DIR, "agnes"),
-    scanAgentDir(globalDir(path3.join("prompts", "agents")), "global"),
-    scanAgentDir(workspaceDir(worktreePath, path3.join("prompts", "agents")), "workspace")
-  ]);
-  cachedAgents.set(key, discovered);
-  return discovered;
 }
 function discoverCommands(worktreePath) {
   const key = cacheKey(worktreePath);
@@ -22895,7 +22648,7 @@ var STOPWORDS = new Set([
   "that"
 ]);
 var INTENT_SKILL_MAP = {
-  implement: ["builder"],
+  implement: ["general"],
   clarify: ["clarify"],
   plan: ["planner", "prd"],
   review: ["reviewer", "verifier"],
@@ -22986,106 +22739,31 @@ function classifyPlannerRoute(message, mode = "auto") {
   };
 }
 
-// src/model-routing.ts
+// src/plugin-support.ts
 import * as fs5 from "fs";
 import * as path5 from "path";
-import * as os5 from "os";
-
-// src/model-routing-policy.ts
-var DEFAULT_MODEL = "opencode-go/deepseek-v4-flash";
-function generateDefaultConfig() {
-  return {
-    enabled: false,
-    global_default: DEFAULT_MODEL,
-    agents: {}
-  };
-}
-function populateAgentList(routing, agentNames) {
-  const agents = { ...routing.agents };
-  for (const name of agentNames) {
-    if (!(name in agents))
-      agents[name] = "";
-  }
-  return { ...routing, agents };
-}
-function applyModelRouting(config2, routing) {
-  if (!routing)
-    routing = generateDefaultConfig();
-  if (!routing.enabled)
-    return;
-  const globalDefault = routing.global_default || DEFAULT_MODEL;
-  const agentModels = routing.agents || {};
-  for (const [name, agentConfig] of Object.entries(config2.agent || {})) {
-    const agent = agentConfig;
-    if (agent.model)
-      continue;
-    agent.model = agentModels[name] || globalDefault;
-  }
-}
-
-// src/model-routing.ts
-function getConfigPath() {
-  const home = process.env.USERPROFILE || os5.homedir();
-  return path5.join(home, ".config", "opencode", "agnes.json");
-}
-function writeConfig(configPath, config2) {
-  const dir = path5.dirname(configPath);
-  try {
-    if (!fs5.existsSync(dir))
-      fs5.mkdirSync(dir, { recursive: true });
-    fs5.writeFileSync(configPath, JSON.stringify(config2, null, 2), "utf8");
-  } catch (err) {
-    warn(`Failed to write model routing config at ${configPath}`, err);
-  }
-}
-function loadModelRoutingConfig() {
-  const configPath = getConfigPath();
-  try {
-    if (fs5.existsSync(configPath)) {
-      const raw = fs5.readFileSync(configPath, "utf8").trim();
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.enabled === undefined)
-          parsed.enabled = false;
-        return parsed;
-      }
-    }
-  } catch (err) {
-    warn(`Failed to read model routing config at ${configPath}; regenerating defaults`, err);
-  }
-  const defaults = generateDefaultConfig();
-  writeConfig(configPath, defaults);
-  return defaults;
-}
-function applyModelRouting2(config2, routing) {
-  applyModelRouting(config2, routing || loadModelRoutingConfig());
-}
-
-// src/plugin-support.ts
-import * as fs6 from "fs";
-import * as path6 from "path";
 function detectProject(cwd) {
-  let projectName = path6.basename(cwd);
+  let projectName = path5.basename(cwd);
   try {
-    const pkg = JSON.parse(fs6.readFileSync(path6.join(cwd, "package.json"), "utf8"));
+    const pkg = JSON.parse(fs5.readFileSync(path5.join(cwd, "package.json"), "utf8"));
     if (pkg.name)
       projectName = pkg.name;
   } catch {}
   const languages = [];
-  if (fs6.existsSync(path6.join(cwd, "tsconfig.json")))
+  if (fs5.existsSync(path5.join(cwd, "tsconfig.json")))
     languages.push("typescript");
-  if (fs6.existsSync(path6.join(cwd, "go.mod")))
+  if (fs5.existsSync(path5.join(cwd, "go.mod")))
     languages.push("go");
-  if (fs6.existsSync(path6.join(cwd, "Cargo.toml")))
+  if (fs5.existsSync(path5.join(cwd, "Cargo.toml")))
     languages.push("rust");
-  if (fs6.existsSync(path6.join(cwd, "pyproject.toml")))
+  if (fs5.existsSync(path5.join(cwd, "pyproject.toml")))
     languages.push("python");
-  if (fs6.existsSync(path6.join(cwd, "package.json")))
+  if (fs5.existsSync(path5.join(cwd, "package.json")))
     languages.push("javascript");
   const lockfiles = { "bun.lock": "bun", "bun.lockb": "bun", "pnpm-lock.yaml": "pnpm", "yarn.lock": "yarn", "package-lock.json": "npm" };
   let packageManager = "npm";
   for (const [lock, name] of Object.entries(lockfiles)) {
-    if (fs6.existsSync(path6.join(cwd, lock))) {
+    if (fs5.existsSync(path5.join(cwd, lock))) {
       packageManager = name;
       break;
     }
@@ -23238,9 +22916,8 @@ function buildCompactionAdvisory(action, reason) {
 }
 
 // src/plugin.ts
-var __dirname4 = path7.dirname(fileURLToPath4(import.meta.url));
-var skillsDir2 = path7.resolve(__dirname4, "../skills");
-var BUILD_MUTATION_PERMISSION = "edit";
+var __dirname4 = path6.dirname(fileURLToPath4(import.meta.url));
+var skillsDir2 = path6.resolve(__dirname4, "../skills");
 var _modelName;
 var _plannerMode = "auto";
 var _injectedSessions = new Set;
@@ -23249,23 +22926,6 @@ function buildStructuredBootstrap(planner) {
   if (!proseBootstrap)
     return "";
   const pkg = getBootstrapPackageInfo();
-  const rules = {
-    delegate: true,
-    parallelize: true,
-    onePercent: true,
-    verify: true,
-    noSharedEdits: true,
-    freshSubagents: true,
-    scarcity: true,
-    answerDirectly: true,
-    namedRoles: {
-      executor: "Runs one command/test/build chunk. Returns compact pass/fail, key output, and file refs. Never suggests fixes.",
-      explorer: "Owns one discovery chunk. Uses glob \u2192 grep \u2192 selective read. Read-only. Reports evidence only.",
-      planner: "Turns a goal into small, verifiable chunks with file scope, dependencies, and checkpoints.",
-      builder: "Implements one scoped chunk at a time. Keeps edits minimal. Delegates commands to executor and sends diffs to reviewer.",
-      reviewer: "Reviews one diff chunk against scope, regressions, and verification. Returns findings with file refs."
-    }
-  };
   let index = null;
   try {
     const workspaceRoot = findProjectRoot();
@@ -23278,7 +22938,6 @@ function buildStructuredBootstrap(planner) {
   const shell = detectShell();
   const structuredBlocks = buildBootstrap({
     pkg,
-    rules,
     index,
     planner,
     shell: {
@@ -23326,27 +22985,7 @@ var AgnesPlugin = async ({ client, directory, worktree }) => {
         ...discoverSkills(worktreePath)
       ])];
       configObj.skills = { ...configObj.skills || {}, paths: allPaths };
-      const agentCfgObj = configObj.agent || {};
-      const discoveredAgents = discoverAgents(worktreePath);
-      for (const agent of discoveredAgents) {
-        if (!agentCfgObj[agent.name]) {
-          const agentCfg = { description: agent.desc, mode: "subagent", prompt: agent.prompt };
-          if (agent.permission)
-            agentCfg.permission = agent.permission;
-          agentCfgObj[agent.name] = agentCfg;
-        }
-      }
-      const buildAgentCfg = agentCfgObj.build ?? {};
-      const buildPermission = buildAgentCfg.permission ?? {};
-      agentCfgObj.build = {
-        ...buildAgentCfg,
-        permission: {
-          ...buildPermission,
-          [BUILD_MUTATION_PERMISSION]: "deny",
-          bash: "deny"
-        }
-      };
-      configObj.agent = agentCfgObj;
+      configObj.agent = configObj.agent || {};
       const cmdCfgObj = configObj.command || {};
       for (const cmd of discoverCommands(worktreePath)) {
         if (!cmdCfgObj[cmd.name]) {
@@ -23361,11 +23000,6 @@ $ARGUMENTS`,
         }
       }
       configObj.command = cmdCfgObj;
-      const routing = loadModelRoutingConfig();
-      const agentNames = Object.keys(configObj.agent || {});
-      const populated = populateAgentList(routing, agentNames);
-      writeConfig(getConfigPath(), populated);
-      applyModelRouting2(configObj, populated);
     },
     "session.created": async (_event) => {
       projectProfile = detectProject(worktreePath);
@@ -23382,11 +23016,11 @@ $ARGUMENTS`,
     },
     "tool.definition": async (input, output) => {
       if (input.toolID === "edit" || input.toolID === "write" || input.toolID === "apply_patch" || input.toolID === "bash") {
-        output.description = `[AGNES ENFORCEMENT] Delegate-only mutation tool \u2014 use via @builder / @executor, not from the primary agent. | ${output.description}`;
+        output.description = `[AGNES ENFORCEMENT] Delegate-only mutation tool \u2014 use via @general, not from the primary agent. | ${output.description}`;
         return;
       }
       if (input.toolID === "read" || input.toolID === "glob" || input.toolID === "grep" || input.toolID === "webfetch" || input.toolID === "websearch" || input.toolID === "skill" || input.toolID === "todowrite" || input.toolID === "question" || input.toolID === "lsp") {
-        output.description = `[AGNES ENFORCEMENT] Read-only tool \u2014 technically safe in main context, but delegation is preferred for discovery/research. Prefer @explorer when practical. | ${output.description}`;
+        output.description = `[AGNES ENFORCEMENT] Read-only tool \u2014 use directly for quick lookups; delegate complex searches to @explore. | ${output.description}`;
       }
     },
     "file.edited": async (event) => {

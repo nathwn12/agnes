@@ -1,220 +1,59 @@
-<h1 align="center">AGNES — OpenCode Native Plugin</h1>
+<h1 align="center">AGNES — Swarm orchestrator for OpenCode</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-0.20.0-blue" alt="version">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
-  <img src="https://img.shields.io/badge/skills-30-orange" alt="30 skills">
+  <img src="https://img.shields.io/badge/skills-22-orange" alt="22 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
 </p>
 
-<p align="center">
-  <b>Swarm orchestrator for OpenCode.</b><br>
-  Routes engineering work across 30 specialized skills. Delegates aggressively. Parallelizes by default. Coordinates while subagents execute.
-</p>
-
----
-
-## Table of Contents
-
-[Install](#install) · [Pipeline](#pipeline) · [Skills](#skills) · [Quick Start](#quick-start) · [Ethos](#ethos) · [Architecture](#architecture) · [State](#state) · [Development](#development) · [Troubleshooting](#troubleshooting)
-
----
-
-## Install
-
-Add to your `opencode.json`:
+**22 specialized skills. Parallel by default. One line to install.**
 
 ```json
-{
-  "plugin": ["agnes@git+https://github.com/nathwn12/agnes.git"]
-}
+{"plugin": ["agnes@git+https://github.com/nathwn12/agnes.git"]}
 ```
 
-Restart OpenCode. AGNES injects its bootstrap and registers all 30 skills automatically.
+Restart OpenCode. Every task routes to the right specialist subagent automatically.
 
 ---
 
-## Pipeline
+### Why AGNES?
 
-AGNES routes engineering work through a default chronological pipeline. The flow is linear when phases depend on each other, and parallel when work can safely run at the same time. Side skills (Design, Debug, Process, Meta) fire on demand when their trigger conditions are met.
+Most AI coding sessions are a mess of context switching — you prompt, you fix, you re-prompt, you pray. AGNES replaces that with a disciplined pipeline:
 
-### Default Flow (chronological order)
+| Phase | What happens |
+|-------|-------------|
+| **CLARIFY** | Vague request? clarify sharpens it into a spec. |
+| **RESEARCH** | Don't understand the codebase? architect deep-dives. |
+| **PLAN** | Spec approved? planner breaks it into steps. |
+| **BUILD** | tdd drives implementation test-first. |
+| **VERIFY** | verifier runs lint + typecheck + tests. reviewer checks spec compliance. |
+| **SHIP** | shipper merges. documenter writes docs. retro captures learnings. |
 
-1. **SETUP** → `init`
-2. **CLARIFY** → `clarify` ← **GATE:** spec must be approved
-3. **RESEARCH** → `explorer` → `architect` (optional deepening)
-4. **PLAN** → `planner` (builtin fast path for lightweight tasks; full planner + `multi-reviewer` for complex work)
-5. **BUILD** → `tdd` (new features) or `builder` (plan execution) → `tester` (coverage)
-6. **VERIFY** → `verifier` → `reviewer` ← **GATE:** all checks must pass
-7. **SHIP** → `shipper` (PR → merge)
-8. **REFLECT** → `documenter` → `retro`
-
-**Gates** block progression until they pass. AGNES uses them to keep high-throughput delegation tied to verified evidence.
-
-### Side Branches (fire when trigger condition is met)
-
-| Branch | Entry Trigger | Skills Used |
-|--------|--------------|-------------|
-| **Design** | New UI project, need brand identity | brand-designer → prototype → prd |
-| **Debug** | Bug report, test failure, crash | debugger → grill-me (if debugger fails) |
-| **Process** | Incoming issue needs triage | triage |
-| **Meta** | AGNES is missing a capability | write-skill |
+Every phase has a **gate** — hard evidence must pass before the next phase starts. No skipping, no "trust me, it works."
 
 ---
 
-## Skills
+### What makes it different
 
-All 30 bundled skills with concrete trigger conditions and outputs. "When to Use" is written for both beginners (what you'll be feeling/experiencing) and advanced users (the precise boundary conditions).
-
-| Skill | Phase | When to Use | What It Produces |
-|-------|-------|-------------|------------------|
-| **orchestrator** | META | *Always active.* Coordinates all other skills, delegates work to subagents, manages parallel execution, tracks session state. | Delegation waves, goal/plan state, subagent results |
-| **instinct** | META | Cross-session context retention and learned pattern memory. Agents observe patterns, create instincts with confidence scores, promote or decay them over time. | Learned patterns with confidence scores, promoted/decayed instincts |
-| **init** | SETUP | First time running AGNES in a project. Or existing state files are corrupted/missing. | `.agnes/` directory with `index.json` + `AGENTS.md` |
-| **brainstorming** | THINK | Ambiguous creative direction, no clear implementation path, need to explore design space before committing to a plan. | Design doc with forcing questions, 2-3 approach proposals, approved spec |
-| **clarify** | THINK | Request is vague ("make it better"), ambiguous ("fix the issue"), or has terminology conflicts between team members. Sharpens until executable. | Written, user-approved specification |
-| **explorer** | RESEARCH | Need to understand unfamiliar code before making changes. Or need to find where a thing lives, how data flows, what conventions exist. | Structured findings report: file map, dependency chains, pattern analysis |
-| **architect** | RESEARCH / DESIGN | Codebase feels hard to change — adding features requires touching 5 files, tests are brittle, module boundaries are blurry. Finds deepening opportunities. | Seam map, interface proposals, Design It Twice alternatives |
-| **brand-designer** | DESIGN | Starting a UI-heavy project. Need logo, color palette, typography, design system, or brand guidelines. Not for backend-only work. | Brand assets, color system, typography scale, component mockups |
-| **prototype** | DESIGN / BUILD | Need to validate a design decision with throwaway code. Not sure if the state machine is right, or if that UX pattern works. | Runnable prototype + documented answer (discarded after) |
-| **prd** | PLAN | Requirements are clear but need formal capture. Stakeholders need a documented PRD with stories, acceptance criteria, and priorities. | Published PRD with user stories, acceptance criteria, priority matrix |
-| **planner** | PLAN | Spec or PRD is approved. Need to break it into actionable implementation steps with dependencies and ordering. `planner.mode=auto|builtin|full` selects builtin vs full routing. | Bite-sized implementation checklist (plan-NNN.yaml) |
-| **multi-reviewer** | PLAN REVIEW | Planner produced a plan. Need a quality gate before any implementation starts. Applies four lenses: CEO (business value), Eng (architecture), Design (UX), DX (developer experience). | Score per lens + verdict: `APPROVE`, `REVISE`, or `REJECT` |
-| **plan-reviewer** | PLAN REVIEW | Legacy compatibility skill still bundled for older workflows. Prefer `multi-reviewer` for new plan gates. | Legacy plan review findings |
-| **builder** | BUILD | Plan is approved and ready to execute. Has detailed tasks with clear boundaries. Dispatches subagent swarms in isolated worktrees. | Verified, reviewed commits |
-| **tdd** | TEST / BUILD | Building features from scratch. Prefer test-first development. Each cycle: RED (write failing test) → GREEN (minimal code) → REFACTOR (clean up). | Red-green-refactor vertical slices through all layers |
-| **tester** | TEST | Features are built, need comprehensive test coverage. Or coverage gaps are identified and need filling. Not for test-first workflows. | Unit/integration/edge case tests + coverage gap report |
-| **verifier** | VERIFY | Before claiming any task is done. Runs type check, lint, full test suite, and build in sequence. Captures pass/fail with timing. Rejects claims without fresh evidence. | Pass/fail evidence log: type check → lint → test → build |
-| **reviewer** | REVIEW | Code is written, tests pass, ready for review. Checks spec compliance, project conventions, API design, error handling, and test quality. | Spec compliance score + actionable findings list |
-| **process-feedback** | REVIEW | Received PR/code review feedback from a human or external reviewer. Processes each comment, categorizes, produces fix plan, coordinates changes. | Categorized feedback + fix implementation plan |
-| **debugger** | DEBUG | Bug report comes in. Or a test fails and root cause isn't obvious. Collaborative investigation: reproduce → isolate → regression test → fix. | Root cause analysis + regression test + fix |
-| **grill-me** | DEBUG | debugger tried 3 approaches and failed. Bug spans multiple modules. Or the failure is intermittent and hard to reproduce. Adversarial: generates and tests hypotheses systematically. | Architecture finding or fix + hypothesis log |
-| **triage** | SHIP / PROCESS | Incoming issue, PR, or feature request needs routing. Validates completeness, assigns labels, sets priority, routes to appropriate skill. | State-machine triage: validated → labeled → assigned |
-| **shipper** | SHIP | Code is reviewed, all gates pass, and the work is ready to deliver. Creates PRs, runs final verification, then merges or discards according to the workflow. | Merged PR or discarded branch + changelog entry |
-| **documenter** | REFLECT | Post-ship. Code is landed, needs docs. Or changelog needs updating. Or architecture decisions need ADRs. Follows Diataxis: tutorials, how-to, reference, explanation. | Diataxis docs (tutorials, how-to, reference, explanation) + ADRs + changelog |
-| **retro** | REFLECT | Sprint or milestone completed. Or a pattern keeps repeating (good or bad). Facilitates retrospective: what worked, what didn't, what to change. | Learnings document → stored in `.agnes/learnings/` |
-| **write-skill** | REFLECT / META | AGNES is missing a capability. Or an existing skill needs refinement. Creates a new skill or refines an existing one via TDD. | New/refined SKILL.md + tests |
+- **Parallel by default** — independent tasks run concurrently. Subagents work-steal.
+- **Promise-driven** — tracks progress via tags, detects struggle, retries with backoff.
+- **22 on-demand skills** — debugger, grill-me, brand-designer, triage, write-skill, and more fire when their trigger conditions are met.
+- **Model routing** — heavy reasoning to architect models, lightweight to fast ones.
 
 ---
 
-## Quick Start
+### Routing (yep, that's the whole thing)
 
-1. **Install** — add to `opencode.json` and restart
-2. **Init** — run `init` in any project to create `.agnes/` and `AGENTS.md`
-3. **Work** — every engineering task routes through the pipeline automatically:
-   - Vague request? → clarify sharpens it
-   - Need to understand code? → explorer researches
-   - Ready to build? → builder dispatches subagents
-   - Bugs? → grill-me systematically debugs
-4. **Review** — reviewer gate-checks before any merge
-5. **Reflect** — retro captures learnings, documenter produces docs
-
-AGNES coordinates work. Simple questions can be answered directly. Repository work, command execution, and mutation work are delegated to the right subagent or specialized skill.
+**Read/search/lookup** → @explore  
+**Modify/create/run/delete** → @general  
+**Destructive/irreversible** → Ask user first
 
 ---
 
-## Ethos
+### Quick start
 
-| Principle | Meaning |
-|-----------|---------|
-| **Coordinator coordinates** | AGNES routes, merges, and reports while specialist subagents execute. |
-| **Parallelize by default** | Scan every task set for independence. Sequential is the exception. |
-| **Specialize every task** | Match each work item to the role with the right context, tools, and responsibility. |
-| **Verify before claiming** | Run the command. Read the output. Then speak. |
-| **Scarcity** | Cheapest sufficient path first — shallow-first, compact outputs, context as budget. |
-| **Work-steal** | Subagent finished early? Dispatch it with the next task immediately. |
-| **Promise-driven execution** | Tracks subagent progress via promise tags, detects struggle patterns, and retries with session-aware backoff. |
-| **Contract assertions** | Evidence-backed Definition of Done protocol. No partial credit for failing assertions. |
-| **Direct when simple** | If the user asks a simple question that needs no tools or state changes, answer directly and briefly. |
+Ask AGNES to `init` a project, or run `bun run init-agnes`. After that, just start asking.
 
----
+### Full docs
 
-## Architecture
-
-AGNES is organized into layered modules that handle protocol, state, runtime, and tool integration:
-
-| Layer | Module | Purpose |
-|-------|--------|---------|
-| **Protocol** | `src/protocol.ts` | Typed messages (task, result, error, status, completion) |
-| **Schema** | `src/schema.ts` | Self-describing skill contracts, execution-artifact schemas, gate evidence, retry classification |
-| **Middleware** | `src/middleware.ts` | Composable hook chain (before/after wave, before/after subagent) |
-| **Flow Control** | `src/flowcontrol.ts` | Ephemeral jump signals with non-destructive peek and single destructive consume |
-| **Bootstrap** | `src/bootstrap.ts` | Agent injection — injects plan context, shell env, and structured blocks into agent system prompt |
-| **Plugin** | `src/plugin.ts` | OpenCode entry point — plugin registration, unconditional interleaved config (model-agnostic) |
-| **Runtime Helpers** | `src/runtime.ts` | Execution-outcome contract, retry budgets with classification, wave dispatch, gate integration |
-| **Shell** | `src/shell.ts` | Shell detection — identifies pwsh/bash/cmd and detects shell mismatch between host and workspace |
-| **State** | `src/state.ts` | Plan state machine — CRUD for plan-NNN.yaml, index.json, session tracking, retention pruning, execution artifact persistence |
-| **Verification** | `src/verification.ts` | Structured gates with PASS/FAIL/SKIP status, gate factories, evidence-to-artifact conversion |
-| **Validation** | `src/validation.ts` | Allowlist-based message validation and injection protection |
-
-In v0.10+, AGNES adds a machine-optimized Structured Protocol: YAML plan files with JSON Schema validation (`.agnes/plans/plan-NNN.yaml`), typed `<agnes:message>` envelopes, and Zod-based message validation. Bootstrap injection unified to a model-agnostic structured format.
-
----
-
-## State
-
-AGNES tracks progress via `.agnes/` in any project:
-
-```
-.agnes/
-├── index.json         Searchable plan index — read once, filter instantly
-├── config.json        Per-project configuration overrides
-├── learnings/         Cross-session learnings memory
-├── specs/             Published specs and PRDs
-└── plans/
-    ├── plan-001.yaml  Canonical immutable plan iteration
-    └── ...
-```
-
-Plan files are immutable — every state change creates a new `plan-NNN.yaml`.
-Search by project/status through `index.json` without re-reading old plan files.
-
-### Retention policy
-
-Completed (`done`) and abandoned plans are auto-pruned after 7 days. Pruning runs transparently every time the index is loaded — no explicit trigger needed.
-
-To override per-project, add a `retention` field to `index.json`:
-
-```json
-{
-  "retention": {
-    "maxAgeDays": 3,
-    "terminalStatuses": ["done", "abandoned"]
-  }
-}
-```
-
----
-
-## Development
-
-```bash
-bun run bundle        # bundles to .opencode/plugins/agnes.js
-bun run bundle:watch  # watch mode for development
-bun run lint          # lint source files
-bun run lint:fix      # auto-fix lint issues
-bun run typecheck     # type-safety gate
-bun test              # 536 tests across 17 suites
-```
-
----
-
-## Troubleshooting
-
-### Clear cached installation
-
-Use the command that matches your shell:
-
-```powershell
-Remove-Item -LiteralPath "$env:USERPROFILE\.cache\opencode\packages\agnes@git+https_*" -Recurse -Force
-```
-
-```cmd
-rmdir /s /q "%USERPROFILE%\.cache\opencode\packages\agnes@git+https_"
-```
-
-```bash
-rm -rf "$HOME/.cache/opencode/packages"/agnes@git+https_*
-```
-
-Then restart OpenCode.
+Architecture, pipeline, all 22 skills, state, development, troubleshooting → [`docs/WHITEPAPER.md`](docs/WHITEPAPER.md)

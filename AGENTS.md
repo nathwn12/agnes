@@ -1,75 +1,77 @@
 # AGNES — OpenCode Plugin
 
-Swarm orchestrator. Delegates substantive work, parallelizes independent chunks, verifies. Never performs mutation directly.
+Swarm orchestrator. Routes work across 22 skills. Delegates aggressively, parallelizes by default, never mutates directly.
 
-## Operational workflow
+## Tool routing
 
-- **Orchestration first** — coordinate in main context; delegate substantive research, implementation, verification, and review to the right subagents.
-- **Parallelize independent chunks** — split broad reads/research and all edits into scoped subagent tasks when they can proceed independently. A single subagent must never be choked.
-- **Tool enforcement**: READ-ONLY tools (`read`, `grep`, `glob`, `webfetch`, `websearch`, `skill`, `todowrite`, `question`, `lsp`) are safe in main context for lightweight coordination and direct simple answers. MUTATION tools (`edit`, `write`, `bash`, `apply_patch`) are FORBIDDEN in main context — must use subagents.
-- **Three-step cycle**: PLAN → REVIEW → IMPLEMENT → FIX/REVISE → ENDORSE. Every task follows this loop. Never skip directly to implementation.
-- **If blocked, STOP and ASK** — never continue blindly or guess. Present the user with the block + recommended next step.
-- **LEAN** — small, precise subagent tasks. One narrow concern per subagent. Broad tasks are fragmented.
+- Read/search/lookup → @explore
+- Modify/create/run/delete → @general
+- Destructive/irreversible → Ask user
 
-## Quick commands
+## Commands
 
 | Command | What |
 |---------|------|
-| `bun run bundle` | Build `.opencode/plugins/agnes.js` |
-| `bun run bundle:watch` | Watch mode rebuild |
-| `bun run lint` | ESLint on `src/` |
-| `bun run lint:fix` | Auto-fix lint |
-| `bun run typecheck` | `tsc --noEmit` |
-| `bun test` | 390+ tests, 13 suites |
+| bun run bundle | Build single-file plugin to .opencode/plugins/agnes.js |
+| bun run bundle:watch | Watch mode rebuild |
+| bun run lint | ESLint on src/ |
+| bun run lint:fix | Auto-fix lint |
+| bun run typecheck | tsc --noEmit |
+| bun test | 476 tests, 15 suites |
+| bun test src/FILE.test.ts | Single test file |
+| bun test -t "pattern" | Single test pattern |
+| bun run release | Publish with scripts/release.ts --go |
+| bun run init-agnes | Run scripts/init-agnes.ts |
 
-CI runs `bun install → typecheck → test → bundle` on push/PR.
-
-Single test: `bun test src/state.test.ts`. Single test pattern: `bun test -t "plan index"`.
+CI runs: bun install -> bun run lint -> bun run typecheck -> bun test -> bun run bundle
 
 ## Architecture
 
-- **`src/plugin.ts`** — OpenCode entry point. Hooks: `config`, `session.created`, `chat.message`, `tool.definition`, `tool.execute.after`, `experimental.chat.messages.transform`, `experimental.session.compacting`.
-- **`src/bootstrap.ts`** — System prompt injection (SOUL.md + structured YAML blocks). Cached by content hash.
-- **`src/state.ts`** — Plan index CRUD (`index.json` + `plans/plan-NNN.yaml`). Immutable plan files, append-only iterations.
-- **`src/runtime.ts`** — Session tracking, attempt counting, struggle detection, planner routing.
-- **`src/protocol.ts`** — `<agnes:message>` JSON messages (task/result/error/status/completion).
-- **`src/schema.ts`** — Zod schemas for Plan, Bootstrap Block, Message.
-- **`src/shell.ts`** — Detects pwsh/bash/cmd, caches per-process.
-- **`src/compaction.ts`** — Token-count evaluation for session compaction advisory.
-- **`src/discovery.ts`** — Scans 3 layers (bundled/global/workspace) for agents, commands, skills.
-- **`src/model-routing.ts`** — Reads `openecc.json`, routes agents to reasoning models.
-- **`src/verification.ts`** — Gate system (PASS/FAIL/SKIP) with blocking gates.
+| Path | Role |
+|------|------|
+| src/plugin.ts | OpenCode entry point. Registers all hooks, injects bootstrap, registers skills/commands/agents. |
+| src/bootstrap.ts | Injects SOUL.md + structured YAML blocks as system prompt. Cached by content hash. |
+| src/state.ts | Plan index CRUD -- .agnes/index.json + plans/plan-NNN.yaml. Immutable plan files, append-only iterations. |
+| src/runtime.ts | Session tracking, attempt counting, struggle detection, wave dispatch, planner routing, gate integration. |
+| src/protocol.ts | <agnes:message> JSON protocol (task/result/error/status/completion). |
+| src/schema.ts | Zod schemas for Plan, Bootstrap Block, Message. |
+| src/shell.ts | Detects pwsh/bash/git-bash/cmd/wsl. Cached per-process. Uses MSYSTEM env for Git Bash. |
+| src/validation.ts | Allowlist-based message validation and injection protection. escapeUserData() prefixes protocol-keyed fields with __user_. |
+| src/discovery.ts | Scans 3 layers (bundled/global/workspace) for agents, commands, skills. |
+| src/discovery-policy.ts | YAML frontmatter parsing, agent permission inference (executor/explorer/reviewer/etc), merge-by-name dedup. |
+| src/model-routing.ts | Reads model routing config from ~/.config/opencode/agnes.json. Routes agents to specific models. |
+| src/model-routing-policy.ts | Config types, default model, agent list population, apply logic. |
+| src/plugin-support.ts | Project profile detection (langs, pkg manager), compaction context builder. |
+| src/verification.ts | Structured gates (PASS/FAIL/SKIP) with blocking gate short-circuit. |
+| src/compaction.ts | Token-count evaluation (nudge/alert/compact) with discretionary struggle-aware thresholds. |
+| src/logger.ts | Stderr logger -- debug/info/warn/error with [agnes] prefix. |
 
 ## Key quirks
 
-- **State directory**: `.agnes/` at project root. Not `.cache/agnes/`. Auto-prunes done/abandoned plans after 7 days.
-- **Plan files**: YAML (`plan-NNN.yaml`) with JSON Schema validation. Legacy `.md` support preserved.
-- **Session state**: Persisted to `.agnes/sessions.json` via atomic tmp+rename.
+- **State dir**: .agnes/ at project root, not .cache/. Auto-prunes done/abandoned plans after 7 days.
 - **Bootstrap cache**: Invalidated when package version or SOUL.md content hash changes.
-- **Shell detection**: Uses `MSYSTEM` env for Git Bash. Runs once at plugin startup.
-- **No DS4 branching**: Model-agnostic. `interleaved: { field: "reasoning_content" }` set unconditionally.
-- **Locked file**: `nul` is tracked at repo root — Windows sentinel, do not touch.
+- **Model routing config**: ~/.config/opencode/agnes.json -- auto-heals with defaults if missing.
+- **No opencode.json in repo**: Plugin is installed via opencode.json in the workspace using config, not stored here.
+- **Locked file**: nul at repo root -- Windows sentinel, do not touch.
+- **Skills**: 22 bundled SKILL.md files live in .opencode/skills/. Registered by discoverSkills() at plugin startup.
+- **Agent permissions**: Defined in discovery-policy.ts. executor gets bash access (no git commit/push); explorer/reviewer/planner/architect get read-only.
+- **Completion protocol**: Agent ends tasks with an HTML comment <agnes:message> containing a completion or result JSON message -- parsed by AGNES.
+- **Plugin build**: Single-file bundle via bun build src/plugin.ts --target bun, output is require()-able by OpenCode.
 
 ## Code conventions
 
-- **Runtime deps**: `yaml` + `zod`. Pin `@opencode-ai/plugin` to `^1.15.x`.
-- **No Biome**: ESLint 10 + `@typescript-eslint`. Separate config for src vs test files.
-- **Strict TS**: `tsconfig.json` with `strict: true`, `ES2022`, `NodeNext` module resolution.
-- **Plugin lint rules**: `no-unused-vars` (warn), `no-explicit-any` (warn), `no-require-imports` (error), `no-console` (warn).
-- **Test convention**: `*.test.ts` next to source, excluded from tsconfig. Shared test utils in `src/test-utils.ts`. Tests use `describe`/`it` blocks.
-- **No body in git commits**: Title only, `<72 chars`, imperative present tense.
-- **No commit without explicit request**.
-
-## CI / OpenCode
-
-- **GitHub CI**: `.github/workflows/ci.yml` — Bun + typecheck + test + bundle on push/PR to main.
-- **OpenCode on issues/PRs**: `.github/workflows/opencode.yml` — triggered by `/oc` or `/opencode` in comments. Uses `anomalyco/opencode/github@latest` with deepseek-v4-flash.
+- **Runtime deps**: yaml + zod. Pin @opencode-ai/plugin to ^1.15.x.
+- **No Biome**: ESLint 10 + @typescript-eslint. Separate config for src vs test files.
+- **Strict TS**: strict: true, ES2022, NodeNext module resolution, noUnusedLocals/Parameters.
+- **Lint rules**: no-unused-vars (warn), no-explicit-any (warn), no-require-imports (error), no-console (warn).
+- **Tests**: *.test.ts next to source, excluded from tsconfig. Shared utils in src/test-utils.ts. describe/it blocks.
+- **Commits**: Title only, <72 chars, imperative present tense. Never commit without explicit request.
 
 ## Generated files (do not hand-edit)
 
-- `.opencode/plugins/agnes.js` — bundle output from `bun run bundle`
-- `.opencode/plans/` — gitignored
-- `.opencode/INSTALL.md` — gitignored
-- `.opencode/index.json` — gitignored
-- `.agnes/` — gitignored (plan state, sessions, learnings)
-- `node_modules/` — gitignored
+- .opencode/plugins/agnes.js -- bundle output
+- .opencode/plans/ -- gitignored
+- .opencode/INSTALL.md -- gitignored
+- .opencode/index.json -- gitignored
+- .agnes/ -- gitignored (plan state, sessions, learnings)
+- node_modules/ -- gitignored

@@ -141,15 +141,8 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
       }
     },
 
-    "tool.definition": async (input, output) => {
-      if (input.toolID === 'edit' || input.toolID === 'write' || input.toolID === 'apply_patch' || input.toolID === 'bash') {
-        output.description = `[AGNES ENFORCEMENT] Delegate-only mutation tool — use via @general, not from the primary agent. | ${output.description}`;
-        return;
-      }
-
-      if (input.toolID === 'read' || input.toolID === 'glob' || input.toolID === 'grep' || input.toolID === 'webfetch' || input.toolID === 'websearch' || input.toolID === 'skill' || input.toolID === 'todowrite' || input.toolID === 'question' || input.toolID === 'lsp') {
-        output.description = `[AGNES ENFORCEMENT] Read-only tool — use directly for quick lookups; delegate complex searches to @explore. | ${output.description}`;
-      }
+    "tool.definition": async (_input, _output) => {
+      // no-op — routing handled by bootstrap
     },
 
     "file.edited": async (event: { path: string }) => {
@@ -175,6 +168,7 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
       if (!firstUser?.parts?.length) return;
 
       if (firstUser.parts.some((p) => p.type === 'text' && typeof p.text === 'string' && p.text.includes('EXTREMELY_IMPORTANT'))) return;
+      if (firstUser.parts.some((p) => p.type === 'agent')) return;
 
       const sessionID = (firstUser.parts[0] as { sessionID?: string }).sessionID ?? '';
       if (_injectedSessions.has(sessionID)) return;
