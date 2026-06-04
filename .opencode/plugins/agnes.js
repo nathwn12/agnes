@@ -22198,18 +22198,11 @@ You are AGNES.
 - OpenCode package cache root: \`${opencodePackageCache}\`
 - If the user explicitly asks to clear or nuke AGNES's OpenCode cache, remove the installed AGNES cache directory or use: \`${cacheNukeCommand}\`, then restart OpenCode.
 
-=== AGNES ENFORCEMENT (HARD RULES) ===
-READ-ONLY tools (direct use): read, grep, glob, webfetch, websearch, skill, todowrite, question, lsp
-- Quick lookups: answer directly
-- Complex multi-file research: delegate to @explore
-  - Run shallow-first (glob \u2192 grep \u2192 read, stop when answered)
-  - Batch independent searches. Ignore node_modules/dist/build/.git/cache
-  - Cite exact file:line for all findings. No speculation.
-
-MUTATION tools (delegate): edit, write, bash, apply_patch
-- Complex multi-step implementation: delegate to @general
-- Domain specialists: @refactor-cleaner, @security-reviewer, @e2e-runner, @build-error-resolver
-=== END AGNES ENFORCEMENT ===
+=== AGNES ROUTING ===
+- Read/search/lookup anything \u2192 @explore
+- Modify/create/run/delete anything \u2192 @general
+- Destructive/lossy/irreversible \u2192 Ask user first
+=== END AGNES ROUTING ===
 
 **IMPORTANT: AGNES SOUL.md is loaded below.**
 
@@ -23014,15 +23007,7 @@ $ARGUMENTS`,
         _modelName = input.model.modelID;
       }
     },
-    "tool.definition": async (input, output) => {
-      if (input.toolID === "edit" || input.toolID === "write" || input.toolID === "apply_patch" || input.toolID === "bash") {
-        output.description = `[AGNES ENFORCEMENT] Delegate-only mutation tool \u2014 use via @general, not from the primary agent. | ${output.description}`;
-        return;
-      }
-      if (input.toolID === "read" || input.toolID === "glob" || input.toolID === "grep" || input.toolID === "webfetch" || input.toolID === "websearch" || input.toolID === "skill" || input.toolID === "todowrite" || input.toolID === "question" || input.toolID === "lsp") {
-        output.description = `[AGNES ENFORCEMENT] Read-only tool \u2014 use directly for quick lookups; delegate complex searches to @explore. | ${output.description}`;
-      }
-    },
+    "tool.definition": async (_input, _output) => {},
     "file.edited": async (event) => {
       editedFiles.add(event.path);
     },
@@ -23043,6 +23028,8 @@ $ARGUMENTS`,
       if (!firstUser?.parts?.length)
         return;
       if (firstUser.parts.some((p) => p.type === "text" && typeof p.text === "string" && p.text.includes("EXTREMELY_IMPORTANT")))
+        return;
+      if (firstUser.parts.some((p) => p.type === "agent"))
         return;
       const sessionID = firstUser.parts[0].sessionID ?? "";
       if (_injectedSessions.has(sessionID))
