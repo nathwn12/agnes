@@ -30,8 +30,11 @@ import {
   validatePlanTransition,
   transitionPlanStatus,
   generateRetrospective,
+  appendExecutionArtifact,
+  getExecutionArtifacts,
 } from './state.js';
 import type { PlanIndex, PlanIndexEntry, StruggleMetrics, PlannerRoutingContext } from './state.js';
+import type { ExecutionArtifact } from './schema.js';
 import { getPlanState, getPlanGate } from './runtime.js';
 import { NO_PLAN_NUDGE } from './state.js';
 
@@ -2146,6 +2149,100 @@ notes: []
 
       const planContent = fs.readFileSync(planPath, 'utf8');
       expect(planContent).toContain('schema: agnes/plan-v1');
+    });
+  });
+
+  describe('execution artifacts', () => {
+    test('appendExecutionArtifact and getExecutionArtifacts round-trip', () => {
+      const tmp = createTempProject();
+      const id = createPlan({
+        summary: 'test artifacts',
+        goal: 'test',
+        check: 'test',
+        tasks: ['test task'],
+        projectRoot: tmp,
+      }).entry.id;
+
+      const artifact = {
+        attempt: 1,
+        completed: false,
+        retryClass: 'retryable' as const,
+        summary: 'first attempt',
+        timestamp: new Date().toISOString(),
+      } as ExecutionArtifact;
+
+      appendExecutionArtifact(id, artifact, tmp);
+      const artifacts = getExecutionArtifacts(id, tmp);
+      expect(artifacts.length).toBe(1);
+      expect(artifacts[0].attempt).toBe(1);
+      expect(artifacts[0].retryClass).toBe('retryable');
+    });
+
+    test('getExecutionArtifacts returns empty for missing plan', () => {
+      const tmp = createTempProject();
+      const artifacts = getExecutionArtifacts('plan-nonexistent', tmp);
+      expect(artifacts).toEqual([]);
+    });
+
+    test('append adds multiple artifacts in order', () => {
+      const tmp = createTempProject();
+      const id = createPlan({
+        summary: 'test multiple artifacts',
+        goal: 'test',
+        check: 'test',
+        tasks: ['test task'],
+        projectRoot: tmp,
+      }).entry.id;
+
+      const a1 = { attempt: 1, completed: false, summary: 'first', timestamp: new Date().toISOString() } as ExecutionArtifact;
+      const a2 = { attempt: 2, completed: true, summary: 'second', timestamp: new Date().toISOString() } as ExecutionArtifact;
+
+      appendExecutionArtifact(id, a1, tmp);
+      appendExecutionArtifact(id, a2, tmp);
+
+      const artifacts = getExecutionArtifacts(id, tmp);
+      expect(artifacts.length).toBe(2);
+      expect(artifacts[0].attempt).toBe(1);
+      expect(artifacts[1].attempt).toBe(2);
+    });
+
+    test('artifact survives YAML parse round-trip', () => {
+      const tmp = createTempProject();
+      const id = createPlan({
+        summary: 'test yaml roundtrip',
+        goal: 'test',
+        check: 'test',
+        tasks: ['test task'],
+        projectRoot: tmp,
+      }).entry.id;
+
+      const artifact: ExecutionArtifact = {
+        attempt: 1,
+        gateEvidence: [{
+          gateId: 'g1',
+          status: 'PASS',
+          evidence: { errors: [] },
+          timestamp: new Date().toISOString(),
+          durationMs: 50,
+        }],
+        retryClass: 'retryable',
+        completed: true,
+        summary: 'verified',
+        timestamp: new Date().toISOString(),
+      };
+
+      appendExecutionArtifact(id, artifact, tmp);
+
+      const planPath = path.join(tmp, '.agnes', 'plans', `${id}.yaml`);
+      const raw = fs.readFileSync(planPath, 'utf8');
+      expect(raw).toContain('executionArtifacts');
+
+      const artifacts = getExecutionArtifacts(id, tmp);
+      expect(artifacts.length).toBe(1);
+      expect(artifacts[0].attempt).toBe(1);
+      expect(artifacts[0].completed).toBe(true);
+      expect(artifacts[0].gateEvidence!.length).toBe(1);
+      expect(artifacts[0].gateEvidence![0].gateId).toBe('g1');
     });
   });
 });

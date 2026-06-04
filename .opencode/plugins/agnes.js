@@ -21345,6 +21345,37 @@ for (const [legacyName, canonicalName] of SKILL_NAME_ALIASES) {
   if (entry)
     SKILL_REGISTRY.set(legacyName, entry);
 }
+var GateEvidenceSchema = exports_external.object({
+  gateId: exports_external.string(),
+  status: exports_external.enum(["PASS", "FAIL", "SKIP"]),
+  evidence: exports_external.object({
+    command: exports_external.string().optional(),
+    exitCode: exports_external.number().optional(),
+    output: exports_external.string().optional(),
+    errors: exports_external.array(exports_external.string())
+  }),
+  timestamp: exports_external.string().datetime(),
+  durationMs: exports_external.number()
+});
+var RetryClassificationSchema = exports_external.enum([
+  "retryable",
+  "needs_context",
+  "blocked",
+  "terminal",
+  "verification_failed"
+]);
+var ExecutionArtifactSchema = exports_external.object({
+  attempt: exports_external.number().int().nonnegative(),
+  gateEvidence: exports_external.array(GateEvidenceSchema).default([]),
+  retryClass: RetryClassificationSchema.optional(),
+  flowSignal: exports_external.object({
+    jumpTo: exports_external.enum(["retry", "skip", "blocked", "next_wave", "end"]).nullable(),
+    reason: exports_external.string().optional()
+  }).optional(),
+  completed: exports_external.boolean(),
+  summary: exports_external.string().default(""),
+  timestamp: exports_external.string().datetime()
+});
 var PlanStatusSchema = exports_external.enum([
   "pending",
   "draft",
@@ -21378,7 +21409,8 @@ var PlanSchema = exports_external.object({
   tasks: exports_external.array(PlanTaskSchema).default([]),
   notes: exports_external.array(exports_external.string()).default([]),
   plannerMode: exports_external.enum(["builtin", "full"]).optional(),
-  plannerSource: exports_external.enum(["auto", "user", "gate"]).optional()
+  plannerSource: exports_external.enum(["auto", "user", "gate"]).optional(),
+  executionArtifacts: exports_external.array(ExecutionArtifactSchema).default([]).optional()
 });
 var MessageTypeSchema = exports_external.enum([
   "task",
@@ -21416,6 +21448,20 @@ var ResultMessageSchema = BaseMessageSchema.extend({
   reasoning_content: exports_external.string().optional()
 });
 
+// src/logger.ts
+var PREFIX = "[agnes]";
+function formatMessage(level, message) {
+  return `${PREFIX} [${level}] ${new Date().toISOString()} ${message}
+`;
+}
+function warn(message, err) {
+  let text = message;
+  if (err) {
+    text += err instanceof Error ? ` \u2014 ${err.message}` : ` \u2014 ${String(err)}`;
+  }
+  process.stderr.write(formatMessage("warn", text));
+}
+
 // src/protocol.ts
 import { randomUUID } from "crypto";
 var VALID_TYPES = new Set([
@@ -21425,6 +21471,40 @@ var VALID_TYPES = new Set([
   "status",
   "completion"
 ]);
+function validCompletionStatus(s) {
+  return CompletionStatusSchema.safeParse(s).success;
+}
+var REQUIRED_FIELDS = {
+  task: { skill: "string" },
+  result: { taskId: "string", status: "string", content: "string" },
+  error: { taskId: "string", errorType: "string", detail: "string" },
+  status: { taskId: "string", phase: "string" },
+  completion: { status: "string", summary: "string" }
+};
+function isValidAgnesMessage(obj) {
+  if (!obj || typeof obj !== "object")
+    return false;
+  const msg = obj;
+  if (typeof msg.type !== "string" || !VALID_TYPES.has(msg.type))
+    return false;
+  if (typeof msg.id !== "string")
+    return false;
+  if (typeof msg.timestamp !== "string")
+    return false;
+  const type = msg.type;
+  const required2 = REQUIRED_FIELDS[type];
+  if (required2) {
+    for (const [field, expectedType] of Object.entries(required2)) {
+      if (typeof msg[field] !== expectedType)
+        return false;
+    }
+    if (type === "completion" || type === "result") {
+      if (!validCompletionStatus(msg.status))
+        return false;
+    }
+  }
+  return true;
+}
 function serializeAgnesMessage(msg) {
   const m = msg;
   const enhanced = {
@@ -21433,6 +21513,10 @@ function serializeAgnesMessage(msg) {
     id: m.id ?? randomUUID(),
     timestamp: m.timestamp ?? new Date().toISOString()
   };
+  if (!isValidAgnesMessage(enhanced)) {
+    process.stderr.write(`[agnes] validateMessage failed for message type "${m.type}": missing required fields
+`);
+  }
   const json2 = JSON.stringify(enhanced);
   return `<agnes:message>${json2}</agnes:message>`;
 }
@@ -21492,7 +21576,8 @@ function getAgnesVersion() {
     const pkgPath = path.join(__dirname2, "..", "..", "package.json");
     const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
     version2 = pkg.version ?? "0.0.0";
-  } catch {
+  } catch (err) {
+    warn("Failed to read AGNES version", err);
     version2 = "0.0.0";
   }
   _agnesVersion = version2;
@@ -21641,7 +21726,8 @@ function readPlanIndex(projectRoot) {
       writePlanIndex(parsed, root);
     pruneExpiredPlans(parsed, root);
     return parsed;
-  } catch {
+  } catch (err) {
+    warn("Failed to read plan index", err);
     return null;
   }
 }
@@ -21714,7 +21800,9 @@ function pruneExpiredPlans(index, projectRoot) {
       if (!isNaN(updatedMs) && updatedMs <= cutoffMs) {
         try {
           fs.rmSync(getPlanFilePath(root, entry), { force: true });
-        } catch {}
+        } catch (err) {
+          warn("Failed to prune plan file", err);
+        }
         changed = true;
         continue;
       }
@@ -21829,7 +21917,9 @@ function getNextPlanId(projectRoot) {
           max = num;
       }
     }
-  } catch {}
+  } catch (err) {
+    warn("Failed to read plan directory", err);
+  }
   return `plan-${String(max + 1).padStart(3, "0")}`;
 }
 function createPlan(input) {
@@ -22108,6 +22198,12 @@ You are AGNES.
 - OpenCode package cache root: \`${opencodePackageCache}\`
 - If the user explicitly asks to clear or nuke AGNES's OpenCode cache, remove the installed AGNES cache directory or use: \`${cacheNukeCommand}\`, then restart OpenCode.
 
+=== AGNES ENFORCEMENT (HARD RULES) ===
+READ-ONLY tools (safe in main context): read, grep, glob, webfetch, websearch, skill, todowrite, question, lsp
+MUTATION tools (MUST delegate): edit, write, bash, apply_patch
+To delegate: ask a subagent in natural language via @builder / @executor
+=== END AGNES ENFORCEMENT ===
+
 **IMPORTANT: AGNES SOUL.md is loaded below. Orchestrator skill available via \`skill\` tool.**
 
 ${fullContent.trim()}
@@ -22247,23 +22343,19 @@ function buildProtocolBlock() {
 function buildToolAccessBlock() {
   return wrapStructured("tool_access", $stringify({
     type: "tool_access",
-    rule: "Main context is TALK + DELEGATE only. Tools are partitioned by context.",
-    main_context_only: {
-      allowed: ["task", "skill", "todowrite", "question", "analyze-task", "auto-delegate"],
-      description: "Spawn subagents, load skills, track todos, ask user questions. NO source mutations."
+    rule: "READ-ONLY tools are safe in main context. MUTATION tools MUST be delegated to subagents.",
+    read_only: {
+      allowed: ["read", "grep", "glob", "webfetch", "websearch", "skill", "todowrite", "question", "lsp"],
+      description: "Read-only tools: safe to call from main context. No side effects."
     },
-    subagent_only: {
-      allowed: ["edit", "write", "glob", "grep", "bash"],
-      description: "All source code work \u2014 editing, searching, building, testing. NEVER called in main context."
-    },
-    shared: {
-      allowed: ["read", "webfetch"],
-      description: "Read: .agnes/ state files only, never source analysis. webfetch: external docs only. Prefer to delegate to @explorer."
+    mutation: {
+      allowed: ["edit", "write", "bash", "apply_patch"],
+      description: "MUTATION tools: MUST be delegated to a @builder or @executor subagent via natural language. Never called from main context."
     }
   }));
 }
 var SKILL_SUGGEST_NEXT = {
-  clarifier: ["explorer", "planner"],
+  clarify: ["explorer", "planner"],
   explorer: ["architect", "planner"],
   architect: ["planner"],
   planner: ["multi-reviewer"],
@@ -22275,16 +22367,16 @@ var SKILL_SUGGEST_NEXT = {
   tester: ["reviewer"],
   verifier: ["reviewer", "shipper"],
   reviewer: ["documenter", "shipper"],
-  "feedback-receiver": ["builder", "debugger"],
+  "process-feedback": ["builder", "debugger"],
   debugger: ["verifier"],
-  griller: ["debugger", "verifier"],
+  "grill-me": ["debugger", "verifier"],
   shipper: ["documenter", "retro"],
   triage: ["planner", "debugger"],
   documenter: ["retro"],
   retro: [],
-  skillwriter: ["tdd"],
-  brandkit: ["prototype", "builder"],
-  init: ["clarifier", "explorer"]
+  "write-skill": ["tdd"],
+  "brand-designer": ["prototype", "builder"],
+  init: ["clarify", "explorer"]
 };
 function readSkillRegistry() {
   if (!fs2.existsSync(skillsDir))
@@ -22560,7 +22652,9 @@ function loadSessions(projectRoot) {
         sessions.set(key, state);
       }
     }
-  } catch {}
+  } catch (err) {
+    warn("Failed to load sessions", err);
+  }
 }
 function isLaterPlan(candidate, parent) {
   const candidateTime = new Date(candidate.updatedAt).getTime();
@@ -22705,11 +22799,11 @@ var STOPWORDS = new Set([
 ]);
 var INTENT_SKILL_MAP = {
   implement: ["builder"],
-  clarify: ["clarifier"],
+  clarify: ["clarify"],
   plan: ["planner", "prd"],
   review: ["reviewer", "verifier"],
   test: ["tdd", "tester"],
-  debug: ["debugger", "griller"],
+  debug: ["debugger", "grill-me"],
   unknown: []
 };
 function classifyIntent(message) {
@@ -23071,7 +23165,9 @@ function buildStructuredBootstrap(planner) {
     if (workspaceRoot) {
       index = readPlanIndex(workspaceRoot);
     }
-  } catch {}
+  } catch (err) {
+    warn("Failed to read plan index for bootstrap", err);
+  }
   const shell = detectShell();
   const structuredBlocks = buildBootstrap({
     pkg,
@@ -23116,16 +23212,13 @@ var AgnesPlugin = async ({ client, directory, worktree }) => {
         interleaved: { field: "reasoning_content" }
       };
       const skillsConfig = configObj.skills;
-      const paths = skillsConfig?.paths ? [...skillsConfig.paths] : [];
-      if (!paths.includes(skillsDir2)) {
-        paths.push(skillsDir2);
-      }
-      configObj.skills = { ...configObj.skills || {}, paths };
-      for (const skillDir of discoverSkills(worktreePath)) {
-        if (!paths.includes(skillDir))
-          paths.push(skillDir);
-      }
-      configObj.skills = { ...configObj.skills || {}, paths };
+      const existingPaths = skillsConfig?.paths ? [...skillsConfig.paths] : [];
+      const allPaths = [...new Set([
+        ...existingPaths,
+        skillsDir2,
+        ...discoverSkills(worktreePath)
+      ])];
+      configObj.skills = { ...configObj.skills || {}, paths: allPaths };
       const agentCfgObj = configObj.agent || {};
       for (const agent of discoverAgents(worktreePath)) {
         if (!agentCfgObj[agent.name]) {
@@ -23160,7 +23253,9 @@ $ARGUMENTS`,
       projectProfile = detectProject(worktreePath);
       try {
         await client.app.log({ body: { service: "agnes", level: "info", message: `Session started \u2014 AGNES v${getBootstrapPackageInfo().version} active` } });
-      } catch {}
+      } catch (err) {
+        warn("Failed to log session start", err);
+      }
     },
     "chat.message": async (input) => {
       if (input.model?.modelID && typeof input.model.modelID === "string") {
@@ -23168,14 +23263,14 @@ $ARGUMENTS`,
       }
     },
     "tool.definition": async (input, output) => {
-      if (input.toolID === "edit" || input.toolID === "write") {
-        output.description = `[AGNES ENFORCEMENT] This tool MUST be called inside a @builder subagent, not in main context. In main context, delegate via the \`task\` tool. Rule: delegate_or_die. | ${output.description}`;
+      if (input.toolID === "edit" || input.toolID === "write" || input.toolID === "apply_patch") {
+        output.description = `!!! AGNES ENFORCEMENT !!! MUTATION tool \u2014 must delegate to @builder. VIOLATION = BUG. | ${output.description}`;
       }
       if (input.toolID === "glob" || input.toolID === "grep") {
-        output.description = `[AGNES ENFORCEMENT] Searching the codebase must be delegated to an @explorer subagent. In main context, delegate via \`task\`. Rule: no analysis in main context. | ${output.description}`;
+        output.description = `[AGNES ENFORCEMENT] Read-only tool \u2014 safe in main context. Prefer @explorer for complex searches. | ${output.description}`;
       }
       if (input.toolID === "bash") {
-        output.description = `[AGNES ENFORCEMENT] All commands must run inside an @executor subagent. In main context, delegate via \`task\`. Use \`task\` to spawn a subagent that runs this command. Rule: no mutating commands in main context. | ${output.description}`;
+        output.description = `!!! AGNES ENFORCEMENT !!! MUTATION tool \u2014 must delegate to @executor. VIOLATION = BUG. | ${output.description}`;
       }
     },
     "file.edited": async (event) => {
@@ -23229,7 +23324,9 @@ $ARGUMENTS`,
             }
           }
         }
-      } catch {}
+      } catch (err) {
+        warn("Failed to build plan gate", err);
+      }
       const bootstrap = buildStructuredBootstrap(plannerState);
       if (!bootstrap)
         return;
@@ -23261,7 +23358,9 @@ ${execContext}
           rememberCompactionState(sessionID2, decision.state);
           compactionAdvisory = decision.advisory;
         }
-      } catch {}
+      } catch (err) {
+        warn("Failed to evaluate compaction policy", err);
+      }
       if (compactionAdvisory) {
         fullBootstrap += `
 

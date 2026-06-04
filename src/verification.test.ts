@@ -10,6 +10,8 @@ import {
   promiseComplianceGate,
   planExistsGate,
   stateFileIntegrityGate,
+  createPromiseComplianceGate,
+  createPlanExistsGate,
 } from './verification.js';
 import type { Gate, GateResult } from './verification.js';
 
@@ -167,6 +169,93 @@ describe('pre-registered gates', () => {
     expect(stateFileIntegrityGate).toBeDefined();
     expect(stateFileIntegrityGate.id).toBe('state-file-integrity');
     expect(typeof stateFileIntegrityGate.run).toBe('function');
+  });
+});
+
+describe('createPromiseComplianceGate', () => {
+  test('passes when output contains promise tag', async () => {
+    const gate = createPromiseComplianceGate('<promise>DONE</promise>');
+    const result = await gate.run();
+    expect(result.status).toBe('PASS');
+  });
+
+  test('passes when output contains agnes:message completion', async () => {
+    const gate = createPromiseComplianceGate(`<agnes:message>${JSON.stringify({ type: 'completion', id: 'x', timestamp: new Date().toISOString(), status: 'DONE', summary: 'done' })}</agnes:message>`);
+    const result = await gate.run();
+    expect(result.status).toBe('PASS');
+  });
+
+  test('passes when output contains agnes:message result', async () => {
+    const gate = createPromiseComplianceGate(`<agnes:message>${JSON.stringify({ type: 'result', id: 'x', taskId: 't1', timestamp: new Date().toISOString(), status: 'DONE', content: 'ok' })}</agnes:message>`);
+    const result = await gate.run();
+    expect(result.status).toBe('PASS');
+  });
+
+  test('fails when output has no completion signal', async () => {
+    const gate = createPromiseComplianceGate('just some text');
+    const result = await gate.run();
+    expect(result.status).toBe('FAIL');
+    expect(result.evidence.errors).toContain('Output does not contain a completion signal (<promise> or <agnes:message>)');
+  });
+
+  test('fails when output is empty', async () => {
+    const gate = createPromiseComplianceGate('');
+    const result = await gate.run();
+    expect(result.status).toBe('FAIL');
+  });
+});
+
+describe('createPlanExistsGate', () => {
+  const originalCwd = process.cwd();
+  let tempDir = '';
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-create-plan-gate-'));
+    fs.mkdirSync(path.join(tempDir, '.agnes'));
+    process.chdir(tempDir);
+  });
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  test('fails when no active plan', async () => {
+    fs.writeFileSync(path.join(tempDir, '.agnes', 'index.json'), JSON.stringify({ plans: [] }), 'utf8');
+
+    const gate = createPlanExistsGate(tempDir);
+    const result = await gate.run();
+    expect(result.status).toBe('FAIL');
+    expect(result.evidence.errors).toContain('No active plan found in .agnes/index.json');
+  });
+
+  test('fails when active plan is not approved', async () => {
+    fs.writeFileSync(path.join(tempDir, '.agnes', 'index.json'), JSON.stringify({
+      activePlanId: 'plan-001',
+      plans: [{ id: 'plan-001', status: 'draft' }],
+    }), 'utf8');
+
+    const gate = createPlanExistsGate(tempDir);
+    const result = await gate.run();
+    expect(result.status).toBe('FAIL');
+    expect(result.evidence.errors).toContain('Active plan plan-001 is draft; expected approved');
+  });
+
+  test('passes when active plan is approved', async () => {
+    fs.writeFileSync(path.join(tempDir, '.agnes', 'index.json'), JSON.stringify({
+      activePlanId: 'plan-001',
+      plans: [{ id: 'plan-001', status: 'approved' }],
+    }), 'utf8');
+
+    const gate = createPlanExistsGate(tempDir);
+    const result = await gate.run();
+    expect(result.status).toBe('PASS');
+  });
+
+  test('fails when index.json does not exist', async () => {
+    const gate = createPlanExistsGate(path.join(tempDir, 'nonexistent'));
+    const result = await gate.run();
+    expect(result.status).toBe('FAIL');
   });
 });
 

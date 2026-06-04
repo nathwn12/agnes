@@ -24,26 +24,26 @@ export class FlowController {
     return sig;
   }
 
-  /** Convenience: extract only the jump target from the signal. Delegates to consumeSignal. */
+  /** Non-destructive: returns current jump target without consuming the signal. */
   getJump(): JumpTarget | null {
-    return this.consumeSignal().jumpTo;
-  }
-
-  /** Peek at current signal without consuming. Read-only. */
-  private peek(): JumpTarget | null {
     return this.signal.jumpTo;
   }
 
+  /** Non-destructive: returns a copy of the full signal (reason + metadata) without consuming. */
+  peekSignal(): WaveSignal {
+    return { ...this.signal };
+  }
+
   isBlocked(): boolean {
-    return this.peek() === 'blocked';
+    return this.peekSignal().jumpTo === 'blocked';
   }
 
   shouldSkip(): boolean {
-    return this.peek() === 'skip';
+    return this.peekSignal().jumpTo === 'skip';
   }
 
   shouldRetry(): boolean {
-    return this.peek() === 'retry';
+    return this.peekSignal().jumpTo === 'retry';
   }
 
   clearSignal(): void {

@@ -1,7 +1,7 @@
 <h1 align="center">AGNES — OpenCode Native Plugin</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.18.3-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.19.1-blue" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
   <img src="https://img.shields.io/badge/skills-30-orange" alt="30 skills">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
@@ -136,15 +136,15 @@ AGNES is organized into layered modules that handle protocol, state, runtime, an
 | Layer | Module | Purpose |
 |-------|--------|---------|
 | **Protocol** | `src/protocol.ts` | Typed messages (task, result, error, status, completion) |
-| **Schema** | `src/schema.ts` | Self-describing skill contracts with JSON Schema validation |
+| **Schema** | `src/schema.ts` | Self-describing skill contracts, execution-artifact schemas, gate evidence, retry classification |
 | **Middleware** | `src/middleware.ts` | Composable hook chain (before/after wave, before/after subagent) |
-| **Flow Control** | `src/flowcontrol.ts` | Ephemeral jump signals (retry, skip, blocked, next_wave, end) |
+| **Flow Control** | `src/flowcontrol.ts` | Ephemeral jump signals with non-destructive peek and single destructive consume |
 | **Bootstrap** | `src/bootstrap.ts` | Agent injection — injects plan context, shell env, and structured blocks into agent system prompt |
 | **Plugin** | `src/plugin.ts` | OpenCode entry point — plugin registration, unconditional interleaved config (model-agnostic) |
-| **Runtime Helpers** | `src/runtime.ts` | Wave helpers, subagent dispatch scaffolding, retry with struggle detection, and gate integration |
+| **Runtime Helpers** | `src/runtime.ts` | Execution-outcome contract, retry budgets with classification, wave dispatch, gate integration |
 | **Shell** | `src/shell.ts` | Shell detection — identifies pwsh/bash/cmd and detects shell mismatch between host and workspace |
-| **State** | `src/state.ts` | Plan state machine — CRUD for plan-NNN.yaml, index.json, session tracking, retention pruning |
-| **Verification** | `src/verification.ts` | Structured gates with PASS/FAIL/SKIP status |
+| **State** | `src/state.ts` | Plan state machine — CRUD for plan-NNN.yaml, index.json, session tracking, retention pruning, execution artifact persistence |
+| **Verification** | `src/verification.ts` | Structured gates with PASS/FAIL/SKIP status, gate factories, evidence-to-artifact conversion |
 | **Validation** | `src/validation.ts` | Allowlist-based message validation and injection protection |
 
 In v0.10+, AGNES adds a machine-optimized Structured Protocol: YAML plan files with JSON Schema validation (`.agnes/plans/plan-NNN.yaml`), typed `<agnes:message>` envelopes, and Zod-based message validation. Bootstrap injection unified to a model-agnostic structured format.
@@ -194,7 +194,7 @@ bun run bundle:watch  # watch mode for development
 bun run lint          # lint source files
 bun run lint:fix      # auto-fix lint issues
 bun run typecheck     # type-safety gate
-bun test              # 490 tests across 16 suites
+bun test              # 536 tests across 17 suites
 ```
 
 ---

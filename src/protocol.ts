@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { TaskMessageSchema, ResultMessageSchema, BaseMessageSchema } from './schema.js';
+import { TaskMessageSchema, ResultMessageSchema, BaseMessageSchema, CompletionStatusSchema } from './schema.js';
 
 type MessageType = 'task' | 'result' | 'error' | 'status' | 'completion';
+// Must stay in sync with CompletionStatusSchema in schema.ts
 export type CompletionStatus = 'DONE' | 'DONE_WITH_CONCERNS' | 'NEEDS_CONTEXT' | 'BLOCKED';
 
 interface AgnesMessage {
@@ -122,7 +123,7 @@ function findJsonInText(text: string): string | null {
 }
 
 function validCompletionStatus(s: unknown): s is CompletionStatus {
-  return s === 'DONE' || s === 'DONE_WITH_CONCERNS' || s === 'NEEDS_CONTEXT' || s === 'BLOCKED';
+  return CompletionStatusSchema.safeParse(s).success;
 }
 
 const REQUIRED_FIELDS: Record<string, Record<string, string>> = {

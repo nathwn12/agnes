@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { typeMatches, validatePayload, SKILL_REGISTRY, SKILL_NAME_ALIASES, resolveSkillName, PlanSchema, PlanTaskSchema, PlanStatusSchema } from './schema.js';
+import { typeMatches, validatePayload, SKILL_REGISTRY, SKILL_NAME_ALIASES, resolveSkillName, PlanSchema, PlanTaskSchema, PlanStatusSchema, GateEvidenceSchema, RetryClassificationSchema, ExecutionArtifactSchema } from './schema.js';
 import type { SkillDescriptor } from './schema.js';
 
 describe('PlanSchema', () => {
@@ -87,6 +87,40 @@ describe('PlanSchema', () => {
     expect(result.success).toBe(true);
     expect(result.data!.plannerMode).toBe('builtin');
     expect(result.data!.plannerSource).toBe('user');
+  });
+
+  test('executionArtifacts field defaults to empty array', () => {
+    const result = PlanSchema.safeParse(validPlan);
+    expect(result.success).toBe(true);
+    expect(result.data!.executionArtifacts).toEqual([]);
+  });
+
+  test('executionArtifacts round-trips through JSON', () => {
+    const plan = {
+      ...validPlan,
+      executionArtifacts: [
+        {
+          attempt: 1,
+          completed: false,
+          summary: 'first attempt',
+          timestamp: '2026-01-01T00:00:00.000Z',
+        },
+        {
+          attempt: 2,
+          completed: true,
+          summary: 'second attempt succeeded',
+          timestamp: '2026-01-01T00:01:00.000Z',
+        },
+      ],
+    };
+    const parsed = PlanSchema.parse(plan);
+    const json = JSON.parse(JSON.stringify(parsed));
+    const result = PlanSchema.safeParse(json);
+    expect(result.success).toBe(true);
+    expect(result.data!.executionArtifacts).toBeDefined();
+    expect(result.data!.executionArtifacts!.length).toBe(2);
+    expect(result.data!.executionArtifacts![0].attempt).toBe(1);
+    expect(result.data!.executionArtifacts![1].completed).toBe(true);
   });
 
   test('PlanStatusSchema only accepts valid status strings', () => {
@@ -300,5 +334,78 @@ describe('SKILL_REGISTRY', () => {
         expect(schema).toHaveProperty('type');
       }
     }
+  });
+});
+
+describe('GateEvidenceSchema', () => {
+  test('valid gate evidence passes', () => {
+    const result = GateEvidenceSchema.safeParse({
+      gateId: 'test-gate',
+      status: 'PASS',
+      evidence: { errors: [] },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      durationMs: 100,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test('invalid status fails', () => {
+    const result = GateEvidenceSchema.safeParse({
+      gateId: 'test-gate',
+      status: 'INVALID',
+      evidence: { errors: [] },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      durationMs: 100,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('RetryClassificationSchema', () => {
+  test.each(['retryable', 'needs_context', 'blocked', 'terminal', 'verification_failed'])('accepts %s', (val: string) => {
+    expect(RetryClassificationSchema.safeParse(val).success).toBe(true);
+  });
+
+  test('rejects invalid values', () => {
+    expect(RetryClassificationSchema.safeParse('unknown').success).toBe(false);
+  });
+});
+
+describe('ExecutionArtifactSchema', () => {
+  test('valid minimal artifact passes', () => {
+    const result = ExecutionArtifactSchema.safeParse({
+      attempt: 1,
+      completed: false,
+      timestamp: '2026-01-01T00:00:00.000Z',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test('valid full artifact passes', () => {
+    const result = ExecutionArtifactSchema.safeParse({
+      attempt: 2,
+      gateEvidence: [{
+        gateId: 'g1',
+        status: 'PASS',
+        evidence: { errors: [] },
+        timestamp: '2026-01-01T00:00:00.000Z',
+        durationMs: 50,
+      }],
+      retryClass: 'retryable',
+      flowSignal: { jumpTo: 'retry', reason: 'timeout' },
+      completed: false,
+      summary: 'first attempt timed out',
+      timestamp: '2026-01-01T00:00:00.000Z',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test('negative attempt fails', () => {
+    const result = ExecutionArtifactSchema.safeParse({
+      attempt: -1,
+      completed: false,
+      timestamp: '2026-01-01T00:00:00.000Z',
+    });
+    expect(result.success).toBe(false);
   });
 });

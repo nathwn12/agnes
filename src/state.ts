@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { stringify as yamlStringify, parse as yamlParse } from 'yaml';
 import { PlanSchema } from './schema.js';
-import type { Plan, PlanTask } from './schema.js';
+import type { Plan, PlanTask, ExecutionArtifact } from './schema.js';
 
 import * as logger from './logger.js';
 import { parseAgnesMessage } from './protocol.js';
@@ -170,6 +170,61 @@ function readPlanArtifact(plansDir: string, planId: string): { content: string; 
   }
 
   return null;
+}
+
+function readPlanArtifactRaw(plansDir: string, planId: string): Record<string, unknown> | null {
+  const yamlPath = path.join(plansDir, `${planId}.yaml`);
+  if (fs.existsSync(yamlPath)) {
+    try {
+      return yamlParse(fs.readFileSync(yamlPath, 'utf8')) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export function appendExecutionArtifact(
+  planId: string,
+  artifact: ExecutionArtifact,
+  projectRoot?: string,
+): void {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root) return;
+  const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
+  const yamlPath = path.join(plansDir, `${planId}.yaml`);
+  if (!fs.existsSync(yamlPath)) return;
+
+  try {
+    const content = fs.readFileSync(yamlPath, 'utf8');
+    const parsed = yamlParse(content) as Record<string, unknown>;
+    const artifacts: ExecutionArtifact[] = Array.isArray(parsed.executionArtifacts)
+      ? parsed.executionArtifacts as ExecutionArtifact[]
+      : [];
+    artifacts.push(artifact);
+    parsed.executionArtifacts = artifacts;
+
+    const yaml = yamlStringify(parsed, null, { indent: 2 });
+    const tmpPath = yamlPath + '.tmp';
+    fs.writeFileSync(tmpPath, yaml, 'utf-8');
+    fs.renameSync(tmpPath, yamlPath);
+  } catch (err) {
+    logger.warn('Failed to append execution artifact', err);
+  }
+}
+
+export function getExecutionArtifacts(
+  planId: string,
+  projectRoot?: string,
+): ExecutionArtifact[] {
+  const root = projectRoot ?? findProjectRoot();
+  if (!root) return [];
+  const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
+  const parsed = readPlanArtifactRaw(plansDir, planId);
+  if (!parsed) return [];
+  return Array.isArray(parsed.executionArtifacts)
+    ? parsed.executionArtifacts as ExecutionArtifact[]
+    : [];
 }
 
 export interface ActivePlan {

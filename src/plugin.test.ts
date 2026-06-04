@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { buildBootstrap, getBootstrapPackageInfo } from './bootstrap.js';
+import { buildBootstrap, getBootstrapContent, getBootstrapPackageInfo } from './bootstrap.js';
 import type { OrchestratorRules } from './bootstrap.js';
 import { detectShell } from './shell.js';
 
@@ -235,7 +235,7 @@ describe('tool.definition hook', () => {
 
 describe('bootstrap delegation enforcement', () => {
   test('getBootstrapContent includes delegation enforcement rules', () => {
-    const { getBootstrapContent } = require('./bootstrap.js');
+    
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
     expect(content).toContain('AGNES ENFORCEMENT');

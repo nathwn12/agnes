@@ -21,7 +21,8 @@ import {
 import type { AgnesRuntimeState, ProcessMessageResult } from './runtime.js';
 import { FlowController } from './flowcontrol.js';
 import type { PlanIndex } from './state.js';
-import { freshStruggleMetrics } from './state.js';
+import { freshStruggleMetrics, createPlan, getExecutionArtifacts } from './state.js';
+import { createTempProject, writeIndex, readIndex } from './test-utils';
 import type { Gate, GateResult } from './verification.js';
 import { MiddlewareChain, defaultMiddlewareChain } from './middleware.js';
 import type { TaskDescriptor } from './schema.js';
@@ -46,6 +47,46 @@ function makeGate(result: GateResult, isBlocking = true): Gate {
     run: async () => result,
   };
 }
+
+describe('ExecutionOutcome', () => {
+  test('buildIterationReport returns valid ExecutionOutcome shape', () => {
+    const report = buildIterationReport({
+      iteration: 3,
+      durationMs: 30000,
+      filesChanged: 5,
+      errors: [],
+      output: '<promise>DONE</promise>',
+      exitCode: 0,
+    });
+    expect(report).toHaveProperty('attempt', 3);
+    expect(report).toHaveProperty('completed', true);
+    expect(report).toHaveProperty('promiseTag', 'DONE');
+    expect(report).toHaveProperty('summary');
+    expect(report).not.toHaveProperty('error');
+  });
+
+  test('ExecutionOutcome carries error when errors present', () => {
+    const report = buildIterationReport({
+      iteration: 1,
+      durationMs: 5000,
+      filesChanged: 0,
+      errors: ['Runtime error occurred'],
+      output: 'Runtime error occurred',
+      exitCode: 1,
+    });
+    expect(report.completed).toBe(false);
+    expect(report.error).toBe('Runtime error occurred');
+    expect(report.summary).toMatch(/not yet completed/);
+  });
+
+  test('recordAttempt returns ExecutionOutcome with summary', () => {
+    const outcome = recordAttempt(randomUUID(), 'DONE');
+    expect(outcome).toHaveProperty('completed', true);
+    expect(outcome).toHaveProperty('summary', 'task completed successfully');
+    expect(outcome).toHaveProperty('attempt', 0);
+    expect(outcome).toHaveProperty('promiseTag', 'DONE');
+  });
+});
 
 describe('checkIterationCompletion', () => {
   test('detects completion with expected promise', () => {
@@ -84,11 +125,10 @@ describe('buildIterationReport', () => {
       exitCode: 0,
       completionPromise: 'DONE',
     });
-    expect(report.iteration).toBe(1);
-    expect(report.completionDetected).toBe(true);
-    expect(report.hadProgress).toBe(true);
+    expect(report.attempt).toBe(1);
+    expect(report.completed).toBe(true);
     expect(report.promiseTag).toBe('DONE');
-    expect(report.exitCode).toBe(0);
+    expect(report.summary).toMatch(/completed/);
   });
 
   test('builds report with no completion', () => {
@@ -100,10 +140,9 @@ describe('buildIterationReport', () => {
       output: 'Error: something',
       exitCode: 1,
     });
-    expect(report.completionDetected).toBe(false);
-    expect(report.hadProgress).toBe(false);
+    expect(report.completed).toBe(false);
     expect(report.promiseTag).toBeNull();
-    expect(report.errors).toContainEqual(expect.stringMatching(/something/));
+    expect(report.error).toMatch(/something/);
   });
 });
 
@@ -321,6 +360,22 @@ describe('recordAttempt', () => {
     expect(r3.blocked).toBe(true);
   });
 
+  test('retry budget exhaustion transitions to terminal', () => {
+    const sessionId = randomUUID();
+    const r1 = recordAttempt(sessionId, null);
+    expect(r1.retryClass).toBe('retryable');
+    expect(r1.blocked).toBeUndefined();
+
+    const r2 = recordAttempt(sessionId, null);
+    expect(r2.retryClass).toBe('retryable');
+    expect(r2.blocked).toBeUndefined();
+
+    const r3 = recordAttempt(sessionId, null);
+    expect(r3.retryClass).toBe('terminal');
+    expect(r3.blocked).toBe(true);
+    expect(r3.completed).toBe(false);
+  });
+
   test('tracks struggle metrics across failed attempts', () => {
     const sessionId = randomUUID();
     // Each failed attempt should increment noProgressIterations
@@ -332,6 +387,32 @@ describe('recordAttempt', () => {
 
     const r3 = recordAttempt(sessionId, null);
     expect(r3.blocked).toBe(true);
+  });
+
+  test('persists execution artifact on completed attempt', () => {
+    const tmp = createTempProject();
+    const { entry } = createPlan({
+      summary: 'test artifact persistence',
+      goal: 'test',
+      check: 'test',
+      tasks: ['test task'],
+      projectRoot: tmp,
+    });
+    const index = readIndex(tmp);
+    index.activePlanId = entry.id;
+    writeIndex(tmp, index);
+
+    const sessionId = randomUUID();
+    const outcome = recordAttempt(sessionId, 'DONE', tmp);
+    expect(outcome.completed).toBe(true);
+    expect(outcome.attempt).toBe(0);
+    expect(outcome.summary).toBe('task completed successfully');
+
+    const artifacts = getExecutionArtifacts(entry.id, tmp);
+    expect(artifacts.length).toBe(1);
+    expect(artifacts[0].completed).toBe(true);
+    expect(artifacts[0].attempt).toBe(0);
+    expect(artifacts[0].summary).toBe('task completed successfully');
   });
 });
 
@@ -650,9 +731,12 @@ describe('runWaveGates', () => {
       evidence: { errors: ['tests failed'] },
     });
 
-    const results = await runWaveGates([makeGate(failingResult)], flow);
+    const { results, evidence } = await runWaveGates([makeGate(failingResult)], flow);
 
     expect(results).toEqual([failingResult]);
+    expect(evidence).toHaveLength(1);
+    expect(evidence[0].gateId).toBe('required-review');
+    expect(evidence[0].status).toBe('FAIL');
     expect(flow.isBlocked()).toBe(true);
   });
 
@@ -664,9 +748,11 @@ describe('runWaveGates', () => {
       evidence: { errors: ['advisory failed'] },
     });
 
-    const results = await runWaveGates([makeGate(failingResult, false)], flow);
+    const { results, evidence } = await runWaveGates([makeGate(failingResult, false)], flow);
 
     expect(results).toEqual([failingResult]);
+    expect(evidence).toHaveLength(1);
+    expect(evidence[0].status).toBe('FAIL');
     expect(flow.isBlocked()).toBe(false);
   });
 });
@@ -686,11 +772,11 @@ describe('executeWave', () => {
     expect(result.nextAction).toBeNull();
   });
 
-  test('each result has PENDING status (task dispatched)', async () => {
+  test('each result has NEEDS_CONTEXT status (task dispatched)', async () => {
     const flow = new FlowController();
     const result = await executeWave('plan-001', sampleTasks, defaultMiddlewareChain, flow);
     const statuses = result.results.map(r => r.status);
-    expect(statuses).toEqual(['PENDING', 'PENDING']);
+    expect(statuses).toEqual(['NEEDS_CONTEXT', 'NEEDS_CONTEXT']);
   });
 
   test('stops early when flow is blocked', async () => {

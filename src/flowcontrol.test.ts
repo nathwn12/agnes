@@ -49,6 +49,8 @@ describe('FlowController', () => {
     fc.setJump('blocked');
     expect(fc.isBlocked()).toBe(true);
     expect(fc.getJump()).toBe('blocked');
+    expect(fc.isBlocked()).toBe(true);
+    fc.consumeSignal();
     expect(fc.isBlocked()).toBe(false);
   });
 
@@ -57,6 +59,8 @@ describe('FlowController', () => {
     fc.setJump('retry');
     expect(fc.shouldRetry()).toBe(true);
     expect(fc.getJump()).toBe('retry');
+    expect(fc.shouldRetry()).toBe(true);
+    fc.consumeSignal();
     expect(fc.shouldRetry()).toBe(false);
   });
 
@@ -64,6 +68,8 @@ describe('FlowController', () => {
     const fc = new FlowController();
     fc.setJump('end');
     expect(fc.getJump()).toBe('end');
+    expect(fc.getJump()).toBe('end');
+    fc.consumeSignal();
     expect(fc.getJump()).toBeNull();
   });
 });

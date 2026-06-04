@@ -490,6 +490,58 @@ describe('isValidAgnesMessage', () => {
   });
 });
 
+describe('validCompletionStatus (via isValidAgnesMessage)', () => {
+  test('accepts all valid completion statuses', () => {
+    const ts = validTimestamp();
+    for (const status of ['DONE', 'DONE_WITH_CONCERNS', 'NEEDS_CONTEXT', 'BLOCKED'] as const) {
+      const msg = { type: 'completion', id: 'abc', timestamp: ts, status, summary: 'test' };
+      expect(isValidAgnesMessage(msg)).toBe(true);
+    }
+  });
+
+  test('rejects invalid completion status', () => {
+    const ts = validTimestamp();
+    const msg = { type: 'completion', id: 'abc', timestamp: ts, status: 'INVALID', summary: 'test' };
+    expect(isValidAgnesMessage(msg)).toBe(false);
+  });
+});
+
+describe('Zod strict path vs legacy path parity', () => {
+  test('both paths accept all valid statuses identically', () => {
+    const ts = validTimestamp();
+    const uuid = generateMessageId();
+    for (const status of ['DONE', 'DONE_WITH_CONCERNS', 'NEEDS_CONTEXT', 'BLOCKED'] as const) {
+      const strictMsg = `<agnes:message>${JSON.stringify({
+        schema: 'agnes/message-v1',
+        type: 'result', id: uuid, timestamp: ts,
+        status, summary: 'test',
+      })}</agnes:message>`;
+      const legacyMsg = `<agnes:message>${JSON.stringify({
+        type: 'result', id: 'abc', timestamp: ts,
+        taskId: 't1', status, content: 'test',
+      })}</agnes:message>`;
+      expect(parseAgnesMessage(strictMsg), `strict path failed for ${status}`).not.toBeNull();
+      expect(parseAgnesMessage(legacyMsg), `legacy path failed for ${status}`).not.toBeNull();
+    }
+  });
+
+  test('both paths reject invalid status identically', () => {
+    const ts = validTimestamp();
+    const uuid = generateMessageId();
+    const strictMsg = `<agnes:message>${JSON.stringify({
+      schema: 'agnes/message-v1',
+      type: 'result', id: uuid, timestamp: ts,
+      status: 'INVALID', summary: 'test',
+    })}</agnes:message>`;
+    const legacyMsg = `<agnes:message>${JSON.stringify({
+      type: 'result', id: 'abc', timestamp: ts,
+      taskId: 't1', status: 'INVALID', content: 'test',
+    })}</agnes:message>`;
+    expect(parseAgnesMessage(strictMsg)).toBeNull();
+    expect(parseAgnesMessage(legacyMsg)).toBeNull();
+  });
+});
+
 describe('generateMessageId', () => {
   test('returns a UUID string', () => {
     const id = generateMessageId();

@@ -15,28 +15,62 @@ import {
   detectStruggle,
   cacheDir,
   sortPlansByDate,
+  appendExecutionArtifact,
 } from './state.js';
 import type { PlanIndexEntry, PlanIndex, ActivePlan, StruggleMetrics, PlannerRoutingContext } from './state.js';
 import { MiddlewareChain } from './middleware.js';
 import type { WaveContext, SubagentContext } from './middleware.js';
 import { FlowController } from './flowcontrol.js';
 import type { JumpTarget } from './flowcontrol.js';
-import type { TaskDescriptor } from './schema.js';
+import type { TaskDescriptor, GateEvidence, RetryClassification, ExecutionArtifact } from './schema.js';
 import type { ResultMessage, CompletionStatus } from './protocol.js';
 import { detectShell } from './shell.js';
 import type { ShellType } from './shell.js';
 import * as logger from './logger.js';
-import { runGates } from './verification.js';
+import { runGates, gateResultToEvidence } from './verification.js';
 import type { Gate, GateResult } from './verification.js';
 
-const MAX_RETRIES_BEFORE_BLOCK = 3;
+const RETRY_BUDGETS: Record<RetryClassification, number> = {
+  retryable: 3,
+  needs_context: 1,
+  blocked: 0,
+  terminal: 0,
+  verification_failed: 2,
+};
+
 const MAX_BLOCK_CHAIN = 3;
+
+interface ExecutionOutcome {
+  attempt: number;
+  completed: boolean;
+  blocked?: boolean;
+  retryClass?: RetryClassification;
+  gateEvidence?: GateEvidence[];
+  flowSignal?: { jumpTo: JumpTarget | null; reason?: string };
+  promiseTag: CompletionStatus | null;
+  summary: string;
+  error?: string;
+}
+
+function outcomeToArtifact(outcome: ExecutionOutcome): ExecutionArtifact {
+  return {
+    attempt: outcome.attempt,
+    completed: outcome.completed,
+    summary: outcome.summary,
+    timestamp: new Date().toISOString(),
+    gateEvidence: outcome.gateEvidence ?? [],
+    ...(outcome.retryClass ? { retryClass: outcome.retryClass } : {}),
+    ...(outcome.flowSignal ? { flowSignal: outcome.flowSignal } : {}),
+  };
+}
 
 interface SessionState {
   attempts: number;
   struggle: StruggleMetrics;
   lastPromiseTag: CompletionStatus | null;
   lastAccessed: number;
+  /** Per-class retry attempt counters */
+  retryCounts: Partial<Record<RetryClassification, number>>;
 }
 
 const sessions = new Map<string, SessionState>();
@@ -105,7 +139,7 @@ function loadSessions(projectRoot?: string): void {
 function getSession(sessionId: string): SessionState {
   let s = sessions.get(sessionId);
   if (!s) {
-    s = { attempts: 0, struggle: freshStruggleMetrics(), lastPromiseTag: null, lastAccessed: Date.now() };
+    s = { attempts: 0, struggle: freshStruggleMetrics(), lastPromiseTag: null, lastAccessed: Date.now(), retryCounts: {} };
     sessions.set(sessionId, s);
   } else {
     s.lastAccessed = Date.now();
@@ -113,6 +147,12 @@ function getSession(sessionId: string): SessionState {
     sessions.set(sessionId, s);
   }
   return s;
+}
+
+function isRetryBudgetExhausted(retryClass: RetryClassification, counts: Partial<Record<RetryClassification, number>>): boolean {
+  const maxRetries = RETRY_BUDGETS[retryClass] ?? RETRY_BUDGETS.retryable;
+  const used = counts[retryClass] ?? 0;
+  return used >= maxRetries;
 }
 
 export interface AgnesRuntimeState {
@@ -218,6 +258,7 @@ export function getPlanGate(workspaceRoot?: string | null): string | null {
   return null;
 }
 
+/** @deprecated Use ExecutionOutcome instead */
 export interface IterationReport {
   iteration: number;
   durationMs: number;
@@ -245,39 +286,34 @@ export function buildIterationReport(input: {
   output: string;
   exitCode: number;
   completionPromise?: string;
-}): IterationReport {
+}): ExecutionOutcome {
   const { detected, tag } = checkIterationCompletion(input.output, input.completionPromise);
   return {
-    iteration: input.iteration,
-    durationMs: input.durationMs,
-    hadProgress: input.filesChanged > 0,
-    errors: input.errors,
+    attempt: input.iteration,
+    completed: detected,
     promiseTag: tag,
-    completionDetected: detected,
-    exitCode: input.exitCode,
+    summary: detected ? `completed after ${input.iteration} iteration(s)` : `not yet completed (attempt ${input.iteration})`,
+    ...(input.errors.length > 0 ? { error: input.errors[0] } : {}),
   };
 }
 
 export function mergeIterationIntoState(
   state: AgnesRuntimeState,
-  report: IterationReport,
+  outcome: ExecutionOutcome,
 ): {
   struggleWarnings: string[];
   completed: boolean;
 } {
-  state.iteration = report.iteration;
+  state.iteration = outcome.attempt;
   state.struggle = state.struggle ?? freshStruggleMetrics();
   state.struggle = updateStruggleMetrics(state.struggle, {
-    hadProgress: report.hadProgress,
-    durationMs: report.durationMs,
-    errors: report.errors,
-    promiseTag: report.promiseTag,
+    hadProgress: outcome.completed ? true : false,
+    durationMs: 0,
+    errors: outcome.error ? [outcome.error] : [],
+    promiseTag: outcome.promiseTag,
   });
-
   const struggleWarnings = detectStruggle(state.struggle);
-  const completed = report.completionDetected;
-
-  return { struggleWarnings, completed };
+  return { struggleWarnings, completed: outcome.completed };
 }
 
 export function recordAttempt(
@@ -285,7 +321,7 @@ export function recordAttempt(
   promiseTag: CompletionStatus | null,
   projectRoot?: string,
   completionPromise = 'DONE',
-): { attempt: number; completed: boolean; blocked?: boolean } {
+): ExecutionOutcome {
   const state = getSession(sessionId);
 
   const root = projectRoot ?? findProjectRoot();
@@ -296,7 +332,15 @@ export function recordAttempt(
       if (activeEntry?.status === 'blocked') {
         state.attempts++;
         persistSessions(root);
-        return { attempt: state.attempts, completed: false, blocked: true };
+        return {
+          attempt: state.attempts,
+          completed: false,
+          blocked: true,
+          retryClass: 'blocked',
+          promiseTag: null,
+          summary: 'plan is blocked',
+          error: 'Active plan is in blocked status',
+        };
       }
     }
   }
@@ -306,14 +350,52 @@ export function recordAttempt(
   if (completed) {
     state.lastPromiseTag = promiseTag;
     state.attempts = 0;
+    state.retryCounts = {};
     state.struggle = freshStruggleMetrics();
+
+    // Capture planId BEFORE persistToPlan('done') clears activePlanId
+    if (root) {
+      const preIndex = readPlanIndex(root);
+      if (preIndex?.activePlanId) {
+        appendExecutionArtifact(preIndex.activePlanId, outcomeToArtifact({
+          attempt: 0,
+          completed: true,
+          promiseTag,
+          summary: 'task completed successfully',
+        }), root);
+      }
+    }
+
     pruneSessions();
     persistSessions(projectRoot);
     persistToPlan('done', 0, freshStruggleMetrics(), projectRoot);
-    return { attempt: 0, completed: true };
+    return {
+      attempt: 0,
+      completed: true,
+      promiseTag,
+      summary: 'task completed successfully',
+    };
   }
 
   state.attempts++;
+
+  // Determine retry class based on context
+  const retryClass: RetryClassification = (() => {
+    const root2 = projectRoot ?? findProjectRoot();
+    if (root2) {
+      const idx = readPlanIndex(root2);
+      if (idx?.activePlanId) {
+        const activeEntry2 = idx.plans.find(p => p.id === idx.activePlanId);
+        if (activeEntry2?.status === 'blocked') return 'blocked';
+      }
+    }
+    return 'retryable';
+  })();
+
+  // Track per-class retry count
+  state.retryCounts[retryClass] = (state.retryCounts[retryClass] ?? 0) + 1;
+
+  // Update struggle metrics
   state.struggle = updateStruggleMetrics(state.struggle, {
     hadProgress: false,
     durationMs: 0,
@@ -321,18 +403,58 @@ export function recordAttempt(
     promiseTag: null,
   });
 
-  if (state.attempts >= MAX_RETRIES_BEFORE_BLOCK) {
+  // Check retry budget
+  if (isRetryBudgetExhausted(retryClass, state.retryCounts)) {
     autoBlockPlan(projectRoot, state.attempts, state.struggle);
     state.attempts = 0;
+    state.retryCounts = {};
     state.struggle = freshStruggleMetrics();
     pruneSessions();
     persistSessions(projectRoot);
-    return { attempt: MAX_RETRIES_BEFORE_BLOCK, completed: false, blocked: true };
+    if (root) {
+      const index = readPlanIndex(root);
+      if (index?.activePlanId) {
+        appendExecutionArtifact(index.activePlanId, outcomeToArtifact({
+          attempt: RETRY_BUDGETS[retryClass] ?? 3,
+          completed: false,
+          blocked: true,
+          retryClass: 'terminal',
+          promiseTag: null,
+          summary: `blocked after exhausting retry budget (${retryClass})`,
+        }), root);
+      }
+    }
+    return {
+      attempt: RETRY_BUDGETS[retryClass] ?? 3,
+      completed: false,
+      blocked: true,
+      retryClass: 'terminal',
+      promiseTag: null,
+      summary: `blocked after exhausting retry budget (${retryClass})`,
+    };
   }
 
   persistToPlan('in_progress', state.attempts, state.struggle, projectRoot);
   persistSessions(projectRoot);
-  return { attempt: state.attempts, completed: false };
+  if (root) {
+    const index = readPlanIndex(root);
+    if (index?.activePlanId) {
+      appendExecutionArtifact(index.activePlanId, outcomeToArtifact({
+        attempt: state.attempts,
+        completed: false,
+        retryClass,
+        promiseTag: null,
+        summary: `attempt ${state.attempts} (${retryClass}) did not complete`,
+      }), root);
+    }
+  }
+  return {
+    attempt: state.attempts,
+    completed: false,
+    retryClass,
+    promiseTag: null,
+    summary: `attempt ${state.attempts} (${retryClass}) did not complete`,
+  };
 }
 
 function autoBlockPlan(projectRoot: string | undefined, attempts: number, struggle: StruggleMetrics): void {
@@ -749,7 +871,7 @@ export async function executeWave(
       id: randomUUID(),
       timestamp: new Date().toISOString(),
       taskId: `task-${_ctx.task.skill}`,
-      status: 'PENDING' as unknown as CompletionStatus,
+      status: 'NEEDS_CONTEXT' as CompletionStatus,
       content: JSON.stringify({
         skill: _ctx.task.skill,
         goal: _ctx.task.payload || _ctx.task,
@@ -788,7 +910,7 @@ export async function executeWave(
 export async function runWaveGates(
   gates: Gate[],
   flow: FlowController,
-): Promise<GateResult[]> {
+): Promise<{ results: GateResult[]; evidence: GateEvidence[] }> {
   const results = await runGates(gates);
   const blockingFailure = results.find((result) => {
     const gate = gates.find(candidate => candidate.id === result.gateId);
@@ -801,6 +923,25 @@ export async function runWaveGates(
     });
   }
 
-  return results;
+  const evidence = results.map(r => gateResultToEvidence(r));
+
+  if (gates.length > 0 && evidence.length > 0) {
+    const gateRoot = findProjectRoot();
+    if (gateRoot) {
+      const gateIndex = readPlanIndex(gateRoot);
+      if (gateIndex?.activePlanId) {
+        const timestamp = new Date().toISOString();
+        appendExecutionArtifact(gateIndex.activePlanId, {
+          attempt: 0,
+          gateEvidence: evidence,
+          completed: false,
+          summary: `wave gates: ${evidence.filter(e => e.status === 'PASS').length}/${evidence.length} passed`,
+          timestamp,
+        }, gateRoot);
+      }
+    }
+  }
+
+  return { results, evidence };
 }
 

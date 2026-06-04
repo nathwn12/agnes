@@ -192,6 +192,41 @@ for (const [legacyName, canonicalName] of SKILL_NAME_ALIASES) {
   if (entry) SKILL_REGISTRY.set(legacyName, entry);
 }
 
+// ── Execution contract schemas ─────────────────────────────────────────────────
+
+export const GateEvidenceSchema = z.object({
+  gateId: z.string(),
+  status: z.enum(['PASS', 'FAIL', 'SKIP']),
+  evidence: z.object({
+    command: z.string().optional(),
+    exitCode: z.number().optional(),
+    output: z.string().optional(),
+    errors: z.array(z.string()),
+  }),
+  timestamp: z.string().datetime(),
+  durationMs: z.number(),
+});
+export type GateEvidence = z.infer<typeof GateEvidenceSchema>;
+
+export const RetryClassificationSchema = z.enum([
+  'retryable', 'needs_context', 'blocked', 'terminal', 'verification_failed'
+]);
+export type RetryClassification = z.infer<typeof RetryClassificationSchema>;
+
+export const ExecutionArtifactSchema = z.object({
+  attempt: z.number().int().nonnegative(),
+  gateEvidence: z.array(GateEvidenceSchema).default([]),
+  retryClass: RetryClassificationSchema.optional(),
+  flowSignal: z.object({
+    jumpTo: z.enum(['retry', 'skip', 'blocked', 'next_wave', 'end']).nullable(),
+    reason: z.string().optional(),
+  }).optional(),
+  completed: z.boolean(),
+  summary: z.string().default(''),
+  timestamp: z.string().datetime(),
+});
+export type ExecutionArtifact = z.infer<typeof ExecutionArtifactSchema>;
+
 // ── Plan schemas ──────────────────────────────────────────────────────────────
 
 export const PlanStatusSchema = z.enum([
@@ -224,6 +259,7 @@ export const PlanSchema = z.object({
   notes: z.array(z.string()).default([]),
   plannerMode: z.enum(['builtin', 'full']).optional(),
   plannerSource: z.enum(['auto', 'user', 'gate']).optional(),
+  executionArtifacts: z.array(ExecutionArtifactSchema).default([]).optional(),
 });
 export type Plan = z.infer<typeof PlanSchema>;
 
@@ -235,7 +271,7 @@ const MessageTypeSchema = z.enum([
   "task", "result", "error", "status", "completion"
 ]);
 
-const CompletionStatusSchema = z.enum([
+export const CompletionStatusSchema = z.enum([
   "DONE", "DONE_WITH_CONCERNS", "NEEDS_CONTEXT", "BLOCKED"
 ]);
 
@@ -263,3 +299,5 @@ export const ResultMessageSchema = BaseMessageSchema.extend({
   artifact: z.record(z.string(), z.unknown()).optional(),
   reasoning_content: z.string().optional(),
 });
+
+
