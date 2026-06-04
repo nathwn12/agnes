@@ -9,39 +9,39 @@ version: 1.0
 
 ## Core Concept
 
-Disciplined plan execution with isolated worktrees, per-task subagent dispatch, and a Build → Test → Verify → Review → Commit pipeline. Parallel dispatch where dependencies allow.
+Disciplined plan execution with isolated worktrees, per-task subagent dispatch, Build → Test → Verify → Review → Commit pipeline. Parallel dispatch where dependencies allow.
 
 ### Coding Priority Order
 
-1. **Correctness** — Works for all inputs, including edge cases
-2. **Security** — No vulnerabilities, injection risks, or data leaks
-3. **Simplicity** — The simplest approach that fully solves the task
-4. **Maintainability** — Another developer (or AI) understands this in 6 months
+1. **Correctness** — Works for all inputs, edge cases
+2. **Security** — No vulnerabilities, injection risks, data leaks
+3. **Simplicity** — Simplest approach fully solving task
+4. **Maintainability** — Understandable in 6 months
 5. **Performance** — Optimize only when measured and necessary
 
 ## Precise Vocabulary
 
 - **Worktree**: Isolated git working tree via `git worktree add`
-- **Subagent dispatch**: Delegating a task to a separate agent with structured context
+- **Subagent dispatch**: Delegating task to separate agent with structured context
 - **DONE / DONE_WITH_CONCERNS / NEEDS_CONTEXT / BLOCKED**: Four implementer statuses
-- **Stage 1 (Spec Compliance)**: Implementation matches the plan/spec exactly
+- **Stage 1 (Spec Compliance)**: Implementation matches plan/spec
 - **Stage 2 (Code Quality)**: Tests, types, naming, patterns, security, performance
 - **Conventional commit**: `<type>(<scope>): <description>`
 
 ### Executor Discipline
 
-Builder MUST delegate ALL bash commands to @executor. Builder never runs bash directly.
+Builder delegates ALL bash to @executor. Never runs bash directly.
 
-Commands to delegate: test runs, builds, type checks, linters, formatters, static analysis, package installation, dependency management — any command producing output.
+Delegated: test runs, builds, type checks, linters, formatters, static analysis, package install, dependency management — any command producing output.
 
-@executor returns compact pass/fail results with exact file:line references for failures. Builder reads results and decides next action (fix, retry, proceed). Executor never suggests fixes — only builder decides.
+@executor returns compact pass/fail with exact file:line for failures. Builder decides next action. Executor never suggests fixes.
 
 ## Context Requirements
 
 - Reviewed and approved implementation plan must exist
 - Plan tasks scoped to independent, dispatchable units
 - Clean baseline with passing tests before changes
-- Dependencies installed (bun install or equivalent)
+- Dependencies installed
 
 ## Workflow
 
@@ -49,152 +49,143 @@ Commands to delegate: test runs, builds, type checks, linters, formatters, stati
 
 #### Step 0: Detect Existing Isolation
 
-Before creating anything, check if already in an isolated workspace:
-
-- Compare `git rev-parse --git-dir` vs `git rev-parse --git-common-dir`. If different (and not a submodule), you are in a linked worktree — skip creation.
-- **Submodule guard:** Also run `git rev-parse --show-superproject-working-tree`. If it returns a path, you're in a submodule, treat as normal repo.
-- Report: "Already in isolated workspace at `<path>` on branch `<name>`."
+Compare `git rev-parse --git-dir` vs `git rev-parse --git-common-dir`. If different (not submodule), in linked worktree — skip. Report path and branch.
 
 #### Step 1: Create Isolated Workspace
 
-Try native worktree tools first. If none available, fall back to `git worktree add`.
-
 ##### 1a. Native Worktree Tools (preferred)
-If the platform/tool provides workspace isolation (e.g., `EnterWorktree`, `/worktree` command, `--worktree` flag), use it and skip to Step 2. Native tools handle directory placement, branch creation, and cleanup automatically.
+If platform provides isolation, use it and skip to Step 2.
 
 ##### 1b. Git Worktree Fallback
-Only use if no native tool is available. Follow directory priority: explicit preference in instructions > existing `.worktrees/` directory > `worktrees/` > global `~/.config/superpowers/worktrees/` > default `.worktrees/` at project root.
+Directory priority: explicit preference > `.worktrees/` > `worktrees/` > `~/.config/superpowers/worktrees/` > `.worktrees/` at project root.
 
-**Safety:** Must verify directory is git-ignored before creating (`git check-ignore -q .worktrees`). If not ignored, add to `.gitignore` and commit.
+**Safety:** Verify directory git-ignored before creating. If not, add to `.gitignore` and commit.
 
 Create: `git worktree add <path> -b <feature-branch>` then `cd <path>`.
 
-**Windows limitations:** Git worktrees on Windows may encounter permission errors (sandbox denial) or path-length issues (`MAX_PATH`). Enable long path support via `git config core.longpaths true`. If worktree creation fails, report the error and work in the current directory instead.
+**Windows:** Enable `core.longpaths true`. If fails, work in current directory.
 
 #### Step 2: Project Setup & Baseline
 
-- Auto-detect project type: `package.json` → `bun install`, `Cargo.toml` → `cargo build`, etc.
-- Verify clean baseline: tests pass before any changes. If tests fail, report failures and ask whether to proceed.
+Auto-detect project type. Verify clean baseline: tests pass before changes. If fail, report and ask whether to proceed.
 
 #### Step 3: Clean Up (After Completion)
 
-After merge or discard, clean up the worktree: `git worktree remove <path> && git branch -D <feature-branch>`. Track the worktree path at creation time for cleanup reference.
+After merge/discard: `git worktree remove <path> && git branch -D <feature-branch>`.
 
 ### Execution Loop (per task in plan)
 
 #### 1. Build (Ralph Loop)
 
-Write code per spec. Complete code — no placeholders. Use the **Ralph Loop** iterative retry pattern:
+Write code per spec. No placeholders. Ralph Loop:
 
 ```
 For each task:
-  1. Set: maxRetries = 3, completionPromise = "DONE"
+  1. maxRetries = 3, completionPromise = "DONE"
   2. For attempt = 1..maxRetries:
-     a. Dispatch subagent with: task description, acceptance criteria,
+     a. Dispatch subagent with: task, acceptance criteria,
         "Output <promise>${completionPromise}</promise> when truly complete"
      b. Scan for <promise>TAG</promise>
-     c. Found → proceed to Verify
-     d. Not found, attempt < maxRetries → retry same prompt
-     e. Track struggle: noProgress (no file changes), shortIterations (<30s), repeated errors
-  3. MaxRetries exhausted → return BLOCKED
+     c. Found → Verify
+     d. Not found, attempt < maxRetries → retry
+     e. Track struggle
+  3. MaxRetries exhausted → BLOCKED
 ```
-
-Four implementer statuses:
 
 | Status | Meaning | Action |
 |--------|---------|--------|
-| DONE | Task complete, promise detected | Proceed to Verify → Review |
-| DONE_WITH_CONCERNS | Promise detected but flagged uncertainties | Surface concerns with evidence before proceeding |
+| DONE | Task complete, promise detected | Verify → Review |
+| DONE_WITH_CONCERNS | Promise detected, flagged uncertainties | Surface concerns with evidence |
 | NEEDS_CONTEXT | Missing info | Fill gap, re-dispatch |
-| BLOCKED | External blocker or max retries | Create new blocked plan iteration, stop |
+| BLOCKED | External blocker or max retries | New blocked plan iteration |
 
 ##### Struggle Detection
 
 | Pattern | Threshold | Action |
 |---------|-----------|--------|
 | No file changes | ≥3 attempts | "Stuck — no progress" |
-| Very short iterations | ≥3 attempts (<30s) | "Subagent may be failing fast" |
+| Very short iterations | ≥3 (<30s) | "Subagent may be failing fast" |
 | Same error repeated | ≥2 attempts | "Recurring error" |
 
-Inject hint on next attempt: `"Hint: {detail} — try a different approach."`
+Inject hint: `"Hint: {detail} — try different approach."`
 
 ##### Promise Tag
 
-Every dispatch prompt includes: `When complete, output <promise>DONE</promise> on its own line.` Verifier scans for this tag before accepting completion.
+Every dispatch: `When complete, output <promise>DONE</promise> on its own line.`
 
 #### 2. Test
 
 - Unit tests for new functions/components
 - Integration tests for cross-module changes
-- Verify existing tests still pass
+- Verify existing tests pass
 
 #### 3. Verify
 
-Dispatch verifier gate: `tsc --noEmit`, `bun run lint`, `bun run test`, `bun run build`. Capture actual output as evidence.
+Dispatch verifier: `tsc --noEmit`, `bun run lint`, `bun run test`, `bun run build`. Capture actual output.
 
 #### 4. Review (Two-Stage)
 
-**Stage 1 — Spec Compliance:** implementation matches plan/spec? All acceptance criteria met? No scope drift? If fail → fix → re-review Stage 1 before Stage 2.
+**Stage 1 — Spec Compliance:** matches plan/spec? All criteria met? No scope drift? Fail → fix → re-review before Stage 2.
 
-**Stage 2 — Code Quality:** tests exist and pass, types correct, naming consistent, patterns match codebase, no security/performance regressions. Fix all Critical/Important issues.
+**Stage 2 — Code Quality:** tests pass, types correct, naming consistent, patterns match, no security/performance regressions. Fix all Critical/Important.
 
 #### 5. Commit
 
-Conventional commit: `<type>(<scope>): <description>` with detail bullets. Types: feat, fix, refactor, test, docs, chore, style.
+Conventional commit: `<type>(<scope>): <description>`. Types: feat, fix, refactor, test, docs, chore, style.
 
 ### Subagent Dispatch
 
 #### Prompt Structure
 
-Every dispatch must include: **task description** (exact text from plan), **relevant file paths** (read-only first), **skill instructions** (patterns/conventions), **acceptance criteria** (how to verify done), **expected output format** (diff, summary, status, concerns).
+Every dispatch: **task description** (from plan), **relevant file paths**, **skill instructions**, **acceptance criteria**, **expected output format**.
 
 #### Parallel Task Dispatch
 
 1. Scan plan for dependency graph
-2. Independent tasks → parallel dispatch
-3. Dependent tasks → order by dependency chain
-4. While waiting for dependent results, prepare next-wave context
+2. Independent tasks → parallel
+3. Dependent tasks → ordered by chain
+4. While waiting, prepare next-wave context
 
 | Do NOT parallelize when | Why |
-|-------------------------|-----|
+|------------------------|-----|
 | Tasks share mutable state | Concurrent write conflicts |
-| One task produces artifacts another needs | Sequential by definition |
-| First task informs second's direction | Exploratory dependency |
-| Combined context needed for coherence | Split context breaks consistency |
+| One produces artifacts another needs | Sequential by definition |
+| First informs second's direction | Exploratory dependency |
+| Combined context needed | Split breaks consistency |
 
-When in doubt, run sequentially.
+When in doubt, sequential.
 
 #### Anti-Patterns
 
 | Anti-Pattern | Fix |
 |--------------|-----|
-| Too broad scope | Split into smaller, focused tasks |
-| No context provided | Always include file paths and relevant code |
-| No constraints | State boundaries: "don't touch X", "stay in Y module" |
-| Vague output | Always specify expected output format |
+| Too broad scope | Split into smaller tasks |
+| No context provided | Include file paths and relevant code |
+| No constraints | State boundaries: "don't touch X" |
+| Vague output | Specify expected output format |
 
 #### Pipeline
 
-Fresh subagent per task. Implementer → verifier → reviewer per task. Pass: task description, file paths, skill instructions, acceptance criteria.
+Fresh subagent per task. Implementer → verifier → reviewer. Pass: task, paths, instructions, criteria.
 
 ### Worktree Management
 
-Create at start, track path. Clean up after merge/discard. Reuse existing worktrees. Never run git commands affecting other branches without explicit intent.
+Create at start, track path. Clean up after merge/discard. Reuse existing. No git commands affecting other branches without intent.
 
 ## Tool Requirements
 
-- **bash**: git commands (worktree, commit), install, test/lint/build
+- **bash**: git, install, test/lint/build
 - **read/write/edit**: File manipulation
 - **grep**: Codebase search
-- **task**: Subagent dispatch with structured prompts
+- **task**: Subagent dispatch
 
 ## Output
 
-Passing tests, type checks, lint, and build. Spec compliance and code quality confirmed. Conventional commits on isolated feature branch.
+Passing tests, type checks, lint, build. Spec compliance and code quality. Conventional commits on isolated branch.
 
 ## Quality Criteria
 
-- Every task passes verifier gate before review
+- Every task passes verifier before review
 - Stage 1 passes before Stage 2
 - No Critical/Important issues remain
 - Complete code, no placeholders
@@ -203,7 +194,7 @@ Passing tests, type checks, lint, and build. Spec compliance and code quality co
 ## When NOT to Use
 
 - No approved plan (use planner first)
-- Tasks share mutable state (concurrent write conflicts)
+- Tasks share mutable state
 - Sequential dependencies required
 - Exploratory — findings inform next direction
 - Cross-cutting refactors needing combined context

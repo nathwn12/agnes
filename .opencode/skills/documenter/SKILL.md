@@ -9,16 +9,16 @@ version: 1.0
 
 ## Use When
 
-After shipping, when new features need documentation, when existing docs are stale, when ADRs are needed for significant decisions.
+After shipping, new features need docs, existing docs stale, ADRs needed for decisions.
 
 ## Core Concept
 
-The Diataxis framework organizes documentation into four distinct types, each serving a different user need.
+Diataxis framework: four documentation types for different user needs.
 
 ### 1. Tutorial
 
-Step-by-step walkthrough for new users:
-- Assumes no prior knowledge
+Step-by-step for new users:
+- No prior knowledge assumed
 - Complete end-to-end flow
 - Each step produces visible results
 - No unexplained jargon
@@ -29,7 +29,7 @@ Output: `.agnes/tutorials/<topic>.md`
 
 Practical solutions to specific problems:
 - Goal-oriented: "How to do X"
-- Concise steps, no background explanation
+- Concise steps, no background
 - Assumes basic familiarity
 
 Output: `.agnes/guides/<topic>.md`
@@ -39,53 +39,53 @@ Output: `.agnes/guides/<topic>.md`
 Technical descriptions, API docs, config specs:
 - Complete and accurate
 - Auto-generated where possible
-- Includes types, parameters, return values
+- Types, parameters, return values
 - No tutorial content
 
-Output: Inline code comments + `.agnes/api/<module>.md`
+Output: Inline comments + `.agnes/api/<module>.md`
 
 ### 4. Explanation
 
 Background, context, design rationale:
-- Why this approach over alternatives
+- Why this approach
 - Design decisions and trade-offs
 - Architectural concepts
-- Links to related ADRs
+- Links to ADRs
 
 Output: `.agnes/architecture/<topic>.md` or `.agnes/adr/<NNNN>-<title>.md`
 
 ## Precise Vocabulary
 
-- **Tutorial**: Step-by-step learning-oriented walkthrough for beginners. Assumes no prior knowledge.
-- **How-to Guide**: Goal-oriented recipe for solving a specific problem. Assumes basic familiarity.
-- **Reference**: Complete, accurate technical description of APIs, configs, or internals.
-- **Explanation**: Background, context, and design rationale behind decisions.
-- **ADR (Architecture Decision Record)**: A recorded significant decision with context, decision, and consequences.
-- **CHANGELOG**: A curated, chronologically ordered list of notable changes per version.
-- **Sell-Test Voice**: A changelog rubric where each entry describes what's valuable (sell) and how it was verified (test).
+- **Tutorial**: Learning-oriented walkthrough for beginners
+- **How-to Guide**: Goal-oriented recipe for specific problem
+- **Reference**: Complete technical description of APIs, configs, internals
+- **Explanation**: Background, context, design rationale
+- **ADR**: Recorded decision with context, decision, consequences
+- **CHANGELOG**: Curated list of notable changes per version
+- **Sell-Test Voice**: Each entry describes value (sell) and verification (test)
 
 ## Context Requirements
 
-- Knowledge of the project's domain and architecture
-- Familiarity with existing documentation structure and conventions
-- Understanding of target audience and their skill levels
-- Access to recent code changes (diff, PR descriptions, commit messages)
+- Knowledge of project domain and architecture
+- Familiarity with existing docs structure
+- Understanding of target audience
+- Access to recent changes (diff, PRs, commits)
 
 ## Workflow
 
 1. **Update README** if feature changed user-facing behavior
-   - Installation instructions unchanged? Skip.
-   - New feature with user-visible changes? Add section.
-2. **Update CHANGELOG** with sell-test voice rubric
-   - Sell: What's valuable about this change?
-   - Test: How did we verify it?
+   - Install unchanged? Skip.
+   - New visible feature? Add section.
+2. **Update CHANGELOG** with sell-test voice
+   - Sell: value of this change?
+   - Test: how verified?
    - Format: `- <feature>: <sell> (<test>)`
 3. **Write/update ADRs** for significant decisions
-   - ADR criteria: Architecture decision, dependency choice, design trade-off
-   - Skip: Bug fixes, refactoring without behavioral change, trivial changes
+   - ADR criteria: architecture decision, dependency choice, design trade-off
+   - Skip: bug fixes, refactoring without behavioral change, trivial
 4. **Clean up TODOs and stale comments**
-   - Search for TODO, FIXME, HACK, XXX in changed files
-   - For each: fix, convert to issue, or delete
+   - Search TODO, FIXME, HACK, XXX in changed files
+   - Fix, convert to issue, or delete
 
 ### ADR Template
 
@@ -109,35 +109,35 @@ Accepted | Proposed | Deprecated
 
 | Tool | Purpose |
 |------|---------|
-| Read | Review existing documentation structure and content |
-| Write | Create new documentation files |
-| Edit | Update existing documentation |
-| Grep | Find TODOs, FIXMEs, HACKs, XXXs and stale patterns |
-| Glob | Locate documentation files across project |
-| Bash | Run documentation generators, formatters, or linters |
+| Read | Review existing docs |
+| Write | Create new docs |
+| Edit | Update existing docs |
+| Grep | Find TODOs, FIXMEs, HACKs, XXXs |
+| Glob | Locate doc files |
+| Bash | Run doc generators, formatters, linters |
 
 ## Output
 
-- `.agnes/tutorials/<topic>.md` — Step-by-step tutorials
+- `.agnes/tutorials/<topic>.md` — Tutorials
 - `.agnes/guides/<topic>.md` — How-to guides
-- `.agnes/api/<module>.md` + inline code comments — Reference documentation
-- `.agnes/architecture/<topic>.md` or `.agnes/adr/<NNNN>-<title>.md` — Explanations and ADRs
-- `README.md` — Updated user-facing project description
-- `CHANGELOG.md` — Updated changelog with sell-test voice entries
+- `.agnes/api/<module>.md` + inline comments — Reference
+- `.agnes/architecture/<topic>.md` or `.agnes/adr/<NNNN>-<title>.md` — Explanations/ADRs
+- `README.md` — Updated project description
+- `CHANGELOG.md` — Updated with sell-test entries
 
 ## Quality Criteria
 
-- Documentation type matches user need: tutorial for learning, guide for solving, reference for lookup, explanation for understanding
-- No unexplained jargon or skipped prerequisites in tutorials
-- Reference docs are complete, accurate, and auto-generated where possible
-- ADRs clearly state context, decision, and consequences
-- CHANGELOG entries follow sell-test voice rubric consistently
-- All TODOs, FIXMEs, HACKs, and XXXs are addressed (fixed, issued, or deleted)
-- README accurately reflects current user-facing behavior
+- Doc type matches need: tutorial for learning, guide for solving, reference for lookup, explanation for understanding
+- No unexplained jargon in tutorials
+- Reference docs complete, accurate, auto-generated where possible
+- ADRs clearly state context, decision, consequences
+- CHANGELOG entries follow sell-test voice
+- All TODOs/FIXMEs/HACKs/XXXs addressed
+- README reflects current behavior
 
 ## When NOT to Use
 
-- During active development before shipping (code still in flux)
-- For bug fixes or refactoring that don't change user-facing behavior or architecture
-- When documentation already exists and is current (no staleness)
-- When the project has no users or consumers (internal-only experimental code)
+- During active development before shipping
+- Bug fixes or refactoring without behavioral or architectural change
+- Docs already current
+- Internal-only experimental code with no users

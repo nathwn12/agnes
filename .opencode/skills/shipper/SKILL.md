@@ -9,39 +9,38 @@ version: 1.1
 
 ## Use When
 
-- All code is written, tested, reviewed, and verified
-- Implementation is complete, tests pass, need to decide integration method
+- All code written, tested, reviewed, verified
+- Implementation complete, tests pass, need integration method
 
 ## Core Concept
 
-Assess change magnitude first, then route to the right delivery path. **Major changes → PR. Minor fixes → push direct.** When the user needs to decide how to integrate, present 4 structured options (merge, PR, keep, discard). Always get approval. Never skip verification.
+Assess change magnitude, route to right delivery path. **Major changes → PR. Minor fixes → push direct.** When user needs to decide integration, present 4 structured options (merge, PR, keep, discard). Always get approval. Never skip verification.
 
 ## Precise Vocabulary
 
-- **Worktree**: a git working tree linked to a repository, tracked separately from the main working directory
-- **Detached HEAD**: HEAD points directly to a commit rather than a branch reference
-- **Base branch**: the target branch for merging, typically `main` or `master`
-- **Feature branch**: the branch containing the work to be shipped
+- **Worktree**: git working tree linked to repo, tracked separately from main working directory
+- **Detached HEAD**: HEAD points directly to commit, not branch
+- **Base branch**: target for merging, typically `main` or `master`
+- **Feature branch**: branch containing work to ship
 - **Major change**: new feature, breaking change, architecture change, large refactor, API change
-- **Minor fix**: bug fix, docs update, dependency bump, version bump, config change, small refactor
-- **Merge locally**: integrate feature branch into base branch without a PR
-- **Discard**: permanently delete the branch and associated worktree
+- **Minor fix**: bug fix, docs, dependency/version bump, config change, small refactor
+- **Merge locally**: integrate feature branch into base without PR
+- **Discard**: permanently delete branch and associated worktree
 
 ## Context Requirements
 
-- A git repository with a feature branch containing the completed work
-- Tests have passed, code has been reviewed and verified
+- Git repo with feature branch containing completed work
+- Tests passed, code reviewed and verified
 - Session state tracking which worktrees AGNES created
 
 ## Workflow
 
 ### 1. Verify Tests Pass
 
-**Mandatory before shipping anything.** Run the test suite. If tests fail, do NOT proceed.
+**Mandatory.** Run test suite. If tests fail, do NOT proceed.
 
 ### 2. Detect Environment
 
-Determine current environment:
 - **Normal repo**: `git rev-parse --git-dir` returns `.git`
 - **Worktree**: `--git-common-dir` differs from `--git-dir`
 - **Detached HEAD**: `git symbolic-ref -q HEAD` returns nothing
@@ -52,89 +51,86 @@ Default: `main` or `master`. Check which exists.
 
 ### 4. Branch Finishing (Interactive Decision)
 
-When the user needs to decide how to integrate completed work, use this structured menu. Announce: "I'm using the finishing-a-development-branch workflow."
+When user needs to decide integration, announce: "I'm using finishing-a-development-branch workflow."
 
 **Normal repo & named-branch worktree — 4 options:**
 ```
 Implementation complete. What would you like to do?
 1. Merge back to <base-branch> locally
-2. Push and create a Pull Request
-3. Keep the branch as-is
+2. Push and create Pull Request
+3. Keep branch as-is
 4. Discard this work
 ```
 
-**Detached HEAD — 3 options:** Options 2-4 only (no merge).
+**Detached HEAD — 3 options:** Options 2-4 only.
 
-Wait for user selection, then route to the matching execution route below. If the user explicitly asks to ship/deploy (not choose), skip this step and go to Shelf-Check.
+Wait for selection, route to execution. If user explicitly asks to ship/deploy (not choose), skip to Shelf-Check.
 
 ### 5. Shelf-Check
 
-Before shipping, inspect the working tree:
+Before shipping:
 1. **`.gitignore` exists?** — Warn if missing (non-blocking)
-2. **Tracked vs untracked files** — Run `git status --porcelain`. Classify every entry.
+2. **Tracked vs untracked** — `git status --porcelain`. Classify every entry.
 3. **Exclusion check** — Scan for secrets, credentials, build artifacts in untracked files
-4. **Report** — Present compact summary: *"These look correct to ship?"*
+4. **Report** — Compact summary: *"These look correct to ship?"*
 5. **Act** — Update `.gitignore` if user flags exclusions
 
 ### 6. Assess Change Magnitude
 
-Analyze the diff to classify:
+**Major** (→ PR): new feature, breaking API, architecture rewrite, large refactor (>500 lines), dependency changes, schema changes
+**Minor** (→ Push direct): bug fix, small refactor, docs, config, version/dependency bump, test additions, formatting
 
-**Major** (→ PR route): new feature, breaking API change, architecture rewrite, large refactor (>500 lines), dependency changes, schema changes
-**Minor** (→ Push direct route): bug fix, small refactor, docs, config, version bump, dependency bump, test additions, formatting
-
-Default to **Minor** when uncertain. Present assessment with rationale. Let user override.
+Default **Minor** when uncertain. Present with rationale. Let user override.
 
 ### 7. Execute Delivery
 
 #### Route A: Minor Fix — Push Direct
 
-1. **Ask user approval** — present the plan: version bump, docs update, commit, push
-2. **Version bump** — semver: `fix` type → patch, `feat` type → minor, breaking → major
+1. **Ask approval** — present plan: version bump, docs, commit, push
+2. **Version bump** — semver: `fix` → patch, `feat` → minor, breaking → major
 3. **Update docs** — README, CHANGELOG, any docs referencing changed code
 4. **Conventional commit** — `<type>(<scope>): <description>`
 5. **Push** to current branch
 
 #### Route B: Major Change — Pull Request
 
-1. **Ask user approval** — present the plan: push branch, create PR
+1. **Ask approval** — plan: push branch, create PR
 2. `git push -u origin <feature-branch>`
 3. `gh pr create --base <base-branch> --title "<title>" --body "<structured body>"`
-4. Return the PR URL. **Do NOT clean up worktree** — user needs it for PR iteration.
+4. Return PR URL. **Do NOT clean up worktree** — user needs it for PR iteration.
 
 #### Route C: Merge Locally
 
-1. **Ask user approval** — merge into base branch, verify tests, cleanup
-2. `cd` to main repo root (never inside the worktree being removed)
+1. **Ask approval** — merge into base, verify tests, cleanup
+2. `cd` to main repo root (never inside worktree being removed)
 3. `git checkout <base-branch> && git pull && git merge <feature-branch>`
 4. Verify tests pass on merged result
 5. Cleanup worktree (Step 8), then `git branch -d <feature-branch>`
 
 #### Route D: Keep / Discard
 
-**Keep:** Note the branch name. No further action. Preserve worktree.
+**Keep:** Note branch name. No further action. Preserve worktree.
 
 **Discard:** Require typed "discard" confirmation. List: branch name, commits, worktree path. On confirm: cleanup worktree (Step 8), then `git branch -D <feature-branch>`.
 
 ### 8. Cleanup Workspace
 
-Only runs for Route C (Merge) and Route D (Discard). Routes B (PR) and Keep always preserve the worktree.
+Only runs for Route C (Merge) and Route D (Discard). Routes B (PR) and Keep preserve worktree.
 
-Detect environment:
-- **Normal repo** (`GIT_DIR == GIT_COMMON`): No worktree to clean. Done.
-- **Superpowers worktree** (path under `.worktrees/`, `worktrees/`, or `~/.config/superpowers/worktrees/`): AGNES owns cleanup. `cd` to main repo root, `git worktree remove <path>`, `git worktree prune`.
-- **Harness-owned** (other path): Do NOT remove. The host environment owns this workspace.
+- **Normal repo** (`GIT_DIR == GIT_COMMON`): No worktree to clean.
+- **Superpowers worktree** (under `.worktrees/`, `worktrees/`, or `~/.config/superpowers/worktrees/`): AGNES owns cleanup. `cd` to main repo root, `git worktree remove <path>`, `git worktree prune`.
+- **Harness-owned** (other path): Do NOT remove.
 
 ## Tool Requirements
 
-- **git**: for all local operations (checkout, merge, branch management, push)
-- **gh** (GitHub CLI): for creating pull requests
+- **git**: Checkout, merge, branch management, push
+- **gh** (GitHub CLI): Creating pull requests
 
 ## Output
 
 | Route | Output |
 |-------|--------|
-| Minor — Push direct | Version bumped, docs updated, commit pushed with conventional message |
+| Minor — Push direct | Version bumped, docs updated, conventional commit pushed |
 | Major — PR | Published PR URL |
 | Merge locally | Branch merged into base, tests passed, worktree cleaned |
 | Keep | Branch preserved, name noted |
@@ -163,32 +159,32 @@ Closes #[issue]
 
 ## Quality Criteria
 
-- Always verify tests before any delivery
+- Verify tests before any delivery
 - Assess magnitude before choosing route; default Minor when uncertain
 - Never skip version bump on push-direct (skip gracefully if no package.json)
 - Always update CHANGELOG before push-direct
-- Never force-push without explicit user request
+- Never force-push without explicit request
 - Never delete branches without typed confirmation
-- Only clean up worktrees AGNES created (provenance check)
-- Don't clean up worktree for PR or Keep routes
-- `cd` to main repo root before any worktree removal
+- Only clean worktrees AGNES created (provenance check)
+- Don't clean worktree for PR or Keep routes
+- `cd` to main repo root before worktree removal
 - Run `git worktree prune` after removal
-- If base branch has diverged significantly, alert the user
+- If base branch diverged significantly, alert user
 
 ## Common Mistakes
 
-- **Skipping test verification** — verify tests before offering options or shipping
-- **Open-ended questions** — always present structured options, not "what should I do?"
-- **Cleaning up worktree for PR** — user needs it alive to iterate on feedback
-- **Deleting branch before removing worktree** — `git branch -d` fails if worktree still references it. Merge first, remove worktree, then delete branch.
-- **Running worktree remove from inside the worktree** — command fails silently. Always `cd` to main repo root first.
-- **Cleaning up harness-owned worktrees** — only clean worktrees under `.worktrees/`, `worktrees/`, or `~/.config/superpowers/worktrees/`
-- **No confirmation for discard** — require typed "discard" before deleting work
+- **Skipping test verification** — verify before offering options or shipping
+- **Open-ended questions** — always present structured options
+- **Cleaning worktree for PR** — user needs it alive for feedback iteration
+- **Deleting branch before removing worktree** — `git branch -d` fails if worktree references it. Merge first, remove worktree, then delete.
+- **Running worktree remove from inside worktree** — fails silently. Always `cd` to main repo root.
+- **Cleaning harness-owned worktrees** — only clean under `.worktrees/`, `worktrees/`, `~/.config/superpowers/worktrees/`
+- **No confirmation for discard** — require typed "discard" before deleting
 
 ## When NOT to Use
 
-- Tests are failing — go back to fix first
-- Base branch has diverged significantly — alert user before proceeding
-- Code has not been reviewed (for team projects where review is required)
-- Destructive operations without typed confirmation from the user
-- Work is incomplete or experimental — use keep or continue developing
+- Tests failing — fix first
+- Base branch diverged significantly — alert user before proceeding
+- Code not reviewed (team projects requiring review)
+- Destructive operations without typed confirmation
+- Work incomplete or experimental — use keep or continue developing

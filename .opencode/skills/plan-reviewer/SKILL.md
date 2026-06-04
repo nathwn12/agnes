@@ -9,8 +9,8 @@ version: 2.0
 
 ## DEPRECATED
 
-**plan-reviewer is deprecated.** Use [`multi-reviewer`](../multi-reviewer/SKILL.md) instead.
+**plan-reviewer deprecated.** Use [`multi-reviewer`](../multi-reviewer/SKILL.md) instead.
 
-`multi-reviewer` provides the same CEO/Eng/Design/DX multi-axis review with richer rubrics, evidence standards, cross-axis synthesis, and anti-pattern detection. It supersedes plan-reviewer completely.
+`multi-reviewer` provides same CEO/Eng/Design/DX multi-axis review with richer rubrics, evidence standards, cross-axis synthesis, anti-pattern detection. Supersedes plan-reviewer completely.
 
-This file is kept for backward compatibility only. New workflows should reference multi-reviewer directly.
+Kept for backward compatibility only. New workflows reference multi-reviewer directly.

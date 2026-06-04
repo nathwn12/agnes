@@ -9,157 +9,152 @@ version: 1.1
 
 ## Use When
 
-A feature request has been discussed enough to write requirements, before detailed implementation planning begins. Distinct from planner (which writes implementation specs) — this captures the WHAT and WHY, not the HOW.
+Feature request discussed enough to write requirements, before detailed impl planning. Distinct from planner (impl specs) — captures WHAT and WHY, not HOW.
 
 ## Core Concept
 
-Synthesize what you already know into a structured PRD. Do NOT interview the user for more information — work from existing context. If context is insufficient, the PRD will reflect that with open questions.
+Synthesize known context into structured PRD. Do NOT interview user for more info. Insufficient context → PRD reflects open questions.
 
-The PRD captures product requirements: what needs to be built and why. Implementation details (file paths, code snippets, exact APIs) belong in the planner phase.
+PRD captures product requirements: what to build and why. Implementation details (file paths, code, APIs) belong in planner phase.
 
 ## Precise Vocabulary
 
-- **PRD (Product Requirements Document):** A structured document capturing what needs to be built and why, distinct from implementation specs
-- **ready-for-agent label:** Issue tracker label indicating no additional triage needed
-- **deep module:** A module that encapsulates rich functionality behind a simple, testable interface that rarely changes
-- **shallow module:** A module whose interface is as complex as its implementation — harder to test, more coupled
-- **Implementation Decisions:** Architecture constraints and technology choices that constrain implementation, not implementation details like file paths or code
-- **User Stories:** Structured requirements from an actor's perspective following the pattern "As a [actor], I want [feature] so that [benefit]"
-- **Vertical slice:** A thin end-to-end path through all integration layers (schema, API, UI, tests) that is independently verifiable
-- **Tracer bullet:** The first end-to-end implementation path used to validate architecture decisions
-- **HITL:** Human-In-The-Loop — a task requiring human review or decision
-- **AFK:** Away From Keyboard — a task that can be fully executed by automated agents
+- **PRD (Product Requirements Document):** Structured doc capturing what to build and why
+- **ready-for-agent label:** Issue tracker label — no additional triage needed
+- **deep module:** Rich functionality behind simple, testable interface that rarely changes
+- **shallow module:** Interface as complex as implementation; harder to test, more coupled
+- **Implementation Decisions:** Architecture constraints and tech choices, not file paths or code
+- **User Stories:** Structured from actor perspective: "As a [actor], I want [feature] so that [benefit]"
+- **Vertical slice:** Thin end-to-end path through all layers (schema, API, UI, tests), independently verifiable
+- **Tracer bullet:** First end-to-end impl path validating architecture decisions
+- **HITL:** Human-In-The-Loop — task needing human review
+- **AFK:** Away From Keyboard — fully automatable
 
 ## Process Flow
 
-Before writing the PRD, explore the problem space to ensure alignment:
-
-1. **Explore the repo** — understand domain glossary, ADRs, existing patterns, and current codebase state
-2. **Sketch modules** — identify which modules need building or modification; look for deep module extraction opportunities
-3. **Explore 2-3 approaches** (if design is not settled) — present options with trade-offs and a recommendation
-4. **User check** — present module sketch and approach for approval before writing the full PRD
-5. **Write PRD** — use the template below, output to `.agnes/prd/YYYY-MM-DD-<feature>-prd.md`
-6. **Self-review** — check for placeholders, contradictions, missing sections
-7. **Publish** — create issue with `ready-for-agent` label if an issue tracker is in use
+1. **Explore repo** — domain glossary, ADRs, existing patterns, codebase state
+2. **Sketch modules** — identify what to build/modify; find deep module extraction opportunities
+3. **Explore 2-3 approaches** (if design unsettled) — options with trade-offs and recommendation
+4. **User check** — present module sketch and approach for approval before writing PRD
+5. **Write PRD** — template below, output to `.agnes/prd/YYYY-MM-DD-<feature>-prd.md`
+6. **Self-review** — placeholders, contradictions, missing sections
+7. **Publish** — create issue with `ready-for-agent` label if tracker in use
 
 ## Deep Module Design
 
-When sketching modules, actively look for opportunities to extract deep modules:
+Actively look for deep modules:
 
 | Shallow Module (avoid) | Deep Module (prefer) |
 |------------------------|---------------------|
-| Exposes many methods that mirror internal logic | Exposes a simple interface that hides complexity |
-| Hard to test without mocking internals | Easy to test through its public interface |
-| Changes frequently because interface leaks internals | Rarely changes because interface is stable |
-| Consumer code is coupled to internal details | Consumer code is decoupled from internal details |
+| Exposes many methods mirroring internal logic | Simple interface hiding complexity |
+| Hard to test without mocking internals | Easy to test through public interface |
+| Changes frequently (interface leaks internals) | Rarely changes (stable interface) |
+| Consumer code coupled to internals | Consumer code decoupled from internals |
 
-A deep module encapsulates rich functionality behind a simple, stable interface. The classic example: a database driver. Complex internals (connection pooling, query parsing, result caching) hidden behind `query(sql, params) → results`.
+Classic example: database driver. Connection pooling, query parsing, caching hidden behind `query(sql, params) → results`.
 
 ## Approach Exploration
 
-If the feature's design is not yet settled, explore before specifying:
-
-1. Propose 2-3 different approaches with trade-offs
-2. Lead with your recommended option and explain why
-3. Consider: what does each approach enable, what does it cost, what risks does it carry?
-4. Get user approval on approach before writing the full PRD
-
-This reduces the chance of writing a PRD for the wrong design.
+Design unsettled? Explore before specifying:
+1. Propose 2-3 approaches with trade-offs
+2. Lead with recommendation, explain why
+3. Consider: what each approach enables, costs, risks
+4. Get user approval before writing full PRD
 
 ## Context Requirements
 
-- Existing conversation context containing feature discussion
-- Repo architecture understanding — domain glossary, ADRs, existing patterns
-- Issue tracker access for publishing (if applicable)
+- Existing conversation with feature discussion
+- Repo architecture: domain glossary, ADRs, patterns
+- Issue tracker access (if publishing)
 
 ## Workflow
 
-### 1. Explore Repo (if not already done)
+### 1. Explore Repo (if not done)
 
-Use domain glossary, respect ADRs, understand existing architecture. If the repo has CONTEXT.md, read it first. Check existing PRDs in `.agnes/prd/` for related work.
+Use domain glossary, respect ADRs, understand architecture. Read CONTEXT.md if exists. Check existing PRDs in `.agnes/prd/`.
 
 ### 2. Sketch Major Modules
 
-Identify which modules need to be built or modified. Look for deep module extraction opportunities — modules that encapsulate rich functionality behind a simple interface.
+Identify what to build/modify. Look for deep module extraction.
 
-Document for each module:
-- What does it do? (one sentence)
-- How do you use it? (its public interface)
-- What does it depend on?
-- Is it a deep module or shallow module? Can it be deepened?
+Document each module:
+- What does it do? (1 sentence)
+- How to use it? (public interface)
+- Dependencies?
+- Deep or shallow? Can it be deepened?
 
 ### 3. User Check
 
-Present module sketch to the user:
-- Does this match expectations?
-- Which modules should have tests?
+Present module sketch:
+- Match expectations?
+- Which modules need tests?
 
-Iterate if the user has corrections.
+Iterate on corrections.
 
 ### 4. Write PRD
 
-Use the PRD template below. Output to `.agnes/prd/YYYY-MM-DD-<feature>-prd.md`.
+Use template. Output to `.agnes/prd/YYYY-MM-DD-<feature>-prd.md`.
 
-### 5. Publish to Issue Tracker
+### 5. Publish
 
-Create an issue with `ready-for-agent` label — no additional triage needed.
+Create issue with `ready-for-agent` label.
 
 ## Tool Requirements
 
-- `read` — explore repo files, ADRs, domain glossary
+- `read` — explore repo, ADRs, domain glossary
 - `write` — write PRD to `.agnes/prd/`
 - `webfetch` — research links, competitor analysis, prior art
-- `bash` — git operations, issue tracker CLI
+- `bash` — git ops, issue tracker CLI
 
 ## Output
 
-`.agnes/prd/YYYY-MM-DD-<feature>-prd.md` following the template below:
+`.agnes/prd/YYYY-MM-DD-<feature>-prd.md`:
 
 ```markdown
 # [Feature Name] — Product Requirements Document
 
 ## Problem Statement
-[What problem does this solve? Who has this problem? From the user's perspective.]
+[What problem? Who has it? From user perspective.]
 
 ## Solution
-[High-level approach. What does success look like? From the user's perspective.]
+[High-level approach. What does success look like? From user perspective.]
 
 ## User Stories
 - As a [actor], I want [feature] so that [benefit]
-- (Long numbered list, ordered by priority — cover all aspects of the feature)
+- (Long numbered list, priority order — cover all aspects)
 
 ## Implementation Decisions
-[Architecture constraints, technology choices, integration points]
-_(Not implementation details — the DECISIONS that constrain implementation)_
-Exception: prototype snippets that encode decisions precisely are OK (state machine, reducer, schema, type shape). Trim to the decision-rich parts.
+[Architecture constraints, tech choices, integration points]
+_(Decisions that constrain impl, not impl details)_
+Exception: prototype snippets encoding decisions (state machine, reducer, schema, type shape). Trim to decision-rich parts.
 
 ## Testing Decisions
 [What to test and how, testability requirements, which modules get tests]
-Describe what makes a good test for this system (test external behavior, not implementation details).
+Describe good test: test external behavior, not impl details.
 
 ## Out of Scope
-[Explicitly what this PRD does NOT cover — prevents scope creep]
+[Explicitly what PRD does NOT cover — prevents creep]
 
 ## Open Questions
-[What we don't know yet — risks, unknowns, dependencies]
+[Unknowns — risks, unknowns, dependencies]
 
 ## Further Notes
-[Anything else — research links, competitor analysis, prior art]
+[Research links, competitor analysis, prior art]
 ```
 
 ## Quality Criteria
 
-- Do NOT interview the user — synthesize only from existing context
-- Do NOT include implementation details (file paths, code snippets) except prototype snippets that encode decisions
-- Look for deep module opportunities — prefer simple interfaces over complex ones
-- All PRD template sections populated or explicitly marked N/A
-- User Stories are extensive and cover all aspects of the feature
+- Do NOT interview user — synthesize from existing context only
+- No implementation details (file paths, code) except decision-encoding snippets
+- Look for deep module opportunities
+- All PRD template sections populated or marked N/A
+- User Stories extensive, cover all feature aspects
 - Implementation Decisions capture constraints, not file paths
-- If the design is unsettled, explore approaches before writing the PRD
+- Design unsettled? Explore approaches before writing PRD
 
 ## When NOT to Use
 
-- When the feature has not been sufficiently discussed and context is too thin for a meaningful PRD
-- When the user needs to be interviewed for more information (use clarifier instead)
-- When the task is implementation planning (use planner instead)
-- When writing tutorials, how-to guides, or reference docs (use documenter instead)
+- Feature insufficiently discussed, context too thin
+- User needs interviewing (use clarifier)
+- Task is implementation planning (use planner)
+- Writing tutorials, how-to guides, reference docs (use documenter)

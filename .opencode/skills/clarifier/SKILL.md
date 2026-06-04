@@ -9,144 +9,128 @@ version: 1.0
 
 ## Use When
 
-Vague requests, incomplete bug reports, cross-domain terminology conflicts, before planning to ensure shared understanding.
+Vague requests, incomplete bug reports, cross-domain terminology conflicts, before planning.
 
 ## Core Concept
 
-Socratic questioning that builds shared understanding through one-question-at-a-time dialogue. Sharpens terminology against the project glossary, proposes recommended answers, and handoffs clarified work to the next skill. No implementation happens until the user explicitly approves the clarified task description.
+Socratic questioning building shared understanding one question at a time. Sharpens terminology against project glossary, proposes answers, handoffs clarified work. No implementation until user approves.
 
 Methodology:
-- **Socratic**: Questions lead the user to discover the answer themselves
+- **Socratic**: Questions lead user to discover answer
 - **Empathetic**: Assume good intent, start from user's context
-- **Precise**: Use exact terminology from the codebase
+- **Precise**: Use exact codebase terminology
 - **Concise**: One question, one answer, repeat
 
-A **hard gate** enforces that clarification must produce a written, user-approved spec before any BUILD-phase skill is invoked.
+**Hard gate**: written, user-approved spec before BUILD-phase skill invoked.
 
 ## Precise Vocabulary
 
 | Term | Definition |
-|------|------------|
-| Shared Understanding | State where agent can describe the task back in user's words, user confirms, and no ambiguities remain about scope, approach, or constraints |
-| Glossary-first Challenge | When user uses a term conflicting with existing CONTEXT.md or ADRs, call it out immediately — show the conflict and ask for resolution |
-| Fuzzy Language | Vague or overloaded terms ("thing", "stuff", "manage", "handle") that must be sharpened into precise canonical terms |
-| Context Scope | Active project domain (from CONTEXT-MAP.md) that should prefix each question when multiple contexts exist |
-| Hard Gate | No implementation until design is approved — clarification must produce a written, user-approved spec before any BUILD-phase skill is invoked |
+|------|-----------|
+| Shared Understanding | Agent describes task back in user's words, user confirms, no ambiguities |
+| Glossary-first Challenge | User term conflicts with CONTEXT.md/ADRs — call out immediately |
+| Fuzzy Language | Vague terms ("thing", "stuff", "manage") sharpened into precise terms |
+| Context Scope | Active project domain (from CONTEXT-MAP.md) prefixing each question |
+| Hard Gate | No implementation until user-approved written spec |
 
 ## Context Requirements
 
-Before asking questions, check existing context:
+Before asking, check:
 - Project files and structure
-- CONTEXT.md, AGENTS.md, or standing briefs
-- ADRs (.agnes/adr/) for past decisions
-- Recent commits and their messages
-- Existing issue tracker for similar requests
-- CONTEXT-MAP.md at root — if multiple contexts exist, note which context applies before each question
+- CONTEXT.md, AGENTS.md, standing briefs
+- ADRs (.agnes/adr/)
+- Recent commits
+- Issue tracker
+- CONTEXT-MAP.md — if multiple contexts, prefix questions with active scope
 
-**Multi-Context Awareness:** Check for CONTEXT-MAP.md at project root. If multiple contexts exist, note which context applies before each question. Prefix questions with the active context scope to avoid confusion.
+**Inline CONTEXT.md Updates:** Update DURING conversation. Each resolved term written immediately.
 
-**Inline CONTEXT.md Updates:** Update CONTEXT.md DURING the conversation, not batched at the end. Each resolved term definition should be written immediately so the project glossary stays current in real time.
+**ADR Sparingly:** Only when ALL three:
+1. Decision hard to reverse
+2. Surprising without context
+3. Result of real trade-off
 
-**ADR Sparingly:** Only offer an ADR when ALL three conditions are met:
-1. The decision is hard to reverse
-2. The decision is surprising without context
-3. The decision is the result of a real trade-off
-
-Otherwise, a note in CONTEXT.md suffices.
+Otherwise note in CONTEXT.md.
 
 ## Workflow
 
 ### 1. Explore Context
 
-Before asking questions, check existing context:
-- Project files and structure
-- CONTEXT.md, AGENTS.md, or standing briefs
-- ADRs (.agnes/adr/) for past decisions
-- Recent commits and their messages
-- Existing issue tracker for similar requests
-- CONTEXT-MAP.md at root — if multiple contexts exist, note which context applies before each question
+Check project files, CONTEXT.md/AGENTS.md, ADRs, recent commits, issue tracker, CONTEXT-MAP.md.
 
 ### 2. Ask One Question at a Time
 
-**Critical rule**: Never ask multiple questions in a single message. Overwhelming the user leads to incomplete answers.
+**Critical rule:** Never multiple questions in one message.
 
-Format each question:
-- State what you understand so far
-- Propose a recommended interpretation
-- Ask a single, specific question
-
-Example:
-> "I understand you want to add user authentication. Based on the existing codebase, it looks like you're using NextAuth. I think you want OAuth with Google — is that right?"
+Format:
+- State what you understand
+- Propose recommended interpretation
+- Ask single, specific question
 
 ### 3. Sharpen Terminology
 
-Cross-reference the user's words against the project glossary:
+Cross-reference user's words against glossary:
 - Check CONTEXT.md for domain language
-- Check existing code for naming conventions
-- If terms conflict, point out the discrepancy and propose alignment
-- **Glossary-first challenge**: When user uses a term that conflicts with existing CONTEXT.md or ADRs, call it out IMMEDIATELY. Show the conflict and ask for resolution.
-- **Sharpen fuzzy language**: When user uses vague/overloaded terms ("thing", "stuff", "manage", "handle"), propose precise canonical terms. Get agreement.
-- **Concrete scenario probing**: Invent edge-case scenarios to force precision about domain boundaries.
+- Check code naming conventions
+- **Glossary-first challenge**: Conflicts → call out IMMEDIATELY
+- **Sharpen fuzzy language**: Propose precise canonical terms
+- **Concrete scenarios**: Edge-case scenarios forcing precision
 
 ### 4. Propose Recommended Answers
 
-Don't just ask — offer your best guess:
-- "I think you mean X — is that right?"
-- "Based on the codebase, Y seems more appropriate than Z. Shall I use Y?"
-- "I see two possible interpretations: A or B. Which one?"
+Offer best guess:
+- "I think you mean X — right?"
+- "Based on codebase, Y seems more appropriate. Use Y?"
+- "Two interpretations: A or B. Which?"
 
 ### 5. Brainstorming Workflow
 
-After initial clarification is achieved, propose 2-3 approaches with pros/cons.
+After clarification, propose 2-3 approaches with pros/cons.
 
-For each approach include:
-- **Summary**: One-sentence description of the approach
-- **Pros**: What makes this approach attractive
-- **Cons**: Trade-offs, risks, or downsides
-- **Estimated effort**: Rough sizing (hours/days)
+Each includes:
+- **Summary**: One sentence
+- **Pros**: Advantages
+- **Cons**: Trade-offs, risks
+- **Estimated effort**: Rough hours/days
 
-Include code sketches for critical decisions when helpful to illustrate trade-offs.
-
-Recommend one approach with clear rationale. Let the user choose before proceeding.
+Include code sketches for critical decisions. Recommend one. Let user choose.
 
 #### Visual Companion
 
-For UI-heavy tasks, consider offering a browser-based mockup server during brainstorming:
-- Quick HTML mockups to explore visual directions before committing to implementation
-- Useful for layout decisions, component hierarchies, or user flow validation
-- **Optional**: Ask the user if they'd like to see visual options
-- Can hand off to prototype for deeper exploration if needed
+For UI-heavy tasks, consider browser mockup server:
+- Quick HTML mockups for visual exploration
+- Layout, component hierarchies, user flow validation
+- Optional: ask if user wants visual options
+- Can handoff to prototype
 
 ### 6. Build Shared Understanding
 
-Keep going until:
-- You can describe the task back to the user in their own words
-- The user confirms your understanding
-- There are no remaining ambiguities about scope, approach, or constraints
+Continue until:
+- Can describe task back in user's words
+- User confirms
+- No remaining ambiguities
 
 ### 7. Spec Self-Review Checklist
 
-Before marking clarification complete, run through this checklist:
-
-- **Placeholder scan**: No "TODO", "FIXME", or "TBD" remain in the spec or task description
-- **Consistency**: All referenced files and functions exist (or will be created)
-- **Scope check**: Every item belongs in this task? No scope creep from adjacent concerns?
-- **Ambiguity check**: All decisions are explicit. No "figure out later" or "decided by implementer" clauses
+Before marking complete:
+- **Placeholder scan**: No "TODO", "FIXME", "TBD"
+- **Consistency**: All referenced files exist
+- **Scope check**: All items belong? No scope creep?
+- **Ambiguity check**: All decisions explicit
 
 ### 8. Handoff
 
-Once clarified, route to the appropriate next skill:
-- Call `ag_route` with the clarified task
-- If planning: route to planner
-- If debugging: route to debugger
-- If building: route to planner first (plans before builds)
+Route to next skill:
+- Planning → planner
+- Debugging → debugger
+- Building → planner first
 
 ## Tool Requirements
 
-- **read / grep**: Explore project context, files, and structure
-- **task**: Route clarified work to the next skill
-- **write / edit**: Update CONTEXT.md inline with resolved terminology
-- **webfetch**: Access issue trackers and external context
+- **read / grep**: Explore context
+- **task**: Route clarified work
+- **write / edit**: Update CONTEXT.md inline
+- **webfetch**: Access issue trackers
 
 ## Output
 
@@ -156,16 +140,13 @@ Once clarified, route to the appropriate next skill:
 
 ## Quality Criteria
 
-- **Hard Gate**: No implementation until design is approved. Even for "simple" projects. "I'll just start coding" is not allowed. Clarification must produce a written, user-approved spec before any BUILD-phase skill is invoked. The gate passes only when:
-  - User has explicitly approved the clarified task description
-  - Spec passes self-review checklist
-  - All terminology conflicts are resolved and documented
-- **Spec Self-Review**: Before marking complete, run the checklist: no TODOs/FIXMEs/TBDs, all referenced files exist, no scope creep, all decisions explicit.
-- **Shared Understanding**: You can describe the task back in user's words and user confirms.
+- **Hard Gate**: No implementation until design approved. Gate: user approved spec, self-review passes, all terminology resolved.
+- **Spec Self-Review**: No TODOs/FIXMEs/TBDs, files exist, no scope creep, decisions explicit.
+- **Shared Understanding**: Describe task back, user confirms.
 
 ## When NOT to Use
 
-- When the task is already precisely specified with no terminology conflicts or ambiguity
-- During execution or BUILD phase — this skill is for THINK phase only
-- When the user just needs direct implementation with no design decisions needed
-- When the issue is purely operational (e.g., "run this command") with no ambiguity
+- Task already precisely specified with no ambiguity
+- During BUILD phase — THINK only
+- User needs direct implementation
+- Purely operational ("run this command")

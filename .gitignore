@@ -3,6 +3,7 @@ node_modules/
 review-package/
 verification/
 /.agnes
+.archive/
 nul
 /.opencode/index.json
 /.opencode/plans/

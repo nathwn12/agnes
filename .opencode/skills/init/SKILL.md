@@ -9,36 +9,36 @@ version: 1.0
 
 ## Use When
 
-You need to set up AGNES in a new project, or update an existing project's AGENTS.md and state files in `.agnes/`.
+Set up AGNES in a new project, or update AGENTS.md and state files in `.agnes/`.
 
 ## Core Concept
 
-Initialises a project to work with AGNES. Creates `.agnes/index.json`, `.agnes/config.json`, `.agnes/sessions.json`, `.agnes/learnings/`, `.agnes/specs/`, and a canonical `plan-NNN.yaml`, then writes or updates `AGENTS.md` in the project root.
+Initialises project for AGNES. Creates `.agnes/index.json`, `.agnes/config.json`, `.agnes/sessions.json`, `.agnes/learnings/`, `.agnes/specs/`, and `plan-NNN.yaml`, then writes/updates `AGENTS.md` in project root.
 
-The project AGENTS.md is minimal by design — everything in it pays a token cost every turn. Always-on swarm ethos and state rules only; everything else lives in skills.
+AGENTS.md is minimal by design — every token costs. Always-on swarm ethos and state rules only; everything else in skills.
 
 ## Precise Vocabulary
 
-- **Project root** — the first ancestor directory containing `package.json`, `.git`, or `.opencode`
-- **State files** — `.agnes/index.json`, `.agnes/config.json`, `.agnes/sessions.json`, `.agnes/learnings/`, `.agnes/specs/`, and canonical `plan-NNN.yaml` iterations
-- **AGENTS.md** — project root config file consumed by the agent every turn
-- **Handoff** — saved session state for another agent or future continuation
+- **Project root** — first ancestor with `package.json`, `.git`, or `.opencode`
+- **State files** — `.agnes/index.json`, `config.json`, `sessions.json`, `learnings/`, `specs/`, `plan-NNN.yaml`
+- **AGENTS.md** — project root config consumed every turn
+- **Handoff** — saved session state for agent continuation
 
 ## Context Requirements
 
-- A target project directory. The skill walks up from the current working directory to find the project root.
-- Write permission to create `.agnes/` and modify `AGENTS.md` in the project root.
-- Existing state files with real content are preserved; only empty templates are overwritten.
+- Target project directory. Walks up from CWD to find project root.
+- Write permission for `.agnes/` and `AGENTS.md`.
+- Existing state files with real content preserved; only empty templates overwritten.
 
 ## Workflow
 
-### 1. Find the project root
+### 1. Find project root
 
-Walk up from the current working directory. The project root is the first directory containing `package.json`, `.git`, or `.opencode`.
+Walk up from CWD. First dir with `package.json`, `.git`, or `.opencode`.
 
 ### 2. Create or update `.agnes/`
 
-Create `.agnes/` if it doesn't exist. Write state files:
+Create `.agnes/` if missing. Write state files:
 
 #### `.agnes/index.json`
 
@@ -76,15 +76,13 @@ Create `.agnes/` if it doesn't exist. Write state files:
 
 #### `.agnes/learnings/`
 
-Create the directory for durable notes and lessons learned. Do not overwrite existing entries.
+Create directory. Don't overwrite existing entries.
 
 #### `.agnes/specs/`
 
-Create the directory for spec documents and planning references. Do not overwrite existing entries.
+Create directory. Don't overwrite existing entries.
 
 #### `.agnes/plans/plan-001.yaml`
-
-Primary plan file:
 
 ```yaml
 schema: agnes/plan-v1
@@ -99,67 +97,67 @@ completed: 0
 blocked: 0
 ```
 
-Preserve existing files: if `index.json` already exists with real content (has plans), leave it unchanged. If `plan-001.yaml` already exists with real content (in `.agnes/plans/`), leave it unchanged.
+Preserve existing: `index.json` with real content (has plans) unchanged. `plan-001.yaml` with real content unchanged.
 
 ### 3. Create or update `AGENTS.md`
 
-Write `AGENTS.md` at the project root. If it already exists, prepend the AGNES block to the existing content (AGNES identity must come first so every agent sees it).
+Write `AGENTS.md` at project root. If exists, prepend AGNES block (identity must come first).
 
 ```markdown
 # AGNES — OpenCode Native Plugin
 
-This project uses AGNES, a swarm orchestrator that routes tasks across fused skills.
+This project uses AGNES, a swarm orchestrator routing tasks across fused skills.
 
 ## Swarm Ethos (Override — Always Active)
 
-1. **Delegate or die.** If you catch yourself writing code directly, STOP and spawn a subagent.
-2. **Parallelize by default.** Scan every task set for independence. Sequential is the exception.
-3. **1% Rule.** If even 1% chance a skill applies → invoke it.
+1. **Delegate or die.** Caught writing code directly? STOP, spawn subagent.
+2. **Parallelize by default.** Scan tasks for independence. Sequential is exception.
+3. **1% Rule.** 1% chance skill applies → invoke it.
 4. **Verify before claiming.** Run command, read output, then speak.
 5. **Scarcity: Cheapest sufficient path first.** Start broad and cheap, narrow only when needed.
-6. **Work-steal.** Subagent finished early? Dispatch it with the next task.
-7. **Main context is clean.** AGNES talks, plans, reports, deploys, and manages `.agnes/`. No direct source work.
+6. **Work-steal.** Subagent finished early? Dispatch next task.
+7. **Main context is clean.** AGNES talks, plans, reports, deploys, manages `.agnes/`. No direct source work.
 8. **One task = N subagents.** Parallelize by independent work unit.
-9. **Fresh wave = fresh subagents.** No subagent reuse across waves.
-10. **Closed-loop execution.** Subagents execute PLAN→REVIEW→IMPLEMENT→TEST or FIX→REVIEW→VERIFY.
-11. **No shared file edits.** Never assign two subagents to edit the same file in the same wave.
-12. **Self-audit before every response.** Boundary violation means blocked handoff iteration.
+9. **Fresh wave = fresh subagents.** No reuse across waves.
+10. **Closed-loop execution.** PLAN→REVIEW→IMPLEMENT→TEST or FIX→REVIEW→VERIFY.
+11. **No shared file edits.** Never two subagents editing same file in same wave.
+12. **Self-audit before every response.** Boundary violation → blocked handoff iteration.
 
 ## Key Rules
 
 - No completion claims without fresh verification.
 - One question at a time.
 - User review gate before implementation.
-- At task start, check `.agnes/index.json` for existing active plans.
-- No active plan? Create `plan-NNN.yaml`, then update `index.json` — the plan IS the goal.
-- Plan sources are immutable after creation.
-- Every state change creates a new `plan-NNN.yaml` iteration.
+- Check `.agnes/index.json` for active plans at task start.
+- No active plan? Create `plan-NNN.yaml`, update `index.json` — plan IS goal.
+- Plan sources immutable after creation.
+- Every state change creates new `plan-NNN.yaml`.
 - Update `index.json` after every new plan iteration.
-- Stuck or stopping? Create a blocked plan iteration.
-- Search plans by project/status through `index.json`.
+- Stuck/stopping? Create blocked plan iteration.
+- Search plans by project/status via `index.json`.
 
 ---
 
-[existing AGENTS.md content continues below, if any]
+[existing AGENTS.md content continues below]
 ```
 
 ### 4. Verify
 
-1. Confirm `.agnes/index.json` exists and is valid JSON
-2. Confirm `.agnes/config.json`, `.agnes/sessions.json`, `.agnes/learnings/`, and `.agnes/specs/` exist
-3. Confirm `.agnes/plans/plan-001.yaml` exists
-4. Confirm `AGENTS.md` contains the AGNES block
-5. Report the project is initialised
+1. `.agnes/index.json` exists and valid JSON
+2. `.agnes/config.json`, `sessions.json`, `learnings/`, `specs/` exist
+3. `.agnes/plans/plan-001.yaml` exists
+4. `AGENTS.md` contains AGNES block
+5. Report project initialised
 
 ## Tool Requirements
 
 | Tool | Used For |
 |------|----------|
-| Bash | Finding project root, creating directories, verifying output |
-| Read | Checking existing file content before overwriting |
-| Write | Creating new state files and AGENTS.md |
-| Edit | Prepending AGNES block to existing AGENTS.md |
-| Glob | Detecting project root markers (package.json, .git, .opencode) |
+| Bash | Find project root, create dirs, verify |
+| Read | Check existing content before overwrite |
+| Write | Create state files and AGENTS.md |
+| Edit | Prepend AGNES block to existing AGENTS.md |
+| Glob | Detect project root markers |
 
 ## Output
 
@@ -178,13 +176,13 @@ This project uses AGNES, a swarm orchestrator that routes tasks across fused ski
 
 ## Quality Criteria
 
-1. `.agnes/index.json` exists and is valid JSON
+1. `.agnes/index.json` exists and valid JSON
 2. `.agnes/plans/plan-001.yaml` exists
-3. `AGENTS.md` contains the AGNES identity block at the top
-4. Existing state files with real content are unchanged
+3. `AGENTS.md` contains AGNES block at top
+4. Existing state files with real content unchanged
 
 ## When NOT to Use
 
-- The project is not meant to work with AGNES (no swarm orchestration needed)
-- Only a single skill or subagent is needed without the full AGNES workflow
-- The project already has a complete AGNES setup verified by the quality criteria
+- Project not meant for AGNES (no swarm orchestration)
+- Only single skill/subagent needed without full workflow
+- Project already has complete AGNES setup (verified by criteria)

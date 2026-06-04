@@ -13,22 +13,22 @@ After each builder task (per-task review), before shipper (final review), when u
 
 ## Core Concept
 
-Two-stage review process: first verify spec compliance (does the code do what it should?), then assess code quality (is the code well-written?). Issues are classified as P0, P1, P2, or P3 to prioritize fixes.
+Two-stage review: verify spec compliance (does code do what it should?), then assess code quality (is it well-written?). Issues classified P0–P3 to prioritize fixes.
 
 ## Precise Vocabulary
 
-- **Spec Compliance**: Whether the implementation matches the agreed-upon specification line by line
-- **Code Quality**: Assessment of tests, types, edge cases, naming, patterns, security, and performance
-- **[P0] Blocking**: likely production breakage, data corruption, or exploitable security issue
-- **[P1] High**: serious user, operational, or security impact
+- **Spec Compliance**: Implementation matches agreed-upon spec line by line
+- **Code Quality**: Assessment of tests, types, edge cases, naming, patterns, security, performance
+- **[P0] Blocking**: production breakage, data corruption, security exploit
+- **[P1] High**: serious user/operational/security impact
 - **[P2] Medium**: meaningful but non-blocking risk
-- **[P3] Low**: valid low-impact improvement that can be deferred
+- **[P3] Low**: valid low-impact improvement, can defer
 
 ## Context Requirements
 
-- The task's implementation spec or requirements document
-- Git history showing changes made (base SHA to head SHA)
-- Diff of all changes for the task
+- Task implementation spec or requirements document
+- Git history (base SHA to head SHA)
+- Diff of all task changes
 - Project conventions and patterns for comparison
 
 ## Workflow
@@ -37,94 +37,89 @@ Two-stage review process: first verify spec compliance (does the code do what it
 
 #### Stage 1: Spec Compliance
 
-Does the implementation match the spec? Line-by-line check against spec requirements:
+Does implementation match spec? Line-by-line:
 
-- Are all required features implemented?
-- Are there any extra features not in the spec?
-- Does the implementation match the agreed-upon API surface?
-- Are error cases from the spec handled?
-- Are the tests from the test plan present?
+- All required features implemented?
+- Any extra features not in spec?
+- API surface matches agreed-upon?
+- Error cases from spec handled?
+- Tests from test plan present?
 
-Report: For each requirement, mark compliant or non-compliant with specifics.
+Report: mark each requirement compliant or non-compliant with specifics.
 
 #### Stage 2: Code Quality
 
-Review the code itself:
-
-- **Tests**: Are there tests? Do they test the right things? Are they readable?
-- **Types**: Are types correct? Any `any` or unsafe casts?
-- **Edge cases**: Are error paths, empty states, and boundary conditions handled?
-- **Naming**: Do names convey intent? Consistent with project conventions?
-- **Patterns**: Does code follow existing project patterns? Any anti-patterns?
-- **Security**: Any injection risks, exposed secrets, or permission issues?
-- **Performance**: Any obvious performance issues (N+1 queries, unnecessary re-renders)?
+- **Tests**: Exist? Test right things? Readable?
+- **Types**: Correct? Any `any` or unsafe casts?
+- **Edge cases**: Error paths, empty states, boundaries handled?
+- **Naming**: Convey intent? Consistent with conventions?
+- **Patterns**: Follow existing patterns? Anti-patterns?
+- **Security**: Injection risks, exposed secrets, permission issues?
+- **Performance**: N+1 queries, unnecessary re-renders?
 
 #### Issue Classification
 
 | Severity | Meaning | Action |
 |----------|---------|--------|
-| P0 | Blocking: production breakage, data corruption, security exploit | Must fix before proceeding |
-| P1 | High: serious user, operational, or security impact | Should fix before merging |
-| P2 | Medium: meaningful but non-blocking risk | Can defer, log for later |
+| P0 | Blocking: breakage, corruption, exploit | Must fix before proceeding |
+| P1 | High: serious user/op/security impact | Should fix before merging |
+| P2 | Medium: meaningful but non-blocking | Can defer, log for later |
 | P3 | Low: valid low-impact improvement | Can defer indefinitely |
 
 ### Evidence and Impact Requirement
 
 Every finding must include:
-1. **Evidence** — the specific code, behavior, or pattern that triggers the finding (with file:line references)
-2. **Impact** — what could go wrong, how bad it would be, and under what conditions
+1. **Evidence** — specific code/behavior/pattern triggering finding (file:line references)
+2. **Impact** — what could go wrong, how bad, under what conditions
 
-Findings without both evidence and impact should not be raised.
+Findings without both: don't raise.
 
 ### Final Review (all tasks complete)
 
-1. Get git SHAs (base → head): `git log --oneline <base>..HEAD`
+1. Get SHAs: `git log --oneline <base>..HEAD`
 2. Get diff: `git diff <base>..HEAD`
-3. Review complete diff against: spec, security, performance, maintainability
-4. Fix all P0 and P1 issues before proceeding to shipper
+3. Review against: spec, security, performance, maintainability
+4. Fix all P0/P1 before shipper
 
 ### Receiving Feedback Rules
 
-When receiving code review feedback (either from a human reviewer or when AGNES is being reviewed):
+When receiving code review feedback:
 
-- **No performative agreement**: Never respond "You're absolutely right!" without thinking
-- **Verify before implementing**: Check if the feedback is technically correct
-- **Push back with technical reasoning**: If the reviewer is wrong, explain why with code evidence
-- **One fix at a time**: Fix one issue, test, then move to the next
+- **No performative agreement**. Verify before implementing.
+- **Push back with technical reasoning** if reviewer is wrong.
+- **One fix at a time** — fix, test, move on.
 
 ## Tool Requirements
 
-- `read`: Read source files and spec documents for review
-- `grep`: Search for patterns, types, and potential issues
-- `bash`: Run git commands (log, diff), build, and test commands
+- `read`: Source files and spec documents
+- `grep`: Search patterns, types, issues
+- `bash`: Git commands (log, diff), build, test
 - `task`: Delegate fix work for identified issues
-- `git`: Access git history and changes
+- `git`: Access history and changes
 
 ## Output
 
-- Spec compliance report marking each requirement as compliant or non-compliant
+- Spec compliance report (compliant/non-compliant by requirement)
 - Code quality assessment with categorized issues (P0/P1/P2/P3)
-- Final verdict: review passed or failed with required actions
-- For per-task reviews: issues to fix before shipping
-- For final reviews: verification that the complete diff is clean and intentional
+- Final verdict: passed or failed with required actions
+- Per-task: issues to fix before shipping
+- Final: verification that complete diff is clean and intentional
 
 ## Quality Criteria
 
-Before reporting "review passed", verify:
-- Spec compliance report is complete
-- Issue classification is accurate
-- All P0 and P1 issues are fixed or explicitly deferred with user approval
-- Final diff is clean and intentional
+Before reporting "review passed":
+- Spec compliance report complete
+- Issue classification accurate
+- All P0/P1 fixed or explicitly deferred with user approval
+- Final diff clean and intentional
 
 ### Do Not Report
 
-The following do NOT warrant a finding:
-
-- Style-only preferences without real risk (tabs vs spaces, naming style preferences)
-- Hypothetical issues without a plausible failure path
-- Duplicate findings for the same root cause (merge them)
-- Low-value nits that do not materially improve correctness, security, or maintainability
+- Style-only preferences without real risk (tabs vs spaces, naming style)
+- Hypothetical issues without plausible failure path
+- Duplicate findings for same root cause (merge them)
+- Low-value nits not materially improving correctness, security, maintainability
 
 ## When NOT to Use
 
-N/A — This skill is always applicable when code changes need review before shipping.
+N/A — Always applicable when code changes need review before shipping.
