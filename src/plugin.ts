@@ -73,7 +73,7 @@ export const AgnesPlugin: Plugin = async (input) => {
       agnes_delegate: tool({
         description: 'Delegate a task to a subagent. Use this instead of the built-in delegate_task (which is deprecated and unreliable).',
         args: {
-          agent: tool.schema.enum(['explore', 'general', 'build', 'plan']).describe('Which agent type to delegate to'),
+          agent: tool.schema.enum(['explore', 'general']).describe('Which agent type to delegate to'),
           description: tool.schema.string().describe('Short description of the task'),
           prompt: tool.schema.string().describe('Full instructions for the subagent'),
           background: tool.schema.boolean().default(false).describe('If true, returns a task reference for later polling with agnes_get_result. If false, blocks until complete.'),

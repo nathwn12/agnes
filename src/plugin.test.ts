@@ -147,7 +147,7 @@ describe('tool.definition hook', () => {
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
     expect(content).toContain('@explore');
-    expect(content).toContain('@build');
+    expect(content).toContain('@general');
     expect(content).toContain('agnes_delegate');
   });
 });
@@ -158,7 +158,7 @@ describe('bootstrap delegation enforcement', () => {
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
     expect(content!).toContain('@explore');
-    expect(content!).toContain('@build');
+    expect(content!).toContain('@general');
     expect(content!).toContain('agnes_delegate');
   });
 });

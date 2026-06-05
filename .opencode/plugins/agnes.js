@@ -34222,7 +34222,7 @@ Use \`agnes_delegate\` and \`agnes_get_result\` for subagent work. Built-in \`de
 - \`agnes_delegate(agent, description, prompt, background=true)\` \u2192 returns task ref for polling.
 - \`agnes_get_result(taskRef)\` \u2192 polls async result. Returns output text, PENDING, or ERROR.
 
-Available agents: @explore (read/search), @build (modify/create). Other custom agents have been removed \u2014 use commands instead.
+Available agents: @general (read/write/research), @explore (read-only). These are OpenCode's built-in subagents.
 
 **Commands**
 Use slash commands for structured workflows: /plan, /build-fix, /code-review, /tdd, /verify, /checkpoint, /learn, /security, /e2e, /update-docs, /refactor-clean, etc.
@@ -34244,7 +34244,7 @@ function buildMinimalBootstrap(version3) {
 You are AGNES v${version3}.
 
 Use \`agnes_delegate\` and \`agnes_get_result\` for subagent work.
-Available agents: @explore (read/search), @build (modify/create).
+Available agents: @general (read/write/research), @explore (read-only).
 Use slash commands for structured workflows.
 
 Delegate work. Verify results. Answer directly.
@@ -34585,7 +34585,7 @@ $ARGUMENTS`
       agnes_delegate: tool({
         description: "Delegate a task to a subagent. Use this instead of the built-in delegate_task (which is deprecated and unreliable).",
         args: {
-          agent: tool.schema.enum(["explore", "general", "build", "plan"]).describe("Which agent type to delegate to"),
+          agent: tool.schema.enum(["explore", "general"]).describe("Which agent type to delegate to"),
           description: tool.schema.string().describe("Short description of the task"),
           prompt: tool.schema.string().describe("Full instructions for the subagent"),
           background: tool.schema.boolean().default(false).describe("If true, returns a task reference for later polling with agnes_get_result. If false, blocks until complete.")

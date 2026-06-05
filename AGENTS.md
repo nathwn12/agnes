@@ -54,7 +54,7 @@ CI: `bun install -> bun run lint -> bun run typecheck -> bun test -> bun run bun
 
 ## Key Details
 
-- **Agents**: Only `explore` (read/search) and `build` (modify/create). No custom agents.
+- **Agents**: Only `general` (read/write/research) and `explore` (read-only). These are OpenCode's built-in subagents. No custom agents.
 - **Commands**: All workflows are slash commands in `.opencode/commands/*.md`.
 - **Delegation**: Use `agnes_delegate`/`agnes_get_result` custom tools (built-in `delegate_task`/`get_task_result` are deprecated).
 - **Bootstrap**: Injected via `experimental.chat.messages.transform` from SOUL.md.

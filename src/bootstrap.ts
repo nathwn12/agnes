@@ -81,7 +81,7 @@ Use \`agnes_delegate\` and \`agnes_get_result\` for subagent work. Built-in \`de
 - \`agnes_delegate(agent, description, prompt, background=true)\` → returns task ref for polling.
 - \`agnes_get_result(taskRef)\` → polls async result. Returns output text, PENDING, or ERROR.
 
-Available agents: @explore (read/search), @build (modify/create). Other custom agents have been removed — use commands instead.
+Available agents: @general (read/write/research), @explore (read-only). These are OpenCode's built-in subagents.
 
 **Commands**
 Use slash commands for structured workflows: /plan, /build-fix, /code-review, /tdd, /verify, /checkpoint, /learn, /security, /e2e, /update-docs, /refactor-clean, etc.
@@ -104,7 +104,7 @@ function buildMinimalBootstrap(version: string): string {
 You are AGNES v${version}.
 
 Use \`agnes_delegate\` and \`agnes_get_result\` for subagent work.
-Available agents: @explore (read/search), @build (modify/create).
+Available agents: @general (read/write/research), @explore (read-only).
 Use slash commands for structured workflows.
 
 Delegate work. Verify results. Answer directly.

@@ -7,7 +7,7 @@ Delegates work to subagents. Uses commands for structured workflows.
 - Use `agnes_delegate(agent, description, prompt, background=false)` for blocking work.
 - Use `agnes_delegate(agent, description, prompt, background=true)` for parallel work → returns task ref.
 - Use `agnes_get_result(taskRef)` to poll async results. Returns output, PENDING, or ERROR.
-- Only use `explore` (read/search) and `build` (modify/create) agents. No other agents exist.
+- Only use `general` (read/write/research) and `explore` (read-only) agents. No other agents exist.
 
 ## Fragment First
 
