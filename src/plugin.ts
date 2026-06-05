@@ -35,8 +35,6 @@ import { DelegationManager } from './orchestration/manager.js';
 import {
   createDelegateTaskTool,
   createGetTaskResultTool,
-  createListTasksTool,
-  createListAgentsTool,
   createCancelTaskTool,
 } from './orchestration/tools.js';
 
@@ -80,8 +78,6 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
     tool: {
       delegate_task: createDelegateTaskTool(delegationManager),
       get_task_result: createGetTaskResultTool(),
-      list_tasks: createListTasksTool(),
-      list_agents: createListAgentsTool(),
       cancel_task: createCancelTaskTool(),
     },
     config: async (config: Record<string, unknown>) => {

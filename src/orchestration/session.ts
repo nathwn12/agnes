@@ -1,160 +1,251 @@
 import type { DelegateTask } from './types.js';
 
-const parentToChildren = new Map<string, Set<string>>();
-const tasks = new Map<string, DelegateTask>();
-const namedResults = new Map<string, Map<string, string>>();
-const groupMembers = new Map<string, Set<string>>();
-const groupPendingCounts = new Map<string, number>();
+export class SessionStore {
+  private parentToChildren = new Map<string, Set<string>>();
+  private tasks = new Map<string, DelegateTask>();
+  private namedResults = new Map<string, Map<string, string>>();
+  private groupMembers = new Map<string, Set<string>>();
+  private groupPendingCounts = new Map<string, number>();
+
+  trackTask(task: DelegateTask): void {
+    this.tasks.set(task.id, task);
+    const parent = task.parentSessionID;
+    const children = this.parentToChildren.get(parent) ?? new Set<string>();
+    children.add(task.id);
+    this.parentToChildren.set(parent, children);
+  }
+
+  getTask(id: string): DelegateTask | undefined {
+    return this.tasks.get(id);
+  }
+
+  getChildTasks(parentSessionID: string): DelegateTask[] {
+    const childIds = this.parentToChildren.get(parentSessionID);
+    if (!childIds) return [];
+    return Array.from(childIds)
+      .map(id => this.tasks.get(id))
+      .filter((t): t is DelegateTask => t !== undefined);
+  }
+
+  updateTask(id: string, update: Partial<DelegateTask>): void {
+    const task = this.tasks.get(id);
+    if (task) Object.assign(task, update);
+  }
+
+  getAllTasks(): DelegateTask[] {
+    return Array.from(this.tasks.values());
+  }
+
+  getRunningTasks(): DelegateTask[] {
+    return this.getAllTasks().filter(t => t.status === 'running' || t.status === 'pending');
+  }
+
+  private ensureResultMap(sessionID: string): Map<string, string> {
+    if (!this.namedResults.has(sessionID)) {
+      this.namedResults.set(sessionID, new Map());
+    }
+    return this.namedResults.get(sessionID)!;
+  }
+
+  storeNamedResult(sessionID: string, name: string, result: string): void {
+    this.ensureResultMap(sessionID).set(name, result);
+  }
+
+  getNamedResult(sessionID: string, name: string): string | undefined {
+    return this.namedResults.get(sessionID)?.get(name);
+  }
+
+  getAllNamedResults(sessionID: string): Map<string, string> | undefined {
+    return this.namedResults.get(sessionID);
+  }
+
+  resolveResultReferences(text: string, sessionID: string): string {
+    const results = this.namedResults.get(sessionID);
+    if (!results?.size) return text;
+    return text.replace(/\$RESULT\[([^\]]+)\]/g, (match, name) => {
+      return results.get(name) ?? match;
+    });
+  }
+
+  hasRunningChildren(parentSessionID: string): boolean {
+    const children = this.parentToChildren.get(parentSessionID);
+    if (!children?.size) return false;
+    for (const id of children) {
+      const t = this.tasks.get(id);
+      if (t && (t.status === 'running' || t.status === 'pending')) return true;
+    }
+    return false;
+  }
+
+  allChildrenComplete(parentSessionID: string): boolean {
+    const children = this.parentToChildren.get(parentSessionID);
+    if (!children?.size) return true;
+    for (const id of children) {
+      const t = this.tasks.get(id);
+      if (!t || t.status === 'running' || t.status === 'pending') return false;
+    }
+    return true;
+  }
+
+  cleanupSession(sessionID: string): void {
+    this.namedResults.delete(sessionID);
+    const children = this.parentToChildren.get(sessionID);
+    if (children) {
+      for (const id of children) {
+        this.tasks.delete(id);
+      }
+      this.parentToChildren.delete(sessionID);
+    }
+  }
+
+  cleanupStaleTasks(maxAgeMs = 300_000): number {
+    const now = Date.now();
+    let count = 0;
+    for (const [id, task] of this.tasks) {
+      if (task.completedAt && (now - task.completedAt) > maxAgeMs) {
+        this.tasks.delete(id);
+        if (task.groupID) {
+          const group = this.groupMembers.get(task.groupID);
+          if (group) {
+            group.delete(id);
+            if (group.size === 0) this.groupMembers.delete(task.groupID);
+          }
+        }
+        count++;
+      }
+    }
+    return count;
+  }
+
+  validateSessionHasOutput(
+    messages: { info?: { role?: string }; parts?: { type?: string; text?: string }[] }[],
+  ): boolean {
+    const hasAssistantMessage = messages.some(m => m.info?.role === 'assistant');
+    if (!hasAssistantMessage) return false;
+
+    const hasContent = messages.some(m => {
+      if (m.info?.role !== 'assistant') return false;
+      const parts = m.parts ?? [];
+      return parts.some(p =>
+        (p.type === 'text' && p.text && p.text.trim().length > 0) ||
+        (p.type === 'reasoning' && p.text && p.text.trim().length > 0) ||
+        p.type === 'tool'
+      );
+    });
+    return hasContent;
+  }
+
+  trackGroup(groupID: string, taskID: string): void {
+    const members = this.groupMembers.get(groupID) ?? new Set<string>();
+    members.add(taskID);
+    this.groupMembers.set(groupID, members);
+    this.groupPendingCounts.set(groupID, (this.groupPendingCounts.get(groupID) ?? 0) + 1);
+  }
+
+  markGroupTaskCompleted(groupID: string): number {
+    const remaining = (this.groupPendingCounts.get(groupID) ?? 1) - 1;
+    if (remaining <= 0) {
+      this.groupPendingCounts.delete(groupID);
+      return 0;
+    }
+    this.groupPendingCounts.set(groupID, remaining);
+    return remaining;
+  }
+
+  getGroupPendingCount(groupID: string): number {
+    return this.groupPendingCounts.get(groupID) ?? 0;
+  }
+
+  getGroupTaskIDs(groupID: string): string[] {
+    const members = this.groupMembers.get(groupID);
+    return members ? Array.from(members) : [];
+  }
+}
+
+const globalSessionStore = new SessionStore();
+
+export function createSessionStore(): SessionStore {
+  return new SessionStore();
+}
+
+export function getGlobalSessionStore(): SessionStore {
+  return globalSessionStore;
+}
 
 export function trackTask(task: DelegateTask): void {
-  tasks.set(task.id, task);
-  const children = parentToChildren.get(task.parentSessionID) ?? new Set();
-  children.add(task.id);
-  parentToChildren.set(task.parentSessionID, children);
+  globalSessionStore.trackTask(task);
 }
 
 export function getTask(id: string): DelegateTask | undefined {
-  return tasks.get(id);
+  return globalSessionStore.getTask(id);
 }
 
 export function getChildTasks(parentSessionID: string): DelegateTask[] {
-  const childIds = parentToChildren.get(parentSessionID);
-  if (!childIds) return [];
-  return Array.from(childIds)
-    .map(id => tasks.get(id))
-    .filter((t): t is DelegateTask => t !== undefined);
+  return globalSessionStore.getChildTasks(parentSessionID);
 }
 
 export function updateTask(id: string, update: Partial<DelegateTask>): void {
-  const task = tasks.get(id);
-  if (task) Object.assign(task, update);
+  globalSessionStore.updateTask(id, update);
 }
 
 export function getAllTasks(): DelegateTask[] {
-  return Array.from(tasks.values());
+  return globalSessionStore.getAllTasks();
 }
 
 export function getRunningTasks(): DelegateTask[] {
-  return getAllTasks().filter(t => t.status === 'running' || t.status === 'pending');
-}
-
-function ensureResultMap(sessionID: string): Map<string, string> {
-  if (!namedResults.has(sessionID)) {
-    namedResults.set(sessionID, new Map());
-  }
-  return namedResults.get(sessionID)!;
+  return globalSessionStore.getRunningTasks();
 }
 
 export function storeNamedResult(sessionID: string, name: string, result: string): void {
-  ensureResultMap(sessionID).set(name, result);
+  globalSessionStore.storeNamedResult(sessionID, name, result);
 }
 
 export function getNamedResult(sessionID: string, name: string): string | undefined {
-  return namedResults.get(sessionID)?.get(name);
+  return globalSessionStore.getNamedResult(sessionID, name);
 }
 
 export function getAllNamedResults(sessionID: string): Map<string, string> | undefined {
-  return namedResults.get(sessionID);
+  return globalSessionStore.getAllNamedResults(sessionID);
 }
 
 export function resolveResultReferences(text: string, sessionID: string): string {
-  const results = namedResults.get(sessionID);
-  if (!results?.size) return text;
-  return text.replace(/\$RESULT\[([^\]]+)\]/g, (match, name) => {
-    return results.get(name) ?? match;
-  });
+  return globalSessionStore.resolveResultReferences(text, sessionID);
 }
 
 export function hasRunningChildren(parentSessionID: string): boolean {
-  const children = parentToChildren.get(parentSessionID);
-  if (!children?.size) return false;
-  for (const id of children) {
-    const t = tasks.get(id);
-    if (t && (t.status === 'running' || t.status === 'pending')) return true;
-  }
-  return false;
+  return globalSessionStore.hasRunningChildren(parentSessionID);
 }
 
 export function allChildrenComplete(parentSessionID: string): boolean {
-  const children = parentToChildren.get(parentSessionID);
-  if (!children?.size) return true;
-  for (const id of children) {
-    const t = tasks.get(id);
-    if (!t || t.status === 'running' || t.status === 'pending') return false;
-  }
-  return true;
+  return globalSessionStore.allChildrenComplete(parentSessionID);
 }
 
 export function cleanupSession(sessionID: string): void {
-  namedResults.delete(sessionID);
-  const children = parentToChildren.get(sessionID);
-  if (children) {
-    for (const id of children) {
-      tasks.delete(id);
-    }
-    parentToChildren.delete(sessionID);
-  }
+  globalSessionStore.cleanupSession(sessionID);
 }
 
 export function cleanupStaleTasks(maxAgeMs = 300_000): number {
-  const now = Date.now();
-  let count = 0;
-  for (const [id, task] of tasks) {
-    if (task.completedAt && (now - task.completedAt) > maxAgeMs) {
-      tasks.delete(id);
-      if (task.groupID) {
-        const group = groupMembers.get(task.groupID);
-        if (group) {
-          group.delete(id);
-          if (group.size === 0) groupMembers.delete(task.groupID);
-        }
-      }
-      count++;
-    }
-  }
-  return count;
+  return globalSessionStore.cleanupStaleTasks(maxAgeMs);
 }
 
 export function validateSessionHasOutput(
   messages: { info?: { role?: string }; parts?: { type?: string; text?: string }[] }[],
 ): boolean {
-  const hasAssistantMessage = messages.some(m => m.info?.role === 'assistant');
-  if (!hasAssistantMessage) return false;
-
-  const hasContent = messages.some(m => {
-    if (m.info?.role !== 'assistant') return false;
-    const parts = m.parts ?? [];
-    return parts.some(p =>
-      (p.type === 'text' && p.text && p.text.trim().length > 0) ||
-      (p.type === 'reasoning' && p.text && p.text.trim().length > 0) ||
-      p.type === 'tool'
-    );
-  });
-  return hasContent;
+  return globalSessionStore.validateSessionHasOutput(messages);
 }
 
 export function trackGroup(groupID: string, taskID: string): void {
-  const members = groupMembers.get(groupID) ?? new Set();
-  members.add(taskID);
-  groupMembers.set(groupID, members);
-  groupPendingCounts.set(groupID, (groupPendingCounts.get(groupID) ?? 0) + 1);
+  globalSessionStore.trackGroup(groupID, taskID);
 }
 
 export function markGroupTaskCompleted(groupID: string): number {
-  const remaining = (groupPendingCounts.get(groupID) ?? 1) - 1;
-  if (remaining <= 0) {
-    groupPendingCounts.delete(groupID);
-    return 0;
-  }
-  groupPendingCounts.set(groupID, remaining);
-  return remaining;
+  return globalSessionStore.markGroupTaskCompleted(groupID);
 }
 
 export function getGroupPendingCount(groupID: string): number {
-  return groupPendingCounts.get(groupID) ?? 0;
+  return globalSessionStore.getGroupPendingCount(groupID);
 }
 
 export function getGroupTaskIDs(groupID: string): string[] {
-  const members = groupMembers.get(groupID);
-  return members ? Array.from(members) : [];
+  return globalSessionStore.getGroupTaskIDs(groupID);
 }

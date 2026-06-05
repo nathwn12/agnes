@@ -8,9 +8,6 @@ import {
   formatGateReport,
   allGatesPassed,
   registerGate,
-  promiseComplianceGate,
-  planExistsGate,
-  stateFileIntegrityGate,
   createPromiseComplianceGate,
   createPlanExistsGate,
 } from './verification.js';
@@ -153,26 +150,6 @@ describe('allGatesPassed', () => {
   });
 });
 
-describe('pre-registered gates', () => {
-  test('promiseComplianceGate exists and is a function', () => {
-    expect(promiseComplianceGate).toBeDefined();
-    expect(promiseComplianceGate.id).toBe('promise-compliance');
-    expect(typeof promiseComplianceGate.run).toBe('function');
-  });
-
-  test('planExistsGate exists and is a function', () => {
-    expect(planExistsGate).toBeDefined();
-    expect(planExistsGate.id).toBe('plan-exists');
-    expect(typeof planExistsGate.run).toBe('function');
-  });
-
-  test('stateFileIntegrityGate exists and is a function', () => {
-    expect(stateFileIntegrityGate).toBeDefined();
-    expect(stateFileIntegrityGate.id).toBe('state-file-integrity');
-    expect(typeof stateFileIntegrityGate.run).toBe('function');
-  });
-});
-
 describe('createPromiseComplianceGate', () => {
   const completion = () => `<!-- <agnes:message>${JSON.stringify({ type: 'completion', id: randomUUID(), timestamp: new Date().toISOString(), status: 'DONE', summary: 'done', schema: 'agnes/message-v1' })}</agnes:message> -->`;
   const resultMessage = () => `<!-- <agnes:message>${JSON.stringify({ type: 'result', id: randomUUID(), taskId: 't1', timestamp: new Date().toISOString(), status: 'DONE', content: 'ok', schema: 'agnes/message-v1' })}</agnes:message> -->`;
@@ -293,95 +270,19 @@ describe('createPlanExistsGate', () => {
   });
 });
 
-describe('promiseComplianceGate acceptance', () => {
-  const OLD_ENV = process.env.AGNES_LAST_OUTPUT;
-
-  afterEach(() => {
-    process.env.AGNES_LAST_OUTPUT = OLD_ENV;
-  });
-
-  test('fails when output contains legacy <promise> tag', async () => {
-    process.env.AGNES_LAST_OUTPUT = '<promise>DONE</promise>';
-    const result = await promiseComplianceGate.run();
-    expect(result.status).toBe('FAIL');
-  });
-
-  test('passes when output contains canonical HTML-commented completion', async () => {
-    process.env.AGNES_LAST_OUTPUT = `<!-- <agnes:message>${JSON.stringify({ type: 'completion', id: randomUUID(), timestamp: new Date().toISOString(), status: 'DONE', summary: 'done', schema: 'agnes/message-v1' })}</agnes:message> -->`;
-    const result = await promiseComplianceGate.run();
-    expect(result.status).toBe('PASS');
-  });
-
-  test('fails when output contains raw JSON completion without agnes:message envelope', async () => {
-    process.env.AGNES_LAST_OUTPUT = JSON.stringify({ type: 'completion', id: 'x', timestamp: new Date().toISOString(), status: 'DONE', summary: 'done' });
-    const result = await promiseComplianceGate.run();
-    expect(result.status).toBe('FAIL');
-  });
-
-  test('passes when output contains canonical HTML-commented result', async () => {
-    process.env.AGNES_LAST_OUTPUT = `<!-- <agnes:message>${JSON.stringify({ type: 'result', id: randomUUID(), taskId: 't1', timestamp: new Date().toISOString(), status: 'DONE', content: 'ok', schema: 'agnes/message-v1' })}</agnes:message> -->`;
-    const result = await promiseComplianceGate.run();
-    expect(result.status).toBe('PASS');
-  });
-
-  test('fails when output contains neither promise tag nor agnes:message', async () => {
-    process.env.AGNES_LAST_OUTPUT = 'just some text';
-    const result = await promiseComplianceGate.run();
-    expect(result.status).toBe('FAIL');
-    expect(result.evidence.errors).toContain('Output does not contain a valid canonical HTML-commented completion or result <agnes:message> with schema agnes/message-v1');
-  });
-
-  test('fails when AGNES_LAST_OUTPUT is empty', async () => {
-    process.env.AGNES_LAST_OUTPUT = '';
-    const result = await promiseComplianceGate.run();
-    expect(result.status).toBe('FAIL');
-  });
-});
-
-describe('planExistsGate approval precondition', () => {
-  const originalCwd = process.cwd();
-  let tempDir = '';
-
-  beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-plan-gate-'));
-    fs.mkdirSync(path.join(tempDir, '.agnes'));
-    process.chdir(tempDir);
-  });
-
-  afterEach(() => {
-    process.chdir(originalCwd);
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  });
-
-  test('fails when active plan is not approved', async () => {
-    fs.writeFileSync(path.join(tempDir, '.agnes', 'index.json'), JSON.stringify({
-      activePlanId: 'plan-001',
-      plans: [{ id: 'plan-001', status: 'draft' }],
-    }), 'utf8');
-
-    const result = await planExistsGate.run();
-
-    expect(result.status).toBe('FAIL');
-    expect(result.evidence.errors).toContain('Active plan plan-001 is draft; expected approved');
-  });
-
-  test('passes when active plan is approved', async () => {
-    fs.writeFileSync(path.join(tempDir, '.agnes', 'index.json'), JSON.stringify({
-      activePlanId: 'plan-001',
-      plans: [{ id: 'plan-001', status: 'approved' }],
-    }), 'utf8');
-
-    const result = await planExistsGate.run();
-
-    expect(result.status).toBe('PASS');
-  });
-});
-
 describe('registerGate', () => {
   test('adds a gate to the list', () => {
-    const gates: Gate[] = [promiseComplianceGate];
-    const updated = registerGate(gates, stateFileIntegrityGate);
+    const gateA: Gate = {
+      id: 'gate-a', name: 'Gate A', description: '', isBlocking: false,
+      run: async () => makeResult({ gateId: 'gate-a', status: 'PASS' }),
+    };
+    const gateB: Gate = {
+      id: 'gate-b', name: 'Gate B', description: '', isBlocking: false,
+      run: async () => makeResult({ gateId: 'gate-b', status: 'PASS' }),
+    };
+    const gates: Gate[] = [gateA];
+    const updated = registerGate(gates, gateB);
     expect(updated).toHaveLength(2);
-    expect(updated[1].id).toBe('state-file-integrity');
+    expect(updated[1].id).toBe('gate-b');
   });
 });

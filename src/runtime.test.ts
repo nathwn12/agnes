@@ -13,7 +13,7 @@ import {
   checkPlanDrift,
   assertTaskScope,
   runWaveGates,
-
+  getPlanGateFromIndex,
   getPlanGateFromState,
 } from './runtime.js';
 import type { AgnesRuntimeState, ProcessMessageResult } from './runtime.js';
@@ -573,6 +573,141 @@ describe('assertTaskScope', () => {
 });
 
 
+
+describe('runWaveGates', () => {
+  test('passes all gates and returns evidence', async () => {
+    const passGate = makeGate(makeGateResult({ gateId: 'lint', status: 'PASS' }), true);
+    const { results, evidence } = await runWaveGates([passGate]);
+    expect(results).toHaveLength(1);
+    expect(results[0].status).toBe('PASS');
+    expect(evidence).toHaveLength(1);
+    expect(evidence[0].status).toBe('PASS');
+  });
+
+  test('stops at first blocking FAIL', async () => {
+    const failGate = makeGate(makeGateResult({ gateId: 'lint', status: 'FAIL', evidence: { errors: ['lint error'] } }), true);
+    const skipGate = makeGate(makeGateResult({ gateId: 'tests', status: 'PASS' }), true);
+    const { results, evidence } = await runWaveGates([failGate, skipGate]);
+    expect(results).toHaveLength(1);
+    expect(results[0].status).toBe('FAIL');
+    expect(evidence).toHaveLength(1);
+  });
+
+  test('continues past non-blocking FAIL', async () => {
+    const nonBlockingFail = makeGate(makeGateResult({ gateId: 'lint', status: 'FAIL' }), false);
+    const passGate = makeGate(makeGateResult({ gateId: 'tests', status: 'PASS' }), true);
+    const { results } = await runWaveGates([nonBlockingFail, passGate]);
+    expect(results).toHaveLength(2);
+    expect(results[0].status).toBe('FAIL');
+    expect(results[1].status).toBe('PASS');
+  });
+
+  test('handles gate that throws', async () => {
+    const throwGate: Gate = {
+      id: 'throw-gate',
+      name: 'Throw Gate',
+      description: 'throws on run',
+      isBlocking: true,
+      run: async () => { throw new Error('unexpected error'); },
+    };
+    const { results } = await runWaveGates([throwGate]);
+    expect(results).toHaveLength(1);
+    expect(results[0].status).toBe('FAIL');
+    expect(results[0].evidence.errors).toContain('unexpected error');
+  });
+
+  test('empty gates returns empty results', async () => {
+    const { results, evidence } = await runWaveGates([]);
+    expect(results).toHaveLength(0);
+    expect(evidence).toHaveLength(0);
+  });
+
+  test('all gates pass end-to-end', async () => {
+    const gates = [
+      makeGate(makeGateResult({ gateId: 'lint', status: 'PASS' }), false),
+      makeGate(makeGateResult({ gateId: 'typecheck', status: 'PASS' }), true),
+      makeGate(makeGateResult({ gateId: 'tests', status: 'PASS' }), true),
+    ];
+    const { results, evidence } = await runWaveGates(gates);
+    expect(results).toHaveLength(3);
+    expect(results.every(r => r.status === 'PASS')).toBe(true);
+    expect(evidence).toHaveLength(3);
+    expect(evidence.every(e => e.status === 'PASS')).toBe(true);
+  });
+});
+
+describe('getPlanGateFromIndex', () => {
+  test('returns empty string when no activePlanId', () => {
+    const gate = getPlanGateFromIndex({
+      agnesVersion: '0.7.2',
+      schemaVersion: 2,
+      projectDir: '/test',
+      projectName: 'test',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      activePlanId: null,
+      plans: [],
+    });
+    expect(gate).toBe('');
+  });
+
+  test('returns block message when active plan is not found', () => {
+    const gate = getPlanGateFromIndex({
+      agnesVersion: '0.7.2',
+      schemaVersion: 2,
+      projectDir: '/test',
+      projectName: 'test',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      activePlanId: 'plan-001',
+      plans: [],
+    });
+    expect(gate).toContain('No active plan found');
+  });
+
+  test('returns blocked message when active plan is blocked', () => {
+    const gate = getPlanGateFromIndex({
+      agnesVersion: '0.7.2',
+      schemaVersion: 2,
+      projectDir: '/test',
+      projectName: 'test',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      activePlanId: 'plan-001',
+      plans: [
+        { id: 'plan-001', status: 'blocked', createdAt: '', updatedAt: '', summary: 'Blocked', total: 1, completed: 0, blocked: 1, file: 'plan-001.yaml' },
+      ],
+    });
+    expect(gate).toContain('BLOCKED PLAN');
+  });
+
+  test('returns approval required when plan is not approved', () => {
+    const gate = getPlanGateFromIndex({
+      agnesVersion: '0.7.2',
+      schemaVersion: 2,
+      projectDir: '/test',
+      projectName: 'test',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      activePlanId: 'plan-001',
+      plans: [
+        { id: 'plan-001', status: 'in_progress', createdAt: '', updatedAt: '', summary: 'Active', total: 1, completed: 0, blocked: 0, file: 'plan-001.yaml' },
+      ],
+    });
+    expect(gate).toContain('APPROVAL REQUIRED');
+  });
+
+  test('returns null when plan is approved and no superseding child', () => {
+    const gate = getPlanGateFromIndex({
+      agnesVersion: '0.7.2',
+      schemaVersion: 2,
+      projectDir: '/test',
+      projectName: 'test',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      activePlanId: 'plan-001',
+      plans: [
+        { id: 'plan-001', status: 'approved', createdAt: '', updatedAt: '', summary: 'Approved', total: 1, completed: 0, blocked: 0, file: 'plan-001.yaml' },
+      ],
+    });
+    expect(gate).toBeNull();
+  });
+});
 
 describe('getPlanGateFromState', () => {
   test('returns block message when no active plan', () => {

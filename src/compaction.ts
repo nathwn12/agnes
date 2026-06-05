@@ -81,7 +81,40 @@ function pruneCompactionStates(): void {
 function estimatePromptTokens(text: string): number {
   const trimmed = text.trim();
   if (!trimmed) return 0;
-  return Math.max(1, Math.ceil(trimmed.length / 4));
+
+  let codeChars = 0;
+  let totalChars = 0;
+
+  for (const ch of trimmed) {
+    totalChars++;
+    if (ch === '{' || ch === '}' || ch === '(' || ch === ')' ||
+        ch === '[' || ch === ']' || ch === ';' || ch === '<' ||
+        ch === '>' || ch === '=' || ch === '`' || ch === '|' ||
+        ch === '\\' || ch === '/' || ch === '#' || ch === '"' ||
+        ch === "'") {
+      codeChars++;
+    }
+  }
+
+  const density = totalChars > 0 ? codeChars / totalChars : 0;
+
+  // Adjust token/char ratio based on code density:
+  // - Prose-heavy (density < 5%): ~4 chars/token
+  // - Balanced (5-15%): ~3.5 chars/token
+  // - Code-heavy (15-30%): ~3 chars/token
+  // - Dense code (30%+): ~2.5 chars/token
+  let divisor: number;
+  if (density < 0.05) {
+    divisor = 4;
+  } else if (density < 0.15) {
+    divisor = 3.5;
+  } else if (density < 0.30) {
+    divisor = 3;
+  } else {
+    divisor = 2.5;
+  }
+
+  return Math.max(1, Math.ceil(totalChars / divisor));
 }
 
 export function collectMessageText(messages: MessageLike[]): string {

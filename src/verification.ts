@@ -93,28 +93,6 @@ function hasCompletionSignal(text: string): boolean {
   return (parsed as { schema?: string }).schema === 'agnes/message-v1';
 }
 
-export const promiseComplianceGate: Gate = {
-  id: 'promise-compliance',
-  name: 'Promise Compliance',
-  description: 'Checks that output contains a canonical HTML-commented completion or result <agnes:message> before allowing completion',
-  isBlocking: true,
-  run: async () => {
-    const start = Date.now();
-    const errors: string[] = [];
-    const output = process.env.AGNES_LAST_OUTPUT || '';
-    if (!hasCompletionSignal(output)) {
-      errors.push('Output does not contain a valid canonical HTML-commented completion or result <agnes:message> with schema agnes/message-v1');
-    }
-    return {
-      gateId: 'promise-compliance',
-      status: errors.length === 0 ? 'PASS' : 'FAIL',
-      evidence: { errors, command: 'check-completion-signal', exitCode: errors.length === 0 ? 0 : 1, output },
-      timestamp: new Date().toISOString(),
-      durationMs: Date.now() - start,
-    };
-  },
-};
-
 export function createPromiseComplianceGate(output: string): Gate {
   return {
     id: 'promise-compliance',
@@ -177,75 +155,6 @@ export function createPlanExistsGate(projectRoot?: string): Gate {
     },
   };
 }
-
-export const planExistsGate: Gate = {
-  id: 'plan-exists',
-  name: 'Plan Exists',
-  description: 'Checks that .agnes/index.json has an active plan',
-  isBlocking: true,
-  run: async () => {
-    const start = Date.now();
-    const errors: string[] = [];
-    try {
-      const fs = await import('fs/promises');
-      const content = await fs.readFile('.agnes/index.json', 'utf-8');
-      const index = JSON.parse(content);
-      if (!index.activePlanId) {
-        errors.push('No active plan found in .agnes/index.json');
-      } else {
-        const activePlan = Array.isArray(index.plans)
-          ? index.plans.find((plan: { id?: unknown }) => plan.id === index.activePlanId)
-          : undefined;
-        if (!activePlan) {
-          errors.push(`Active plan ${index.activePlanId} was not found in .agnes/index.json plans`);
-        } else if (activePlan.status !== 'approved') {
-          errors.push(`Active plan ${index.activePlanId} is ${String(activePlan.status)}; expected approved`);
-        }
-      }
-    } catch (err) {
-      errors.push(err instanceof Error ? err.message : String(err));
-    }
-    return {
-      gateId: 'plan-exists',
-      status: errors.length === 0 ? 'PASS' : 'FAIL',
-      evidence: { errors, command: 'check-active-plan', exitCode: errors.length === 0 ? 0 : 1 },
-      timestamp: new Date().toISOString(),
-      durationMs: Date.now() - start,
-    };
-  },
-};
-
-export const stateFileIntegrityGate: Gate = {
-  id: 'state-file-integrity',
-  name: 'State File Integrity',
-  description: 'Checks that .agnes/ state files are valid JSON',
-  isBlocking: false,
-  run: async () => {
-    const start = Date.now();
-    const errors: string[] = [];
-    try {
-      const fs = await import('fs/promises');
-      const files = ['.agnes/index.json', '.agnes/config.json'];
-      for (const file of files) {
-        try {
-          const content = await fs.readFile(file, 'utf-8');
-          JSON.parse(content);
-        } catch {
-          errors.push(`${file} is not valid JSON or does not exist`);
-        }
-      }
-    } catch (err) {
-      errors.push(err instanceof Error ? err.message : String(err));
-    }
-    return {
-      gateId: 'state-file-integrity',
-      status: errors.length === 0 ? 'PASS' : 'FAIL',
-      evidence: { errors, command: 'validate-state-files', exitCode: errors.length === 0 ? 0 : 1 },
-      timestamp: new Date().toISOString(),
-      durationMs: Date.now() - start,
-    };
-  },
-};
 
 export function gateResultToEvidence(result: GateResult): GateEvidence {
   return {

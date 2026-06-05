@@ -2,7 +2,7 @@ import { tool } from '@opencode-ai/plugin';
 import type { ToolDefinition } from '@opencode-ai/plugin';
 import { DelegationManager } from './manager.js';
 import { AGENTS } from './types.js';
-import { getTask, getAllTasks, cleanupStaleTasks } from './session.js';
+import { getTask } from './session.js';
 import * as logger from '../logger.js';
 
 export function createDelegateTaskTool(manager: DelegationManager): ToolDefinition {
@@ -91,43 +91,6 @@ export function createGetTaskResultTool(): ToolDefinition {
 
       const elapsed = Math.round((Date.now() - task.createdAt) / 1000);
       return `[${task.agent}] Completed in ${elapsed}s\n\n${task.result ?? '(no output)'}`;
-    },
-  });
-}
-
-export function createListTasksTool(): ToolDefinition {
-  return tool({
-    description: 'List all delegated subagent tasks and their current status.',
-    args: {},
-    async execute() {
-      cleanupStaleTasks();
-      const all = getAllTasks();
-      if (!all.length) return 'No delegated tasks. Use delegate_task to spawn subagents.';
-
-      const lines = all.map(t => {
-        const age = t.completedAt
-          ? `${Math.round((Date.now() - t.completedAt) / 1000)}s ago`
-          : `${Math.round((Date.now() - t.createdAt) / 1000)}s running`;
-        const idShort = t.id.length > 8 ? t.id.slice(0, 8) : t.id;
-        return `[${t.status}] ${idShort} ${t.agent}: ${t.description} (${age})`;
-      });
-      return lines.join('\n');
-    },
-  });
-}
-
-export function createListAgentsTool(): ToolDefinition {
-  return tool({
-    description: 'List all available subagents and their capabilities.',
-    args: {},
-    async execute() {
-      const lines = Object.entries(AGENTS).map(([key, def]) => {
-        const perms = [];
-        if (def.canWrite) perms.push('write');
-        if (def.canBash) perms.push('bash');
-        return `${key} — ${def.description}\n  Permissions: ${perms.join(', ') || 'read-only'}`;
-      });
-      return lines.join('\n\n');
     },
   });
 }

@@ -130,8 +130,6 @@ export class DelegationManager {
           tools: {
             [TOOL_NAMES.DELEGATE_TASK]: false,
             [TOOL_NAMES.GET_TASK_RESULT]: false,
-            [TOOL_NAMES.LIST_TASKS]: false,
-            [TOOL_NAMES.LIST_AGENTS]: false,
             [TOOL_NAMES.CANCEL_TASK]: false,
           },
           parts: [{ type: 'text', text: input.prompt }],
@@ -199,8 +197,6 @@ export class DelegationManager {
           tools: {
             [TOOL_NAMES.DELEGATE_TASK]: false,
             [TOOL_NAMES.GET_TASK_RESULT]: false,
-            [TOOL_NAMES.LIST_TASKS]: false,
-            [TOOL_NAMES.LIST_AGENTS]: false,
             [TOOL_NAMES.CANCEL_TASK]: false,
           },
           parts: [{ type: 'text', text: input.prompt }],
@@ -293,8 +289,6 @@ export class DelegationManager {
           tools: {
             [TOOL_NAMES.DELEGATE_TASK]: false,
             [TOOL_NAMES.GET_TASK_RESULT]: false,
-            [TOOL_NAMES.LIST_TASKS]: false,
-            [TOOL_NAMES.LIST_AGENTS]: false,
             [TOOL_NAMES.CANCEL_TASK]: false,
           },
           parts: [{ type: 'text', text: verifyTask.prompt }],
@@ -315,8 +309,10 @@ export class DelegationManager {
   ): Promise<{ text: string; timedOut: boolean }> {
     let pollCount = 0;
     let stablePolls = 0;
-    let lastMsgCount = 0;
+    let lastMsgText = '';
     let hasStartedOutputting = false;
+
+    const FINAL_VERIFY_DELAY_MS = 200;
 
     while (pollCount < MAX_POLL_COUNT) {
       pollCount++;
@@ -350,19 +346,30 @@ export class DelegationManager {
           hasStartedOutputting = true;
         }
 
-        if (messages.length === lastMsgCount) {
+        const currentText = extractLastAssistantText(messages);
+        if (currentText === lastMsgText) {
           stablePolls++;
           if (stablePolls >= STABLE_POLLS_REQUIRED) {
             if (!hasStartedOutputting) {
               stablePolls = 0;
               continue;
             }
-            const text = extractLastAssistantText(messages);
-            return { text, timedOut: false };
+            // Final verification: wait briefly and re-check that no new output arrived
+            await new Promise(r => setTimeout(r, FINAL_VERIFY_DELAY_MS));
+            const verifyMsgs = await this.session.messages({ path: { id: sessionID } });
+            const verifyMessages = (verifyMsgs.data ?? []) as Array<{ info?: { role?: string }; parts?: { type?: string; text?: string }[] }>;
+            const verifyText = extractLastAssistantText(verifyMessages);
+            if (verifyText !== currentText) {
+              // New content arrived during final verification window — restart
+              stablePolls = 0;
+              lastMsgText = verifyText;
+              continue;
+            }
+            return { text: currentText, timedOut: false };
           }
         } else {
           stablePolls = 0;
-          lastMsgCount = messages.length;
+          lastMsgText = currentText;
         }
       } catch (err) {
         logger.warn(`Poll error for session ${sessionID}`, err);

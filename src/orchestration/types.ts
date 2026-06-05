@@ -76,7 +76,5 @@ export const AGENTS: Record<string, AgentDef> = {
 export const TOOL_NAMES = {
   DELEGATE_TASK: 'delegate_task',
   GET_TASK_RESULT: 'get_task_result',
-  LIST_TASKS: 'list_tasks',
-  LIST_AGENTS: 'list_agents',
   CANCEL_TASK: 'cancel_task',
 } as const;
