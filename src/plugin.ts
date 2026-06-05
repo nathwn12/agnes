@@ -145,11 +145,6 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
 
     'session.created': async (_event: any) => {
       projectProfile = detectProject(worktreePath);
-      try {
-        await client.app.log({ body: { service: 'agnes', level: 'info' as const, message: `Session started — AGNES v${getBootstrapPackageInfo().version} active` } });
-      } catch (err) {
-        logger.warn('Failed to log session start', err);
-      }
     },
 
     'tool.definition': async (_input, _output) => {

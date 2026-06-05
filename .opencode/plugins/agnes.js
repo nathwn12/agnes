@@ -6959,30 +6959,8 @@ var require_public_api = __commonJS((exports) => {
 });
 
 // src/logger.ts
-function formatMessage(level, message) {
-  return `${PREFIX} [${level}] ${new Date().toISOString()} ${message}
-`;
-}
-function formatError2(err) {
-  if (err === undefined)
-    return "";
-  if (err instanceof Error)
-    return `: ${err.name}: ${err.message}`;
-  if (typeof err === "string")
-    return `: ${err}`;
-  try {
-    return `: ${JSON.stringify(err)}`;
-  } catch {
-    return ": [unserializable error]";
-  }
-}
-function info(message) {
-  process.stderr.write(formatMessage("info", message));
-}
-function warn(message, err) {
-  process.stderr.write(formatMessage("warn", message + formatError2(err)));
-}
-var PREFIX = "[agnes]";
+function info(_message) {}
+function warn(_message, _err) {}
 
 // src/orchestration/session.ts
 class SessionStore {
@@ -24289,7 +24267,7 @@ __export(exports_external2, {
   globalRegistry: () => globalRegistry2,
   getErrorMap: () => getErrorMap2,
   function: () => _function2,
-  formatError: () => formatError3,
+  formatError: () => formatError2,
   float64: () => float642,
   float32: () => float322,
   flattenError: () => flattenError2,
@@ -24431,7 +24409,7 @@ __export(exports_core4, {
   isValidBase64: () => isValidBase642,
   globalRegistry: () => globalRegistry2,
   globalConfig: () => globalConfig2,
-  formatError: () => formatError3,
+  formatError: () => formatError2,
   flattenError: () => flattenError2,
   encodeAsync: () => encodeAsync3,
   encode: () => encode3,
@@ -25398,7 +25376,7 @@ function flattenError2(error51, mapper = (issue3) => issue3.message) {
   }
   return { formErrors, fieldErrors };
 }
-function formatError3(error51, _mapper) {
+function formatError2(error51, _mapper) {
   const mapper = _mapper || function(issue3) {
     return issue3.message;
   };
@@ -35422,7 +35400,7 @@ var initializer4 = (inst, issues) => {
   inst.name = "ZodError";
   Object.defineProperties(inst, {
     format: {
-      value: (mapper) => formatError3(inst, mapper)
+      value: (mapper) => formatError2(inst, mapper)
     },
     flatten: {
       value: (mapper) => flattenError2(inst, mapper)
@@ -36710,11 +36688,6 @@ Group by type and source, highlight delegatable agents.`
     },
     "session.created": async (_event) => {
       projectProfile = detectProject(worktreePath);
-      try {
-        await client.app.log({ body: { service: "agnes", level: "info", message: `Session started \u2014 AGNES v${getBootstrapPackageInfo().version} active` } });
-      } catch (err) {
-        warn("Failed to log session start", err);
-      }
     },
     "tool.definition": async (_input, _output) => {},
     "file.edited": async (event) => {
