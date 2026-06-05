@@ -62,6 +62,7 @@ function findOrInferProjectRoot(startDir: string): string {
     }
     const parent = path.dirname(root);
     if (parent === root) break;
+    root = parent;
   }
   return root;
 }

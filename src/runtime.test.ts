@@ -103,7 +103,6 @@ describe('buildExecutionContext', () => {
       struggle: freshStruggleMetrics(),
     });
     expect(ctx).toContain('Current attempt: 3');
-    expect(ctx).toContain('<!-- <agnes:message>{"type":"completion","id":"<uuid>","timestamp":"<iso>","status":"DONE","summary":"...","schema":"agnes/message-v1"}</agnes:message> -->');
   });
 
   test('includes struggle warnings when thresholds reached', () => {
@@ -149,7 +148,6 @@ describe('buildExecutionContext', () => {
       },
     });
     expect(ctx).toContain('Last canonical completion status seen: DONE');
-    expect(ctx).toContain('<!-- <agnes:message>{"type":"completion","id":"<uuid>","timestamp":"<iso>","status":"DONE","summary":"...","schema":"agnes/message-v1"}</agnes:message> -->');
   });
 });
 

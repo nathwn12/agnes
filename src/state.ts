@@ -74,6 +74,67 @@ function getAgnesVersion(): string {
   return _agnesVersion;
 }
 
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    if (!err || typeof err !== 'object') return false;
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+function tryAcquireLock(lockPath: string): number | null {
+  try {
+    return fs.openSync(lockPath, 'wx');
+  } catch (err) {
+    if (!err || typeof err !== 'object' || (err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    return null;
+  }
+}
+
+function tryCleanStaleLock(lockPath: string): boolean {
+  try {
+    const content = fs.readFileSync(lockPath, 'utf8').trim();
+    const pid = parseInt(content, 10);
+    if (Number.isNaN(pid)) {
+      fs.rmSync(lockPath, { force: true });
+      return true;
+    }
+    if (!isPidAlive(pid)) {
+      fs.rmSync(lockPath, { force: true });
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function withPlanWriteLock<T>(root: string, action: () => T): T {
+  const lockPath = path.join(root, AGNES_DIR, '.write.lock');
+  let lockFd: number | null = null;
+  try {
+    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+    while (lockFd === null) {
+      lockFd = tryAcquireLock(lockPath);
+      if (lockFd !== null) break;
+      if (tryCleanStaleLock(lockPath)) {
+        lockFd = tryAcquireLock(lockPath);
+        if (lockFd !== null) break;
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+    fs.writeSync(lockFd, `${process.pid}\n`);
+    return action();
+  } finally {
+    if (lockFd !== null) {
+      try { fs.closeSync(lockFd); } catch { /* ignore */ }
+      try { fs.rmSync(lockPath, { force: true }); } catch { /* ignore */ }
+    }
+  }
+}
+
 function isBlockedPath(dir: string): boolean {
   const resolved = path.resolve(dir);
   const root = path.resolve(OPENCODE_CACHE_ROOT);
@@ -101,7 +162,6 @@ export interface StruggleMetrics {
   repeatedErrors: Record<string, number>;
   shortIterations: number;
   lastPromiseTag: string | null;
-  shellType?: string;
 }
 
 export interface PlanIndexEntry {
@@ -202,11 +262,23 @@ export function appendExecutionArtifact(
 ): void {
   const root = projectRoot ?? findProjectRoot();
   if (!root) return;
-  const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
-  const yamlPath = path.join(plansDir, `${planId}.yaml`);
-  if (!fs.existsSync(yamlPath)) return;
-
+  const lockPath = path.join(root, AGNES_DIR, '.write.lock');
+  let lockFd: number | null = null;
   try {
+    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+    while (lockFd === null) {
+      try {
+        lockFd = fs.openSync(lockPath, 'wx');
+      } catch (err) {
+        if (!err || typeof err !== 'object' || (err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+      }
+    }
+
+    const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
+    const yamlPath = path.join(plansDir, `${planId}.yaml`);
+    if (!fs.existsSync(yamlPath)) return;
+
     const content = fs.readFileSync(yamlPath, 'utf8');
     const parsed = yamlParse(content) as Record<string, unknown>;
     const artifacts: ExecutionArtifact[] = Array.isArray(parsed.executionArtifacts)
@@ -221,6 +293,11 @@ export function appendExecutionArtifact(
     fs.renameSync(tmpPath, yamlPath);
   } catch (err) {
     logger.warn('Failed to append execution artifact', err);
+  } finally {
+    if (lockFd !== null) {
+      try { fs.closeSync(lockFd); } catch { /* ignore */ }
+      try { fs.rmSync(lockPath, { force: true }); } catch { /* ignore */ }
+    }
   }
 }
 
@@ -495,9 +572,10 @@ export function getLatestActivePlan(projectRoot?: string): ActivePlan | null {
   if (!root) return null;
   const index = readPlanIndex(root);
   if (!index) return null;
+  return getLatestActivePlanFromIndex(root, index);
+}
 
-
-
+function getLatestActivePlanFromIndex(root: string, index: PlanIndex): ActivePlan | null {
   let target: PlanIndexEntry | undefined;
 
   if (index.activePlanId) {
@@ -536,14 +614,14 @@ function formatPlannerProvenance(entry: PlanIndexEntry | null, planner?: Planner
   return parts.length > 0 ? `\nPlanner: ${parts.join(', ')}` : '';
 }
 
-export function buildPlanSummary(projectRoot?: string, planner?: PlannerRoutingContext): string {
+export function buildPlanSummary(projectRoot?: string, planner?: PlannerRoutingContext, index?: PlanIndex | null): string {
   const root = projectRoot ?? findProjectRoot();
   if (!root) return NO_PLAN_NUDGE + formatPlannerProvenance(null, planner);
 
-  const index = readPlanIndex(root);
-  if (!index || index.plans.length === 0) return NO_PLAN_NUDGE + formatPlannerProvenance(null, planner);
+  const resolvedIndex = index ?? readPlanIndex(root);
+  if (!resolvedIndex || resolvedIndex.plans.length === 0) return NO_PLAN_NUDGE + formatPlannerProvenance(null, planner);
 
-  const active = getLatestActivePlan(root);
+  const active = getLatestActivePlanFromIndex(root, resolvedIndex);
   if (!active) return NO_PLAN_NUDGE + formatPlannerProvenance(null, planner);
 
   const { entry } = active;
@@ -566,7 +644,6 @@ export function buildPlanSummary(projectRoot?: string, planner?: PlannerRoutingC
     const errCount = Object.keys(s.repeatedErrors).length;
     if (errCount > 0) parts.push(`repeated-errors:${errCount}`);
     if (s.lastPromiseTag) parts.push(`last-promise:${s.lastPromiseTag}`);
-    if (s.shellType) parts.push(`shell:${s.shellType}`);
     if (parts.length > 0) line += `\nStruggle: ${parts.join(', ')}`;
   }
 
@@ -588,7 +665,7 @@ export function getNextPlanId(projectRoot?: string): string {
   try {
     const files = fs.readdirSync(cache);
     for (const f of files) {
-      const match = f.match(/^plan-(\d+)\.yaml$/);
+      const match = f.match(/^plan-(\d+)\.(?:yaml|md)$/);
       if (match) {
         const num = parseInt(match[1], 10);
         if (num > max) max = num;
@@ -618,80 +695,82 @@ export function createPlan(input: {
   const root = input.projectRoot ?? findProjectRoot();
   if (!root) throw new Error('Cannot create plan: no project root found');
 
-  const now = new Date().toISOString();
-  const id = getNextPlanId(root);
-  const status = input.status ?? 'draft';
-  const total = input.tasks.length;
-  const completed = 0;
-  const blocked = 0;
+  return withPlanWriteLock(root, () => {
+    const now = new Date().toISOString();
+    const id = getNextPlanId(root);
+    const status = input.status ?? 'draft';
+    const total = input.tasks.length;
+    const completed = 0;
+    const blocked = 0;
 
-  const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
-  const plan: Plan = {
-    schema: 'agnes/plan-v1',
-    id,
-    version: 1,
-    createdAt: now,
-    updatedAt: now,
-    status: status as Plan['status'],
-    parent: input.parent ?? null,
-    goal: input.goal,
-    check: input.check,
-    summary: input.summary,
-    ...(input.plannerMode ? { plannerMode: input.plannerMode } : {}),
-    ...(input.plannerSource ? { plannerSource: input.plannerSource } : {}),
-    tasks: input.tasks.map((t, i) => {
-      const cleaned = t.replace(/^- \[[ x\/]\]\s*/, '').trim();
-      let taskStatus: PlanTask['status'];
-      if (t.startsWith('- [x]')) taskStatus = 'done';
-      else if (t.startsWith('- [/]')) taskStatus = 'blocked';
-      else taskStatus = 'pending';
-      return {
-        id: `task-${String(i + 1).padStart(3, '0')}`,
-        summary: cleaned,
-        status: taskStatus,
-        files: [],
-        depends_on: [],
-      };
-    }),
-    notes: input.notes ?? [],
-  };
-  const content = serializePlan(plan);
-  writePlanFile(plan, plansDir);
+    const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
+    const plan: Plan = {
+      schema: 'agnes/plan-v1',
+      id,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+      status: status as Plan['status'],
+      parent: input.parent ?? null,
+      goal: input.goal,
+      check: input.check,
+      summary: input.summary,
+      ...(input.plannerMode ? { plannerMode: input.plannerMode } : {}),
+      ...(input.plannerSource ? { plannerSource: input.plannerSource } : {}),
+      tasks: input.tasks.map((t, i) => {
+        const cleaned = t.replace(/^- \[[ x\/]\]\s*/, '').trim();
+        let taskStatus: PlanTask['status'];
+        if (t.startsWith('- [x]')) taskStatus = 'done';
+        else if (t.startsWith('- [/]')) taskStatus = 'blocked';
+        else taskStatus = 'pending';
+        return {
+          id: `task-${String(i + 1).padStart(3, '0')}`,
+          summary: cleaned,
+          status: taskStatus,
+          files: [],
+          depends_on: [],
+        };
+      }),
+      notes: input.notes ?? [],
+    };
+    const content = serializePlan(plan);
+    writePlanFile(plan, plansDir);
 
-  const entry: PlanIndexEntry = {
-    id,
-    status,
-    createdAt: now,
-    updatedAt: now,
-    parent: input.parent,
-    summary: input.summary,
-    total,
-    completed,
-    blocked,
-    file: `${id}.yaml`,
-    ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
-    ...(input.struggle !== undefined ? { struggle: input.struggle } : {}),
-    ...(input.plannerMode ? { plannerMode: input.plannerMode } : {}),
-    ...(input.plannerSource ? { plannerSource: input.plannerSource } : {}),
-  };
+    const entry: PlanIndexEntry = {
+      id,
+      status,
+      createdAt: now,
+      updatedAt: now,
+      parent: input.parent,
+      summary: input.summary,
+      total,
+      completed,
+      blocked,
+      file: `${id}.yaml`,
+      ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
+      ...(input.struggle !== undefined ? { struggle: input.struggle } : {}),
+      ...(input.plannerMode ? { plannerMode: input.plannerMode } : {}),
+      ...(input.plannerSource ? { plannerSource: input.plannerSource } : {}),
+    };
 
-  const index: PlanIndex = readPlanIndex(root) ?? {
-    agnesVersion: getAgnesVersion(),
-    schemaVersion: 2 as const,
-    projectDir: root,
-    projectName: path.basename(root),
-    updatedAt: now,
-    activePlanId: null,
-    plans: [],
-  };
+    const index: PlanIndex = readPlanIndex(root) ?? {
+      agnesVersion: getAgnesVersion(),
+      schemaVersion: 2 as const,
+      projectDir: root,
+      projectName: path.basename(root),
+      updatedAt: now,
+      activePlanId: null,
+      plans: [],
+    };
 
-  index.plans.push(entry);
-  index.updatedAt = now;
-  const isActive = ACTIVE_STATUSES.includes(status);
-  index.activePlanId = isActive ? id : null;
-  writePlanIndex(index, root);
+    index.plans.push(entry);
+    index.updatedAt = now;
+    const isActive = ACTIVE_STATUSES.includes(status);
+    index.activePlanId = isActive ? id : null;
+    writePlanIndex(index, root);
 
-  return { entry, content, plan };
+    return { entry, content, plan };
+  });
 }
 
 export function createPlanIteration(input: {
@@ -713,69 +792,71 @@ export function createPlanIteration(input: {
   const root = input.projectRoot ?? findProjectRoot();
   if (!root) throw new Error('Cannot create plan iteration: no project root found');
 
-  const now = new Date().toISOString();
-  const id = getNextPlanId(root);
-  const total = (input.tasksMarkdown.match(/^- \[.?\]/gm) || []).length;
+  return withPlanWriteLock(root, () => {
+    const now = new Date().toISOString();
+    const id = getNextPlanId(root);
+    const total = (input.tasksMarkdown.match(/^- \[.?\]/gm) || []).length;
 
-  const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
-  const plan: Plan = {
-    schema: 'agnes/plan-v1',
-    id,
-    version: 1,
-    createdAt: now,
-    updatedAt: now,
-    status: input.status as Plan['status'],
-    parent: input.parent,
-    goal: input.goal,
-    check: input.check,
-    summary: input.summary,
-    ...(input.plannerMode ? { plannerMode: input.plannerMode } : {}),
-    ...(input.plannerSource ? { plannerSource: input.plannerSource } : {}),
-    tasks: parseTaskLines(input.tasksMarkdown.split('\n')),
-    notes: input.notes ?? [],
-  };
-  const content = serializePlan(plan);
-  writePlanFile(plan, plansDir);
+    const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
+    const plan: Plan = {
+      schema: 'agnes/plan-v1',
+      id,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+      status: input.status as Plan['status'],
+      parent: input.parent,
+      goal: input.goal,
+      check: input.check,
+      summary: input.summary,
+      ...(input.plannerMode ? { plannerMode: input.plannerMode } : {}),
+      ...(input.plannerSource ? { plannerSource: input.plannerSource } : {}),
+      tasks: parseTaskLines(input.tasksMarkdown.split('\n')),
+      notes: input.notes ?? [],
+    };
+    const content = serializePlan(plan);
+    writePlanFile(plan, plansDir);
 
-  const index = readPlanIndex(root);
-  if (!index) throw new Error('Cannot create plan iteration: no index found');
+    const index = readPlanIndex(root);
+    if (!index) throw new Error('Cannot create plan iteration: no index found');
 
-  const parentEntry = index.plans.find(p => p.id === input.parent);
-  const carryAttempts = input.attempts ?? parentEntry?.attempts ?? 0;
-  const carryStruggle = input.struggle ?? parentEntry?.struggle;
+    const parentEntry = index.plans.find(p => p.id === input.parent);
+    const carryAttempts = input.attempts ?? parentEntry?.attempts ?? 0;
+    const carryStruggle = input.struggle ?? parentEntry?.struggle;
 
-  const entry: PlanIndexEntry = {
-    id,
-    status: input.status,
-    createdAt: now,
-    updatedAt: now,
-    parent: input.parent,
-    summary: input.summary,
-    total,
-    completed: input.completed,
-    blocked: input.blocked,
-    file: `${id}.yaml`,
-    attempts: carryAttempts,
-    ...(carryStruggle ? { struggle: carryStruggle } : {}),
-    ...(input.plannerMode ? { plannerMode: input.plannerMode } : {}),
-    ...(input.plannerSource ? { plannerSource: input.plannerSource } : {}),
-  };
-  if (parentEntry && !['done', 'abandoned'].includes(parentEntry.status)) {
-    parentEntry.status = 'abandoned';
-    parentEntry.updatedAt = now;
-  }
+    const entry: PlanIndexEntry = {
+      id,
+      status: input.status,
+      createdAt: now,
+      updatedAt: now,
+      parent: input.parent,
+      summary: input.summary,
+      total,
+      completed: input.completed,
+      blocked: input.blocked,
+      file: `${id}.yaml`,
+      attempts: carryAttempts,
+      ...(carryStruggle ? { struggle: carryStruggle } : {}),
+      ...(input.plannerMode ? { plannerMode: input.plannerMode } : {}),
+      ...(input.plannerSource ? { plannerSource: input.plannerSource } : {}),
+    };
+    if (parentEntry && !['done', 'abandoned'].includes(parentEntry.status)) {
+      parentEntry.status = 'abandoned';
+      parentEntry.updatedAt = now;
+    }
 
-  index.plans.push(entry);
-  index.updatedAt = now;
+    index.plans.push(entry);
+    index.updatedAt = now;
 
-  if (input.status === 'done' || input.status === 'abandoned') {
-    index.activePlanId = null;
-  } else {
-    index.activePlanId = id;
-  }
-  writePlanIndex(index, root);
+    if (input.status === 'done' || input.status === 'abandoned') {
+      index.activePlanId = null;
+    } else {
+      index.activePlanId = id;
+    }
+    writePlanIndex(index, root);
 
-  return { entry, content, plan };
+    return { entry, content, plan };
+  });
 }
 
 export function updatePlanStatus(input: {
@@ -790,33 +871,35 @@ export function updatePlanStatus(input: {
   const root = input.projectRoot ?? findProjectRoot();
   if (!root) return null;
 
-  const index = readPlanIndex(root);
-  if (!index) return null;
+  return withPlanWriteLock(root, () => {
+    const index = readPlanIndex(root);
+    if (!index) return null;
 
-  const entry = index.plans.find(p => p.id === input.id);
-  if (!entry) return null;
+    const entry = index.plans.find(p => p.id === input.id);
+    if (!entry) return null;
 
-  const now = new Date().toISOString();
-  entry.status = input.status;
-  entry.updatedAt = now;
-  if (input.completed !== undefined) entry.completed = input.completed;
-  if (input.blocked !== undefined) entry.blocked = input.blocked;
-  if (input.attempts !== undefined) entry.attempts = input.attempts;
-  if (input.struggle !== undefined) entry.struggle = input.struggle;
+    const now = new Date().toISOString();
+    entry.status = input.status;
+    entry.updatedAt = now;
+    if (input.completed !== undefined) entry.completed = input.completed;
+    if (input.blocked !== undefined) entry.blocked = input.blocked;
+    if (input.attempts !== undefined) entry.attempts = input.attempts;
+    if (input.struggle !== undefined) entry.struggle = input.struggle;
 
-  index.updatedAt = now;
+    index.updatedAt = now;
 
-  if (input.status === 'done' || input.status === 'abandoned') {
-    if (index.activePlanId === input.id) index.activePlanId = null;
-  }
+    if (input.status === 'done' || input.status === 'abandoned') {
+      if (index.activePlanId === input.id) index.activePlanId = null;
+    }
 
-  if (ACTIVE_STATUSES.includes(input.status)) {
-    index.activePlanId = input.id;
-  }
+    if (ACTIVE_STATUSES.includes(input.status)) {
+      index.activePlanId = input.id;
+    }
 
-  writePlanIndex(index, root);
+    writePlanIndex(index, root);
 
-  return entry;
+    return entry;
+  });
 }
 
 const CANONICAL_AGNES_MESSAGE_PATTERN = /<!--\s*<agnes:message>[\s\S]*?<\/agnes:message>\s*-->/;
@@ -878,7 +961,6 @@ export function updateStruggleMetrics(
     })(),
     shortIterations: events.durationMs < 30000 ? current.shortIterations + 1 : 0,
     lastPromiseTag: events.promiseTag ?? current.lastPromiseTag,
-    shellType: current.shellType,
   };
 }
 
@@ -1108,56 +1190,58 @@ export function createAutoPlan(params: { goal: string; source: 'gate' | 'user' |
     return '';
   }
 
-  const now = new Date().toISOString();
-  const id = getNextPlanId(root);
-  const status: PlanStatus = params.source === 'user_ready' ? 'ready' : 'draft';
-  const summary = params.goal.length > 80 ? params.goal.substring(0, 80) + '...' : params.goal;
+  return withPlanWriteLock(root, () => {
+    const now = new Date().toISOString();
+    const id = getNextPlanId(root);
+    const status: PlanStatus = params.source === 'user_ready' ? 'ready' : 'draft';
+    const summary = params.goal.length > 80 ? params.goal.substring(0, 80) + '...' : params.goal;
 
-  const plan: Plan = {
-    schema: 'agnes/plan-v1',
-    id,
-    version: 1,
-    createdAt: now,
-    updatedAt: now,
-    status,
-    parent: null,
-    goal: params.goal,
-    check: 'TBD',
-    summary,
-    tasks: [],
-    notes: [],
-  };
-  const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
-  writePlanFile(plan, plansDir);
+    const plan: Plan = {
+      schema: 'agnes/plan-v1',
+      id,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+      status,
+      parent: null,
+      goal: params.goal,
+      check: 'TBD',
+      summary,
+      tasks: [],
+      notes: [],
+    };
+    const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
+    writePlanFile(plan, plansDir);
 
-  const entry: PlanIndexEntry = {
-    id,
-    status,
-    createdAt: now,
-    updatedAt: now,
-    summary,
-    total: 0,
-    completed: 0,
-    blocked: 0,
-    file: `${id}.yaml`,
-  };
+    const entry: PlanIndexEntry = {
+      id,
+      status,
+      createdAt: now,
+      updatedAt: now,
+      summary,
+      total: 0,
+      completed: 0,
+      blocked: 0,
+      file: `${id}.yaml`,
+    };
 
-  const index: PlanIndex = readPlanIndex(root) ?? {
-    agnesVersion: getAgnesVersion(),
-    schemaVersion: 2 as const,
-    projectDir: root,
-    projectName: path.basename(root),
-    updatedAt: now,
-    activePlanId: null,
-    plans: [],
-  };
+    const index: PlanIndex = readPlanIndex(root) ?? {
+      agnesVersion: getAgnesVersion(),
+      schemaVersion: 2 as const,
+      projectDir: root,
+      projectName: path.basename(root),
+      updatedAt: now,
+      activePlanId: null,
+      plans: [],
+    };
 
-  index.activePlanId = id;
-  index.plans.push(entry);
-  index.updatedAt = now;
-  writePlanIndex(index, root);
+    index.activePlanId = id;
+    index.plans.push(entry);
+    index.updatedAt = now;
+    writePlanIndex(index, root);
 
-  return id;
+    return id;
+  });
 }
 
 function buildBuiltinPlanTasks(goal: string): string[] {
@@ -1205,50 +1289,52 @@ export function transitionPlanStatus(planId: string, newStatus: string, projectR
   const root = projectRoot ?? findProjectRoot();
   if (!root) return null;
 
-  const index = readPlanIndex(root);
-  if (!index) return null;
+  return withPlanWriteLock(root, () => {
+    const index = readPlanIndex(root);
+    if (!index) return null;
 
-  const entry = index.plans.find(p => p.id === planId);
-  if (!entry) return null;
+    const entry = index.plans.find(p => p.id === planId);
+    if (!entry) return null;
 
-  if (!validatePlanTransition(entry.status, newStatus)) return null;
+    if (!validatePlanTransition(entry.status, newStatus)) return null;
 
-  const transitionsRequiringQuality = new Set(['reviewed', 'ready']);
-  if (transitionsRequiringQuality.has(newStatus)) {
-    const planPath = fs.existsSync(getPlanFilePath(root, entry))
-      ? getPlanFilePath(root, entry)
-      : fs.existsSync(getPlanMirrorPath(root, planId))
-        ? getPlanMirrorPath(root, planId)
-        : getPlanFilePath(root, entry);
-    let content: string;
-    try {
-      content = fs.readFileSync(planPath, 'utf8');
-    } catch (err) {
-      logger.warn('Failed to read plan file', err);
-      return null;
+    const transitionsRequiringQuality = new Set(['reviewed', 'ready']);
+    if (transitionsRequiringQuality.has(newStatus)) {
+      const planPath = fs.existsSync(getPlanFilePath(root, entry))
+        ? getPlanFilePath(root, entry)
+        : fs.existsSync(getPlanMirrorPath(root, planId))
+          ? getPlanMirrorPath(root, planId)
+          : getPlanFilePath(root, entry);
+      let content: string;
+      try {
+        content = fs.readFileSync(planPath, 'utf8');
+      } catch (err) {
+        logger.warn('Failed to read plan file', err);
+        return null;
+      }
+      const report = assessPlanQuality(content);
+      if (report.score < 60) return null;
     }
-    const report = assessPlanQuality(content);
-    if (report.score < 60) return null;
-  }
 
-  const now = new Date().toISOString();
-  entry.status = newStatus as PlanStatus;
-  entry.updatedAt = now;
+    const now = new Date().toISOString();
+    entry.status = newStatus as PlanStatus;
+    entry.updatedAt = now;
 
-  if (newStatus === 'in_progress') {
-    index.activePlanId = planId;
-  }
-
-  if (newStatus === 'done' || newStatus === 'abandoned') {
-    if (index.activePlanId === planId) {
-      index.activePlanId = null;
+    if (newStatus === 'in_progress') {
+      index.activePlanId = planId;
     }
-  }
 
-  index.updatedAt = now;
-  writePlanIndex(index, root);
+    if (newStatus === 'done' || newStatus === 'abandoned') {
+      if (index.activePlanId === planId) {
+        index.activePlanId = null;
+      }
+    }
 
-  return index;
+    index.updatedAt = now;
+    writePlanIndex(index, root);
+
+    return index;
+  });
 }
 
 export function generateRetrospective(planId: string, projectRoot?: string): string {

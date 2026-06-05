@@ -3,12 +3,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-import { getBootstrapContent, buildRuntimeBlock, buildPlanStateBlock, buildShellBlock, buildExecutionContextBlock, buildBootstrap } from './bootstrap.js';
+import { getBootstrapContent, buildRuntimeBlock, buildPlanStateBlock, buildExecutionContextBlock, buildBootstrap } from './bootstrap.js';
 import type { PlanIndex } from './state.js';
 
 describe('structured block builders', () => {
   const pkg = { version: '0.10.2', root: '/test/root', skillsDir: '/test/skills', cacheRoot: '/test/cache' };
-  const shell = { name: 'powershell', version: '7.4', antiPatterns: ['Get-Content', 'Set-Content'], preferredSyntax: 'cmdlets' };
   const exec = { attempt: 2, struggleDetected: true, lastPromiseTag: 'DONE' };
 
   test('buildRuntimeBlock produces correct structured type tag', () => {
@@ -60,18 +59,6 @@ describe('structured block builders', () => {
     expect(block).toContain('<structured type="plan_state">');
   });
 
-  test('buildShellBlock includes anti_patterns list', () => {
-    const block = buildShellBlock(shell);
-    expect(block).toContain('anti_patterns:');
-    expect(block).toContain('Get-Content');
-    expect(block).toContain('Set-Content');
-  });
-
-  test('buildShellBlock produces correct type tag', () => {
-    const block = buildShellBlock(shell);
-    expect(block).toContain('<structured type="shell">');
-  });
-
   test('buildExecutionContextBlock includes attempt info', () => {
     const block = buildExecutionContextBlock(exec);
     expect(block).toContain('attempt: 2');
@@ -117,15 +104,6 @@ describe('getBootstrapContent', () => {
     expect(content!).toContain('Planner: route:builtin, mode:builtin, reason:eligible lightweight boundary');
   });
 
-  test('includes the simplified routing rules', () => {
-    const content = getBootstrapContent();
-    expect(content).not.toBeNull();
-    expect(content!).toContain('=== AGNES ROUTING ===');
-    expect(content!).toContain('@explore');
-    expect(content!).toContain('@general');
-    expect(content!).toContain('Ask user');
-  });
-
   test('returns appropriate content even without a plan', () => {
     const originalCwd = process.cwd();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-bootstrap-'));
@@ -152,20 +130,18 @@ describe('getBootstrapContent', () => {
 
 describe('buildBootstrap', () => {
   const pkg = { version: '0.10.2', root: '/test/root', skillsDir: '/test/skills', cacheRoot: '/test/cache' };
-  const shell = { name: 'powershell', version: '7.4', antiPatterns: ['Get-Content'], preferredSyntax: 'cmdlets' };
   const exec = { attempt: 1, struggleDetected: false, lastPromiseTag: null };
 
   test('assembles structured blocks without orchestration layers', () => {
-    const result = buildBootstrap({ pkg, index: null, shell, exec });
+    const result = buildBootstrap({ pkg, index: null, exec });
     const blockTypes = [...result.matchAll(/type="(\w+)"/g)].map(m => m[1]);
-    expect(blockTypes.length).toBeGreaterThanOrEqual(3);
+    expect(blockTypes.length).toBeGreaterThanOrEqual(2);
     expect(blockTypes[0]).toBe('runtime');
-    expect(blockTypes).toContain('shell');
     expect(blockTypes).toContain('execution');
   });
 
   test('does not include removed blocks', () => {
-    const result = buildBootstrap({ pkg, index: null, shell, exec });
+    const result = buildBootstrap({ pkg, index: null, exec });
     expect(result).not.toContain('orchestrator');
     expect(result).not.toContain('delegate_or_die');
     expect(result).not.toContain('named_roles');
@@ -186,7 +162,7 @@ describe('buildBootstrap', () => {
         activePlanId: null,
         plans: [],
       };
-      const result = buildBootstrap({ pkg, index, shell, exec });
+      const result = buildBootstrap({ pkg, index, exec });
       expect(result).toContain('type="plan_state"');
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -194,7 +170,7 @@ describe('buildBootstrap', () => {
   });
 
   test('excludes plan_state block when no index and no planner', () => {
-    const result = buildBootstrap({ pkg, index: null, shell, exec });
+    const result = buildBootstrap({ pkg, index: null, exec });
     expect(result).not.toContain('type="plan_state"');
   });
 });

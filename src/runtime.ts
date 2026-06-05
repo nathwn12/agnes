@@ -17,8 +17,6 @@ import {
 import type { PlanIndexEntry, PlanIndex, ActivePlan, StruggleMetrics, PlannerRoutingContext } from './state.js';
 import type { GateEvidence, RetryClassification, ExecutionArtifact } from './schema.js';
 import type { CompletionStatus } from './protocol.js';
-import { detectShell } from './shell.js';
-import type { ShellType } from './shell.js';
 import * as logger from './logger.js';
 import { runGates, gateResultToEvidence } from './verification.js';
 import type { Gate, GateResult } from './verification.js';
@@ -162,7 +160,6 @@ export interface AgnesRuntimeState {
   activePlanId: string | null;
   planContent: string | null;
   planEntry: PlanIndexEntry | null;
-  shellType?: ShellType;
   struggle?: StruggleMetrics;
   iteration?: number;
   maxIterations?: number;
@@ -254,6 +251,24 @@ export function getPlanGate(workspaceRoot?: string | null): string | null {
     return `\n**BLOCKED PLAN:** ${state.activePlan.entry.id} is blocked. Resolve or create a new iteration.`;
   }
   const approvalBlock = getExecutionApprovalBlock(state.planIndex);
+  if (approvalBlock) {
+    return `\n**APPROVAL REQUIRED:** ${approvalBlock}`;
+  }
+  return null;
+}
+
+export function getPlanGateFromIndex(index: PlanIndex): string | null {
+  if (!index.activePlanId) {
+    return '';
+  }
+  const active = index.plans.find(plan => plan.id === index.activePlanId) ?? null;
+  if (!active) {
+    return 'No active plan found. Create a plan with `.agnes/` before any implementation work.';
+  }
+  if (active.status === 'blocked') {
+    return `\n**BLOCKED PLAN:** ${active.id} is blocked. Resolve or create a new iteration.`;
+  }
+  const approvalBlock = getExecutionApprovalBlock(index);
   if (approvalBlock) {
     return `\n**APPROVAL REQUIRED:** ${approvalBlock}`;
   }
@@ -494,10 +509,6 @@ export function buildExecutionContext(entry: PlanIndexEntry): string {
   if (entry.attempts !== undefined && entry.attempts > 0) {
     lines.push(`Current attempt: ${entry.attempts + 1}`);
   }
-
-  const shell = detectShell();
-  lines.push(`Shell: ${shell.shellType} (preferred syntax: ${shell.preferredSyntax})`);
-  lines.push(`Shell guidance: ${shell.guidance}`);
 
   if (entry.struggle) {
     const s = entry.struggle;

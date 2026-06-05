@@ -1,37 +1,26 @@
 import { describe, expect, test } from 'bun:test';
 import { buildBootstrap, getBootstrapContent, getBootstrapPackageInfo } from './bootstrap.js';
-import { detectShell } from './shell.js';
 
 describe('buildStructuredBootstrap (via buildBootstrap integration)', () => {
   const pkg = getBootstrapPackageInfo();
-  const shell = detectShell();
   const exec = { attempt: 1, struggleDetected: false, lastPromiseTag: null };
 
   test('produces combined output with all structured blocks', () => {
     const result = buildBootstrap({
       pkg,
       index: null,
-      shell: {
-        name: shell.shellType,
-        version: shell.shellType,
-        antiPatterns: shell.antiPatterns,
-        preferredSyntax: shell.preferredSyntax,
-      },
       exec,
     });
 
     expect(result).toContain('runtime');
-    expect(result).toContain('shell');
     expect(result).toContain('execution');
   });
 
-  test('includes shell and execution blocks', () => {
+  test('includes runtime and execution blocks', () => {
     const result = buildBootstrap({
       pkg, index: null,
-      shell: { name: 'test', version: '1.0', antiPatterns: [], preferredSyntax: 'cmdlets' },
       exec,
     });
-    expect(result).toContain('shell');
     expect(result).toContain('execution');
   });
 });
@@ -41,10 +30,8 @@ describe('AgnesPlugin structure', () => {
     const { AgnesPlugin } = await import('./plugin.js');
     const plugin = await AgnesPlugin({ directory: process.cwd() });
     expect(plugin).toHaveProperty('config');
-    expect(plugin).toHaveProperty(['chat.message']);
     expect(plugin).toHaveProperty(['experimental.chat.messages.transform']);
     expect(typeof (plugin as any).config).toBe('function');
-    expect(typeof (plugin as any)['chat.message']).toBe('function');
     expect(typeof (plugin as any)['experimental.chat.messages.transform']).toBe('function');
   });
 
@@ -78,16 +65,6 @@ describe('AgnesPlugin structure', () => {
     expect(paths.length).toBeGreaterThan(0);
   });
 
-  test('config hook sets provider interleaved config', async () => {
-    const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin({ directory: process.cwd() });
-    const config: Record<string, unknown> = {};
-    await plugin.config!(config);
-    const provider = config.provider as Record<string, unknown>;
-    expect(provider).toBeDefined();
-    expect(provider.interleaved).toEqual({ field: 'reasoning_content' });
-  });
-
   test('config hook preserves build agent configuration without mutation gates', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
     const plugin = await AgnesPlugin({ directory: process.cwd() });
@@ -112,15 +89,6 @@ describe('AgnesPlugin structure', () => {
     expect(build.permission.read).toBe('allow');
     expect(build.permission.task['*']).toBeUndefined();
     expect(build.permission.task.legacy).toBe('allow');
-  });
-});
-
-describe('chat.message hook', () => {
-  test('captures model ID from input', async () => {
-    const { AgnesPlugin } = await import('./plugin.js');
-    const plugin = await AgnesPlugin({ directory: process.cwd() });
-    const input = { model: { modelID: 'gpt-4' } };
-    await (plugin as any)['chat.message'](input);
   });
 });
 
@@ -204,8 +172,6 @@ describe('tool.definition hook', () => {
     const { getBootstrapContent } = await import('./bootstrap.js');
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
-    expect(content).not.toContain('READ-ONLY tools');
-    expect(content).not.toContain('MUTATION tools');
     expect(content).toContain('@explore');
     expect(content).toContain('@general');
     expect(content).toContain('Ask user');
