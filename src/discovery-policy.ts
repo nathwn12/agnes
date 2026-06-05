@@ -62,14 +62,14 @@ export function inferAgentPermission(name: string): Record<string, AgentPermissi
   if (name === "security-reviewer" || name === "database-reviewer") {
     return { edit: "deny", write: "deny", bash: "deny", task: "deny" };
   }
-  if (name === "tdd-guide" || name === "loop-operator" || name === "doc-updater") {
-    return { edit: "deny", write: "deny", bash: "deny", task: "deny" };
+  if (name === "tdd-guide" || name === "doc-updater") {
+    return { bash: { "*": "allow" }, edit: "allow", write: "allow", task: "deny" };
   }
   if (name === "build-error-resolver") {
-    return { bash: { "*": "allow" }, edit: "deny", write: "deny", task: "deny" };
+    return { bash: { "*": "allow" }, edit: "allow", write: "allow", task: "deny" };
   }
   if (name === "e2e-runner") {
-    return { bash: { "*": "allow" }, edit: "deny", write: "deny", task: "deny" };
+    return { bash: { "*": "allow" }, edit: "allow", write: "allow", task: "deny" };
   }
   if (name === "refactor-cleaner") {
     return { bash: { "*": "allow" }, edit: "allow", write: "allow", task: "deny" };

@@ -97,7 +97,7 @@ CI: `bun install -> bun run lint -> bun run typecheck -> bun test -> bun run bun
 - **No opencode.json in repo**: Plugin is installed via opencode.json in the workspace using config.
 - **Locked file**: `nul` at repo root — Windows sentinel, do not touch.
 - **Skills**: 22 bundled SKILL.md files in .opencode/skills/. Registered by discoverSkills() at startup.
-- **Agent permissions**: executor gets bash access (no git commit/push); explorer/reviewer/planner/architect read-only.
+- **Agent permissions**: Read-only agents (planner, reviewer, security-reviewer, database-reviewer, docs-lookup) get `edit: deny, bash: deny`. Action agents (build-error-resolver, tdd-guide, e2e-runner, doc-updater, refactor-cleaner) get full `edit: allow, bash: allow`.
 - **Completion protocol**: Agent ends tasks with `<agnes:message>` HTML comment — parsed by AGNES.
 - **Plugin build**: Single-file bundle via `bun build src/plugin.ts --target bun`.
 
