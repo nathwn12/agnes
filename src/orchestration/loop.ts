@@ -18,26 +18,6 @@ export interface LoopState {
 const activeLoops = new Map<string, LoopState>();
 const pendingEvaluations = new Map<string, LoopState>();
 
-export function startLoop(
-  sessionID: string,
-  config: LoopConfig,
-  commandName: string,
-  commandArgs: string,
-  model?: string,
-  agent?: string,
-  deferredReturns?: string[],
-): void {
-  activeLoops.set(sessionID, {
-    config,
-    iteration: 1,
-    commandName,
-    commandArgs,
-    model,
-    agent,
-    deferredReturns,
-  });
-}
-
 export function getLoopState(sessionID: string): LoopState | undefined {
   return activeLoops.get(sessionID);
 }
@@ -53,16 +33,6 @@ export function incrementLoopIteration(sessionID: string): number {
 
 export function clearLoop(sessionID: string): void {
   activeLoops.delete(sessionID);
-}
-
-export function isLoopComplete(sessionID: string): boolean {
-  const state = activeLoops.get(sessionID);
-  if (!state) return true;
-  return state.iteration >= state.config.max;
-}
-
-export function setPendingEvaluation(sessionID: string, state: LoopState): void {
-  pendingEvaluations.set(sessionID, state);
 }
 
 export function getPendingEvaluation(sessionID: string): LoopState | undefined {

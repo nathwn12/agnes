@@ -125,7 +125,7 @@ describe('formatHubSummary', () => {
 
   test('shows (none discovered) for empty sections', () => {
     clearDiscoveryCache();
-    const hub = discoverAgentHub(tmpDir);
+    discoverAgentHub(tmpDir);
     const emptyHub = { agents: [], commands: [], skills: [] };
     const summary = formatHubSummary(emptyHub);
     expect(summary).toContain('(none discovered)');

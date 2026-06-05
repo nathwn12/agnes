@@ -8,14 +8,6 @@ const pendingPromptReturns = new Map<string, string>();
 const lastReturnTypes = new Map<string, 'inline_subtask' | 'command' | 'prompt'>();
 const pendingStackedResponses = new Set<string>();
 
-export function setReturnChain(sessionID: string, items: string[]): void {
-  returnChains.set(sessionID, items);
-}
-
-export function getReturnChain(sessionID: string): string[] | undefined {
-  return returnChains.get(sessionID);
-}
-
 export function hasReturnChain(sessionID: string): boolean {
   return returnChains.has(sessionID);
 }
@@ -26,10 +18,6 @@ export function shiftReturnChain(sessionID: string): string | undefined {
   const next = chain.shift();
   if (chain.length === 0) returnChains.delete(sessionID);
   return next;
-}
-
-export function deleteReturnChain(sessionID: string): void {
-  returnChains.delete(sessionID);
 }
 
 export function pushReturnStack(sessionID: string, items: string[]): void {
@@ -65,14 +53,6 @@ export function hasReturnStack(sessionID: string): boolean {
   return stack !== undefined && stack.length > 0;
 }
 
-export function clearReturnStacks(sessionID: string): void {
-  returnStacks.delete(sessionID);
-}
-
-export function setDeferredPromptReturn(sessionID: string, prompt: string): void {
-  deferredPromptReturns.set(sessionID, prompt);
-}
-
 export function consumeDeferredPromptReturn(sessionID: string): string | undefined {
   const prompt = deferredPromptReturns.get(sessionID);
   if (prompt) deferredPromptReturns.delete(sessionID);
@@ -89,24 +69,12 @@ export function consumePendingPromptReturn(sessionID: string): string | undefine
   return prompt;
 }
 
-export function hasPendingPromptReturn(sessionID: string): boolean {
-  return pendingPromptReturns.has(sessionID);
-}
-
 export function getAllPendingPromptReturns(): Map<string, string> {
   return pendingPromptReturns;
 }
 
 export function setLastReturnType(sessionID: string, type: 'inline_subtask' | 'command' | 'prompt'): void {
   lastReturnTypes.set(sessionID, type);
-}
-
-export function getLastReturnType(sessionID: string): 'inline_subtask' | 'command' | 'prompt' | undefined {
-  return lastReturnTypes.get(sessionID);
-}
-
-export function clearLastReturnType(sessionID: string): void {
-  lastReturnTypes.delete(sessionID);
 }
 
 export function setPendingStackedResponse(sessionID: string): void {

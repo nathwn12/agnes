@@ -130,7 +130,7 @@ export async function chatMessagesTransform(_input: any, output: any): Promise<v
     }
 
     // === 5. Check for loop evaluation ===
-    for (const [_sid, loopState] of getAllPendingEvaluations()) {
+    for (const [, loopState] of getAllPendingEvaluations()) {
       if (loopState.config.until) {
         const evalPrompt = createEvaluationPrompt(
           loopState.config.until,

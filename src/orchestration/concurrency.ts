@@ -23,18 +23,6 @@ function ensureAgent(agent: string): AgentSlots {
   return s;
 }
 
-export function setConcurrencyLimit(agent: string, limit: number): void {
-  ensureAgent(agent).limit = limit;
-}
-
-export function getConcurrencyLimit(agent: string): number {
-  return ensureAgent(agent).limit;
-}
-
-export function getActiveCount(agent: string): number {
-  return ensureAgent(agent).active;
-}
-
 export function tryAcquire(agent: string): boolean {
   const s = ensureAgent(agent);
   if (s.active >= s.limit) return false;

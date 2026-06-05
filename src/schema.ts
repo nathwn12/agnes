@@ -40,7 +40,6 @@ export type ExecutionArtifact = z.infer<typeof ExecutionArtifactSchema>;
 export const PlanStatusSchema = z.enum([
   "pending", "draft", "reviewed", "ready", "approved", "in_progress", "done", "blocked", "abandoned"
 ]);
-export type PlanStatus = z.infer<typeof PlanStatusSchema>;
 
 export const PlanTaskSchema = z.object({
   id: z.string().regex(/^task-\d{3}$/),

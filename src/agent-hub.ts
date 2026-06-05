@@ -28,8 +28,6 @@ export interface SkillHubEntry {
   path: string;
 }
 
-export type HubEntry = AgentHubEntry | CommandHubEntry | SkillHubEntry;
-
 export interface AgentHub {
   agents: AgentHubEntry[];
   commands: CommandHubEntry[];

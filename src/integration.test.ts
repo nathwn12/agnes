@@ -358,7 +358,6 @@ describe('harness renovation integration', () => {
   });
 
   test('gate evidence feeds into execution outcome', () => {
-    const tmp = createTempProject();
     const passingGate: Gate = {
       id: 'integration-test-gate',
       name: 'Integration Test Gate',

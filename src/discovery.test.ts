@@ -30,12 +30,6 @@ function writeFile(file: string, content: string): void {
   fs.writeFileSync(file, content, "utf8");
 }
 
-async function runDiscovery() {
-  // Import fresh each call to avoid stale module state
-  const mod = await import("./discovery");
-  return mod;
-}
-
 describe("discoverAgents", () => {
   beforeEach(() => {
     clearDiscoveryCache();

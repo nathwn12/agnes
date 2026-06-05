@@ -194,10 +194,6 @@ export class SessionStore {
 
 const globalSessionStore = new SessionStore();
 
-export function createSessionStore(): SessionStore {
-  return new SessionStore();
-}
-
 export function getGlobalSessionStore(): SessionStore {
   return globalSessionStore;
 }
