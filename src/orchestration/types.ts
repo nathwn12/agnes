@@ -19,8 +19,11 @@ export interface DelegateTask {
   createdAt: number;
   completedAt: number | null;
   depth: number;
+  mode?: 'normal' | 'race' | 'fractal';
   groupID?: string;
   noReply?: boolean;
+  stablePolls?: number;
+  hasStartedOutputting?: boolean;
 }
 
 export type DelegateMode = 'sync' | 'background';
@@ -33,6 +36,17 @@ export interface DelegateInput {
   depth?: number;
   groupID?: string;
   noReply?: boolean;
+  modeType?: 'normal' | 'race' | 'fractal';
+}
+
+export interface LoopConfig {
+  max: number;
+  until: string;
+}
+
+export interface ReturnChainState {
+  items: string[];
+  stacked: string[][];
 }
 
 export const DELEGATION_LIMITS = {

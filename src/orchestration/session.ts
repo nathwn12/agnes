@@ -6,6 +6,36 @@ export class SessionStore {
   private namedResults = new Map<string, Map<string, string>>();
   private groupMembers = new Map<string, Set<string>>();
   private groupPendingCounts = new Map<string, number>();
+  private pendingParentByPrompt = new Map<string, string>();
+  private pendingCaptureByPrompt = new Map<string, { parentSessionID: string; name: string }>();
+
+  registerPendingParent(prompt: string, sessionID: string): void {
+    this.pendingParentByPrompt.set(prompt, sessionID);
+  }
+
+  consumePendingParent(prompt: string): string | null {
+    const parent = this.pendingParentByPrompt.get(prompt);
+    if (parent) this.pendingParentByPrompt.delete(prompt);
+    return parent ?? null;
+  }
+
+  registerPendingCapture(prompt: string, parentSessionID: string, name: string): void {
+    this.pendingCaptureByPrompt.set(prompt, { parentSessionID, name });
+  }
+
+  consumePendingCapture(prompt: string): { parentSessionID: string; name: string } | undefined {
+    const entry = this.pendingCaptureByPrompt.get(prompt);
+    if (entry) this.pendingCaptureByPrompt.delete(prompt);
+    return entry;
+  }
+
+  hasPendingCapture(prompt: string): boolean {
+    return this.pendingCaptureByPrompt.has(prompt);
+  }
+
+  getPendingCapture(prompt: string): { parentSessionID: string; name: string } | undefined {
+    return this.pendingCaptureByPrompt.get(prompt);
+  }
 
   trackTask(task: DelegateTask): void {
     this.tasks.set(task.id, task);
@@ -248,4 +278,28 @@ export function getGroupPendingCount(groupID: string): number {
 
 export function getGroupTaskIDs(groupID: string): string[] {
   return globalSessionStore.getGroupTaskIDs(groupID);
+}
+
+export function registerPendingParent(prompt: string, sessionID: string): void {
+  globalSessionStore.registerPendingParent(prompt, sessionID);
+}
+
+export function consumePendingParent(prompt: string): string | null {
+  return globalSessionStore.consumePendingParent(prompt);
+}
+
+export function registerPendingCapture(prompt: string, parentSessionID: string, name: string): void {
+  globalSessionStore.registerPendingCapture(prompt, parentSessionID, name);
+}
+
+export function consumePendingCapture(prompt: string): { parentSessionID: string; name: string } | undefined {
+  return globalSessionStore.consumePendingCapture(prompt);
+}
+
+export function hasPendingCapture(prompt: string): boolean {
+  return globalSessionStore.hasPendingCapture(prompt);
+}
+
+export function getPendingCapture(prompt: string): { parentSessionID: string; name: string } | undefined {
+  return globalSessionStore.getPendingCapture(prompt);
 }

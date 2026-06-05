@@ -31,12 +31,14 @@ import {
   evaluateCompactionPolicy,
   rememberCompactionState,
 } from './compaction.js';
-import { DelegationManager } from './orchestration/manager.js';
+import { OrchestratorManager } from './orchestration/manager.js';
 import {
   createDelegateTaskTool,
   createGetTaskResultTool,
   createCancelTaskTool,
 } from './orchestration/tools.js';
+import { cleanupSession as cleanupReturns } from './orchestration/returns.js';
+import { storeNamedResult, registerPendingParent } from './orchestration/session.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const skillsDir = path.resolve(__dirname, '../skills');
@@ -72,13 +74,13 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
   const editedFiles = new Set<string>();
   let projectProfile: ProjectProfile | null = null;
 
-  const delegationManager = new DelegationManager(client);
+  const orchestratorManager = new OrchestratorManager(client);
 
   return {
     tool: {
-      delegate_task: createDelegateTaskTool(delegationManager),
-      get_task_result: createGetTaskResultTool(),
-      cancel_task: createCancelTaskTool(),
+      delegate_task: createDelegateTaskTool(orchestratorManager),
+      get_task_result: createGetTaskResultTool(orchestratorManager),
+      cancel_task: createCancelTaskTool(orchestratorManager),
     },
     config: async (config: Record<string, unknown>) => {
       const configObj = config as Record<string, unknown>;
@@ -134,20 +136,63 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
       editedFiles.add(event.path);
     },
 
+    'tool.execute.before': async (input: { tool: string; args?: Record<string, unknown> }, _output: unknown) => {
+      // Race-safe parent mapping: when a subtask spawns another subtask,
+      // capture the parent session mapping by prompt content before the tool executes
+      if (input.tool === 'delegate_task') {
+        const prompt = input.args?.prompt as string | undefined;
+        if (prompt) {
+          const parentSessionID = (_output as any)?.sessionID ?? '';
+          if (parentSessionID) {
+            registerPendingParent(prompt, parentSessionID);
+          }
+        }
+      }
+    },
+
     'tool.execute.after': async (input: { tool: string; args?: Record<string, unknown> }, _output: unknown) => {
       const filePath = input.args?.filePath as string | undefined;
       if ((input.tool === 'edit' || input.tool === 'write') && filePath) {
         editedFiles.add(filePath);
       }
+
+      // Capture $RESULT[name] from completed background tasks
+      if (input.tool === 'get_task_result') {
+        const taskId = input.args?.taskId as string | undefined;
+        if (taskId) {
+          const task = orchestratorManager.getTask(taskId);
+          if (task?.result) {
+            storeNamedResult(task.parentSessionID, taskId, task.result);
+          }
+        }
+      }
     },
 
-    'session.deleted': async () => {
+    'session.deleted': async (_event: any) => {
       editedFiles.clear();
       projectProfile = null;
       _injectedSessions.clear();
+      const sessionID = typeof _event === 'object' && _event ? ((_event as Record<string, unknown>).sessionID as string ?? '') : '';
+      if (sessionID) cleanupReturns(sessionID);
+    },
+
+    event: async ({ event }: { event: { type: string; sessionID?: string; properties?: Record<string, unknown> } }) => {
+      const sid = event.sessionID ?? (event.properties?.sessionID as string) ?? '';
+      if (event.type === 'session.idle' && sid) {
+        const { handleSessionIdle } = await import('./orchestration/idle-handler.js');
+        handleSessionIdle(sid, client.session as any).catch(err => {
+          logger.warn('session.idle handler failed', err);
+        });
+      }
     },
 
     'experimental.chat.messages.transform': async (_input, output) => {
+      // Run message transform pipeline first (summary filtering, return injection, loop eval)
+      const { chatMessagesTransform } = await import('./orchestration/message-transform.js');
+      await chatMessagesTransform(_input, output);
+
+      // Then fall through to original bootstrap injection
+      if (!output.messages?.length) return;
       if (!output.messages?.length) return;
 
       const firstUser = output.messages.find((m) => m.info?.role === 'user');
