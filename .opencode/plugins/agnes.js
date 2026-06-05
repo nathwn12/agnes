@@ -19279,8 +19279,6 @@ function tool(input) {
 tool.schema = exports_external;
 // src/plugin.ts
 import { randomUUID as randomUUID2 } from "crypto";
-import * as path6 from "path";
-import { fileURLToPath as fileURLToPath3 } from "url";
 
 // src/bootstrap.ts
 import * as fs2 from "fs";
@@ -33755,9 +33753,6 @@ var PREFIX = "[agnes]";
 function timestamp() {
   return new Date().toISOString();
 }
-function info(message) {
-  console.error(`${PREFIX} ${timestamp()} INFO ${message}`);
-}
 function warn(message, err) {
   const detail = err instanceof Error ? ` \u2014 ${err.message}` : err !== undefined ? ` \u2014 ${String(err)}` : "";
   console.error(`${PREFIX} ${timestamp()} WARN ${message}${detail}`);
@@ -34183,7 +34178,6 @@ function findPackageRoot(fromDir) {
 }
 var packageRoot = findPackageRoot(path2.resolve(__dirname2, "..", "..")) ?? findPackageRoot(__dirname2) ?? path2.resolve(__dirname2, "..", "..");
 var packageJsonPath = path2.join(packageRoot, "package.json");
-var skillsDir = path2.join(packageRoot, ".opencode", "skills");
 var opencodePackageCache = path2.join(os2.homedir(), ".cache", "opencode", "packages");
 function getPackageVersion() {
   if (!fs2.existsSync(packageJsonPath))
@@ -34214,100 +34208,46 @@ function getStaticBootstrapContent() {
   }
 }
 function buildBootstrapFromSoul(fullContent, version3) {
-  const toolMapping = `**Tool Mapping for OpenCode:**
-When skills reference tools you don't have, substitute OpenCode equivalents:
-- \`TodoWrite\` \u2192 \`todowrite\`
-- \`Task\` with subagents \u2192 OpenCode's subagent system (@mention)
-- \`Skill\` \u2192 OpenCode's native \`skill\` tool
-- \`Read\`, \`Write\`, \`Edit\`, \`Bash\` \u2192 Your native tools
-
-Use OpenCode's native \`skill\` tool to list and load skills.`;
   return `<EXTREMELY_IMPORTANT>
-You are AGNES.
+You are AGNES v${version3}.
 
-**Runtime Identity** (AGNES internal install paths \u2014 distinct from the current project workspace)
-- Current AGNES version: \`${version3}\`
-- Installed AGNES package root: \`${packageRoot}\`
-- Bundled AGNES skills directory: \`${skillsDir}\`
-- OpenCode package cache root: \`${opencodePackageCache}\`
-- If the user asks to clear AGNES's cache, tell them to delete the package cache directory above and restart OpenCode. Never generate or run destructive commands yourself.
+**Runtime Identity**
+- AGNES package root: \`${packageRoot}\`
+- OpenCode package cache: \`${opencodePackageCache}\`
+- If the user asks to clear AGNES cache, tell them to delete the package cache dir and restart OpenCode.
 
-=== AGNES ORCHESTRATION CONTRACT ===
-You are the MAIN AGENT. You DELEGATE. You NEVER execute directly.
+**Delegation Protocol**
+Use \`agnes_delegate\` and \`agnes_get_result\` for subagent work. Built-in \`delegate_task\`/\`get_task_result\` are DEPRECATED.
+- \`agnes_delegate(agent, description, prompt, background=false)\` \u2192 blocking, returns result inline.
+- \`agnes_delegate(agent, description, prompt, background=true)\` \u2192 returns task ref for polling.
+- \`agnes_get_result(taskRef)\` \u2192 polls async result. Returns output text, PENDING, or ERROR.
 
-**DELEGATION PROTOCOL (CRITICAL \u2014 follow exactly)**
-ONLY use \`agnes_delegate\` and \`agnes_get_result\` for subagent delegation. The built-in \`delegate_task\` and \`get_task_result\` tools are DEPRECATED and may fail randomly \u2014 do NOT use them.
-1. \`agnes_delegate(agent, description, prompt, background=false)\` \u2192 returns result inline (blocking).
-2. \`agnes_delegate(agent, description, prompt, background=true)\` \u2192 returns a task reference string (session ID) immediately.
-3. For background tasks: use \`agnes_get_result(taskRef)\` with the returned task reference to poll for completion.
-4. If \`agnes_get_result\` returns ERROR or NOT_FOUND \u2014 the task did NOT complete. Re-delegate or report failure. Never assume completion.
-5. If \`agnes_get_result\` returns PENDING \u2014 the subagent is still working. Retry after a brief wait.
-6. Always verify subagent work exists (files written, changes applied) before synthesizing.
+Available agents: @explore (read/search), @build (modify/create). Other custom agents have been removed \u2014 use commands instead.
 
-**FRAGMENT FIRST \u2014 then delegate**
-Every task MUST be split into the smallest possible independent chunks BEFORE delegating. Decompose by directory, file, or concern. Fire N subagents in parallel \u2014 one per chunk. Never assign a monolithic task to a single subagent.
+**Commands**
+Use slash commands for structured workflows: /plan, /build-fix, /code-review, /tdd, /verify, /checkpoint, /learn, /security, /e2e, /update-docs, /refactor-clean, etc.
 
-- **Exploration**: Split by top-level subdirectory. Fire one @explore per dir in parallel. Never one explore agent for the whole tree.
-- **Multi-step builds/coding/editing**: Split by file boundary. Fire one @general per file in parallel. Never one agent touching 3+ files sequentially.
-- **Trivial** (1 file, simple change): Do it directly or fire 1 subagent. No fragmentation overhead.
+**Rules**
+- Decompose work by file boundary before delegating.
+- Parallelize independent chunks.
+- Verify work before claiming done.
+- Change only what is required.
+- Answer simple questions directly \u2014 no delegation overhead.
 
-**Delegation, Not Execution**
-- Every task goes to a subagent. If you find yourself doing the work, stop and fire a subagent.
-- Subagents execute. You coordinate, route, synthesize results.
-- NEVER two subagents touching the same file. Split by file boundaries.
-
-**Auto Difficulty Detection**
-- Trivial (1 file, simple change): Do it directly or fire 1 subagent.
-- Multi-step (3+ files, cross-module): Fire parallel subagents immediately \u2014 one per file.
-- Complex (architecture, refactor): Plan first, then fire N subagents in parallel.
-- Reassess constantly. If it gets more complex mid-flight, fire up more subagents.
-
-**Parallel Execution**
-- Run subagents in parallel whenever work is independent.
-- Zero shared state. Zero coordination overhead. Each subagent is fully isolated.
-- Results flow back to you for synthesis.
-
-**Ask Once Gate**
-- For destructive, irreversible, or major decisions: present recommended options.
-- Synthesize the best path. User selects. No open-ended questions.
-- Say: "Option A (recommended), Option B, Option C. Pick one." Never ask "what should I do?"
-
-**Planning Mode**
-- Present suggested paths. The user selects. Less talking, more deciding.
-
-=== END AGNES ORCHESTRATION CONTRACT ===
-
-=== AGNES ROUTING ===
-- @explore \u2014 Read-only agent for search, code review, research, lookup, understanding existing code
-- @general \u2014 Implementation agent with bash+write access for modifying files, running commands, testing
-- Destructive/lossy/irreversible \u2192 Ask user first
-- Available subagents: explore (read-only), build (write+bash), plan (read-only), general (bash)
-- /agent-hub \u2014 List available agents, skills, and commands
-=== END AGNES ROUTING ===
-
-**IMPORTANT: AGNES SOUL.md is loaded below.**
+**IMPORTANT: SOUL.md instructions are loaded below.**
 
 ${fullContent.trim()}
-
-${toolMapping}
 </EXTREMELY_IMPORTANT>`;
 }
 function buildMinimalBootstrap(version3) {
   return `<EXTREMELY_IMPORTANT>
 You are AGNES v${version3}.
 
-**CRITICAL: Delegation Protocol**
-Use \`agnes_delegate\` and \`agnes_get_result\` for ALL subagent work. Built-in \`delegate_task\`/\`get_task_result\` are DEPRECATED and unreliable.
-1. \`agnes_delegate(agent, description, prompt, background=false)\` \u2192 blocking, returns result.
-2. \`agnes_delegate(agent, description, prompt, background=true)\` \u2192 returns task reference (session ID).
-3. \`agnes_get_result(taskRef)\` \u2192 polls for result. Returns output, PENDING, or ERROR.
-4. If result is PENDING \u2192 retry after a brief wait.
-5. If result is ERROR \u2192 re-delegate or fail explicitly.
-6. ALWAYS verify subagent work before claiming completion.
+Use \`agnes_delegate\` and \`agnes_get_result\` for subagent work.
+Available agents: @explore (read/search), @build (modify/create).
+Use slash commands for structured workflows.
 
-Available agents: @explore (read-only), @general (write+bash), @plan (read-only), @build (write+bash)
-
-You are a swarm orchestrator. You NEVER do work yourself. Delegate everything.
+Delegate work. Verify results. Answer directly.
 </EXTREMELY_IMPORTANT>`;
 }
 function getBootstrapContent(planner, projectRoot, index) {
@@ -34325,7 +34265,7 @@ function getBootstrapPackageInfo() {
   return {
     version: getPackageVersion(),
     root: packageRoot,
-    skillsDir,
+    skillsDir: "",
     cacheRoot: opencodePackageCache
   };
 }
@@ -34418,32 +34358,11 @@ function parseCommandFrontmatter(content) {
   }
   return result;
 }
-function inferAgentDesc(name, prompt) {
-  const firstLine = prompt.split(`
-`)[0]?.trim() || "";
-  if (firstLine) {
-    return firstLine.replace(/^You are an?\s+/i, "").replace(/\.$/, "");
-  }
-  return name.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-function mergeByName(priorityGroups) {
-  const seen = new Map;
-  for (const group of priorityGroups) {
-    for (const item of group) {
-      if (!seen.has(item.name)) {
-        seen.set(item.name, item);
-      }
-    }
-  }
-  return [...seen.values()];
-}
 
 // src/discovery.ts
 var __dirname3 = path4.dirname(fileURLToPath2(import.meta.url));
 var pluginRoot = findPackageRoot(__dirname3) ?? path4.resolve(__dirname3, "..", "..");
-var BUNDLED_AGENTS_DIR = path4.join(pluginRoot, ".opencode", "prompts", "agents");
 var BUNDLED_COMMANDS_DIR = path4.join(pluginRoot, ".opencode", "commands");
-var BUNDLED_SKILLS_DIR = path4.join(pluginRoot, ".opencode", "skills");
 function readFileSafe(filePath) {
   try {
     return fs4.readFileSync(filePath, "utf8");
@@ -34453,22 +34372,6 @@ function readFileSafe(filePath) {
 }
 function homeDir() {
   return process.env.USERPROFILE || os3.homedir();
-}
-function scanAgentDir(dir, source) {
-  const results = [];
-  try {
-    const entries = fs4.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.endsWith(".txt"))
-        continue;
-      const name = entry.name.slice(0, -4);
-      const prompt = readFileSafe(path4.join(dir, entry.name));
-      if (!prompt)
-        continue;
-      results.push({ name, desc: inferAgentDesc(name, prompt), prompt, source });
-    }
-  } catch {}
-  return results;
 }
 function scanCommandDir(dir, source) {
   const results = [];
@@ -34489,24 +34392,8 @@ function scanCommandDir(dir, source) {
         name,
         desc: fm.description || name.replace(/-/g, " "),
         template,
-        agent: fm.agent,
-        subtask: fm.subtask,
         source
       });
-    }
-  } catch {}
-  return results;
-}
-function scanSkillDir(dir) {
-  const results = [];
-  try {
-    const entries = fs4.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory())
-        continue;
-      if (fs4.existsSync(path4.join(dir, entry.name, "SKILL.md"))) {
-        results.push(path4.join(dir, entry.name));
-      }
     }
   } catch {}
   return results;
@@ -34517,139 +34404,28 @@ function globalDir(sub) {
 function workspaceDir(worktree, sub) {
   return path4.join(worktree, ".opencode", sub);
 }
-var cachedAgents = new Map;
 var cachedCommands = new Map;
-var cachedSkills = new Map;
 function cacheKey(worktreePath) {
   return path4.resolve(worktreePath);
-}
-function discoverAgents(worktreePath) {
-  const key = cacheKey(worktreePath);
-  const cached3 = cachedAgents.get(key);
-  if (cached3)
-    return cached3;
-  const discovered = mergeByName([
-    scanAgentDir(BUNDLED_AGENTS_DIR, "agnes"),
-    scanAgentDir(globalDir(path4.join("prompts", "agents")), "global"),
-    scanAgentDir(workspaceDir(worktreePath, path4.join("prompts", "agents")), "workspace")
-  ]);
-  cachedAgents.set(key, discovered);
-  return discovered;
 }
 function discoverCommands(worktreePath) {
   const key = cacheKey(worktreePath);
   const cached3 = cachedCommands.get(key);
   if (cached3)
     return cached3;
-  const discovered = mergeByName([
-    scanCommandDir(BUNDLED_COMMANDS_DIR, "agnes"),
-    scanCommandDir(globalDir("commands"), "global"),
-    scanCommandDir(workspaceDir(worktreePath, "commands"), "workspace")
-  ]);
-  cachedCommands.set(key, discovered);
-  return discovered;
-}
-function discoverSkills(worktreePath) {
-  const key = cacheKey(worktreePath);
-  const cached3 = cachedSkills.get(key);
-  if (cached3)
-    return cached3;
-  const bundled = scanSkillDir(BUNDLED_SKILLS_DIR);
-  const global = scanSkillDir(globalDir("skills"));
-  const workspace = scanSkillDir(workspaceDir(worktreePath, "skills"));
+  const discovered = scanCommandDir(BUNDLED_COMMANDS_DIR, "agnes");
+  const global = scanCommandDir(globalDir("commands"), "global");
+  const workspace = scanCommandDir(workspaceDir(worktreePath, "commands"), "workspace");
   const seen = new Set;
   const results = [];
-  for (const dir of [...bundled, ...global, ...workspace]) {
-    if (!seen.has(dir)) {
-      seen.add(dir);
-      results.push(dir);
+  for (const cmd of [...discovered, ...global, ...workspace]) {
+    if (!seen.has(cmd.name)) {
+      seen.add(cmd.name);
+      results.push(cmd);
     }
   }
-  cachedSkills.set(key, results);
+  cachedCommands.set(key, results);
   return results;
-}
-
-// src/agent-hub.ts
-import * as path5 from "path";
-var DELEGATABLE_NAMES = new Set(["explore", "build", "plan", "general"]);
-function agentNameFromPath(skillPath) {
-  return skillPath.split(/[/\\]/).filter(Boolean).pop() || path5.basename(skillPath);
-}
-function discoverAgentHub(worktreePath) {
-  const rawAgents = discoverAgents(worktreePath);
-  const rawCommands = discoverCommands(worktreePath);
-  const rawSkillPaths = discoverSkills(worktreePath);
-  const agents = rawAgents.map((a) => ({
-    type: "agent",
-    name: a.name,
-    description: a.desc,
-    source: a.source,
-    delegatable: DELEGATABLE_NAMES.has(a.name)
-  }));
-  const commands = rawCommands.map((c) => ({
-    type: "command",
-    name: c.name,
-    description: c.desc,
-    source: c.source,
-    agent: c.agent,
-    subtask: c.subtask
-  }));
-  const skills = rawSkillPaths.map((sp) => ({
-    type: "skill",
-    name: agentNameFromPath(sp),
-    source: inferSkillSource(sp, worktreePath),
-    path: sp
-  }));
-  return { agents, commands, skills };
-}
-function inferSkillSource(skillPath, _worktreePath) {
-  const normal = skillPath.replace(/\\/g, "/");
-  const worktree = _worktreePath.replace(/\\/g, "/");
-  if (normal.startsWith(worktree + "/.opencode/skills/"))
-    return "workspace";
-  if (normal.includes(".config/opencode/skills/"))
-    return "global";
-  return "agnes";
-}
-function formatHubSummary(hub) {
-  const lines = ["## Agent Hub Catalog", ""];
-  lines.push(`**Agents** (${hub.agents.length})`);
-  if (hub.agents.length > 0) {
-    lines.push("| Name | Source | Delegatable | Description |");
-    lines.push("|------|--------|:-----------:|-------------|");
-    for (const a of hub.agents) {
-      const del = a.delegatable ? "yes" : "no";
-      lines.push(`| ${a.name} | ${a.source} | ${del} | ${a.description} |`);
-    }
-  } else {
-    lines.push("_(none discovered)_");
-  }
-  lines.push("");
-  lines.push(`**Commands** (${hub.commands.length})`);
-  if (hub.commands.length > 0) {
-    lines.push("| Name | Source | Delegates To | Description |");
-    lines.push("|------|--------|:-----------:|-------------|");
-    for (const c of hub.commands) {
-      const agent = c.agent || "-";
-      lines.push(`| ${c.name} | ${c.source} | ${agent} | ${c.description} |`);
-    }
-  } else {
-    lines.push("_(none discovered)_");
-  }
-  lines.push("");
-  lines.push(`**Skills** (${hub.skills.length})`);
-  if (hub.skills.length > 0) {
-    lines.push("| Name | Source |");
-    lines.push("|------|--------|");
-    for (const s of hub.skills) {
-      lines.push(`| ${s.name} | ${s.source} |`);
-    }
-  } else {
-    lines.push("_(none discovered)_");
-  }
-  lines.push("");
-  return lines.join(`
-`);
 }
 
 // src/delegate.ts
@@ -34757,22 +34533,16 @@ async function getSubagentResult(client, sessionID, directory) {
   }
 }
 var taskRefs = new Map;
-function recordTaskRef(taskRef, info2) {
-  taskRefs.set(taskRef, info2);
+function recordTaskRef(taskRef, info) {
+  taskRefs.set(taskRef, info);
 }
 function lookupTaskRef(taskRef) {
   return taskRefs.get(taskRef);
 }
 
 // src/plugin.ts
-var __dirname4 = path6.dirname(fileURLToPath3(import.meta.url));
-var skillsDir2 = path6.resolve(__dirname4, "../skills");
 var _plannerMode = "auto";
 var _injectedSessions = new Set;
-function getAgentTools(name) {
-  const readonly3 = ["reviewer", "planner", "architect", "lookup"].some((p) => name.includes(p));
-  return readonly3 ? { read: true, bash: true } : { read: true, write: true, edit: true, bash: true };
-}
 var AgnesPlugin = async (input) => {
   const { directory, worktree } = input;
   const worktreePath = worktree || directory;
@@ -34788,35 +34558,6 @@ var AgnesPlugin = async (input) => {
           ...plannerConfig,
           mode: _plannerMode
         };
-        const skillsConfig = configObj.skills;
-        const existingPaths = skillsConfig?.paths ? [...skillsConfig.paths] : [];
-        const allPaths = [...new Set([
-          ...existingPaths,
-          skillsDir2,
-          ...discoverSkills(worktreePath)
-        ])];
-        configObj.skills = { ...configObj.skills || {}, paths: allPaths };
-        const existingAgents = configObj.agent || {};
-        const discoveredAgents = discoverAgents(worktreePath);
-        for (const agent of discoveredAgents) {
-          if (!existingAgents[agent.name]) {
-            existingAgents[agent.name] = {
-              description: agent.desc,
-              prompt: agent.prompt,
-              mode: "subagent",
-              tools: getAgentTools(agent.name)
-            };
-          }
-        }
-        configObj.agent = existingAgents;
-        const registered = Object.keys(configObj.agent);
-        const coreAgents = ["explore", "general", "build", "plan"];
-        const missing = coreAgents.filter((a) => !registered.includes(a));
-        if (missing.length > 0) {
-          warn(`Core agents not registered: ${missing.join(", ")}. Delegation to these agents will fail.`);
-        }
-        const hub = discoverAgentHub(worktreePath);
-        const hubSummary = formatHubSummary(hub);
         const cmdCfgObj = configObj.command || {};
         for (const cmd of discoverCommands(worktreePath)) {
           if (!cmdCfgObj[cmd.name]) {
@@ -34824,24 +34565,11 @@ var AgnesPlugin = async (input) => {
               description: cmd.desc,
               template: `${cmd.template}
 
-$ARGUMENTS`,
-              ...cmd.agent ? { agent: cmd.agent } : {},
-              ...cmd.subtask ? { subtask: true } : {}
+$ARGUMENTS`
             };
           }
         }
-        if (!cmdCfgObj["agent-hub"]) {
-          cmdCfgObj["agent-hub"] = {
-            description: "List all discovered agents, skills, and commands from the Agent Hub catalog",
-            template: `Present the following Agent Hub catalog as a formatted summary:
-
-${hubSummary}
-
-Group by type and source, highlight delegatable agents.`
-          };
-        }
         configObj.command = cmdCfgObj;
-        info(`Plugin config applied: ${discoveredAgents.length} agents, ${Object.keys(cmdCfgObj).length} commands`);
       } catch (err) {
         error95("Failed to apply plugin config", err);
       }
@@ -34900,8 +34628,8 @@ Group by type and source, highlight delegatable agents.`
         },
         async execute(args, ctx) {
           try {
-            const info2 = lookupTaskRef(args.taskRef);
-            const directory2 = info2?.directory ?? ctx.directory;
+            const info = lookupTaskRef(args.taskRef);
+            const directory2 = info?.directory ?? ctx.directory;
             const result = await getSubagentResult(input.client, args.taskRef, directory2);
             switch (result.status) {
               case "completed":

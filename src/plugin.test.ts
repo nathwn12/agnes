@@ -30,15 +30,13 @@ describe('AgnesPlugin structure', () => {
     expect((config.planner as Record<string, unknown>).mode).toBe('auto');
   });
 
-  test('config hooks adds skills path', async () => {
+  test('config hook registers commands', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
     const plugin = await AgnesPlugin({ directory: process.cwd() });
-    const config: Record<string, unknown> = {
-      skills: { paths: [] },
-    };
+    const config: Record<string, unknown> = {};
     await plugin.config!(config);
-    const paths = (config.skills as Record<string, unknown>).paths as string[];
-    expect(paths.length).toBeGreaterThan(0);
+    const commands = (config.command as Record<string, unknown>) ?? {};
+    expect(Object.keys(commands).length).toBeGreaterThan(0);
   });
 
   test('config hook preserves build agent configuration without mutation gates', async () => {
@@ -144,24 +142,23 @@ describe('tool.definition hook', () => {
     expect(output.description).toBe('Edit a file');
   });
 
-  test('bootstrap contains simplified routing rules', async () => {
+  test('bootstrap contains delegation and commands', async () => {
     const { getBootstrapContent } = await import('./bootstrap.js');
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
     expect(content).toContain('@explore');
-    expect(content).toContain('@general');
-    expect(content).toContain('Ask user');
+    expect(content).toContain('@build');
+    expect(content).toContain('agnes_delegate');
   });
 });
 
 describe('bootstrap delegation enforcement', () => {
-  test('getBootstrapContent includes simplified routing rules', () => {
+  test('getBootstrapContent includes delegation protocol', () => {
     
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
-    expect(content!).toContain('=== AGNES ROUTING ===');
     expect(content!).toContain('@explore');
-    expect(content!).toContain('@general');
-    expect(content!).toContain('Ask user');
+    expect(content!).toContain('@build');
+    expect(content!).toContain('agnes_delegate');
   });
 });

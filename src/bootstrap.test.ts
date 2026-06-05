@@ -15,7 +15,7 @@ describe('getBootstrapContent', () => {
   test('includes the version string from package.json', () => {
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
-    expect(content!).toMatch(/Current AGNES version: `[^`]+`/);
+    expect(content!).toMatch(/AGNES v[0-9]+\.[0-9]+\.[0-9]+/);
   });
 
   test('includes plan state section with content', () => {

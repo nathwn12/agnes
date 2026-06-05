@@ -1,6 +1,5 @@
 ---
 description: Review code for quality, security, and maintainability
-agent: reviewer
 subtask: true
 ---
 

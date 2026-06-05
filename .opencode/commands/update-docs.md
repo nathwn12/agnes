@@ -1,6 +1,5 @@
 ---
 description: Update documentation for recent changes
-agent: doc-updater
 subtask: true
 ---
 

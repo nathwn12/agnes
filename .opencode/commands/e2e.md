@@ -1,6 +1,5 @@
 ---
 description: Generate and run E2E tests with Playwright
-agent: e2e-runner
 subtask: true
 ---
 

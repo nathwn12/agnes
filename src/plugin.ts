@@ -1,18 +1,13 @@
 import type { Plugin } from '@opencode-ai/plugin';
 import { tool } from '@opencode-ai/plugin';
 import { randomUUID } from 'node:crypto';
-import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   getBootstrapContent,
   getBootstrapPackageInfo,
 } from './bootstrap.js';
 import {
-  discoverAgents,
   discoverCommands,
-  discoverSkills,
 } from './discovery.js';
-import { discoverAgentHub, formatHubSummary } from './agent-hub.js';
 import { serializeAgnesMessage } from './protocol.js';
 import {
   buildCompactionContext,
@@ -28,18 +23,8 @@ import {
   lookupTaskRef,
 } from './delegate.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const skillsDir = path.resolve(__dirname, '../skills');
-
 let _plannerMode: 'auto' | 'builtin' | 'full' = 'auto';
 const _injectedSessions = new Set<string>();
-
-function getAgentTools(name: string): Record<string, boolean> {
-  const readonly = ["reviewer", "planner", "architect", "lookup"].some(p => name.includes(p));
-  return readonly
-    ? { read: true, bash: true }
-    : { read: true, write: true, edit: true, bash: true };
-}
 
 export const AgnesPlugin: Plugin = async (input) => {
   const { directory, worktree } = input;
@@ -61,60 +46,16 @@ export const AgnesPlugin: Plugin = async (input) => {
           mode: _plannerMode,
         } as Record<string, unknown>;
 
-        const skillsConfig = configObj.skills as { paths?: string[] } | undefined;
-        const existingPaths = skillsConfig?.paths ? [...skillsConfig.paths] : [];
-        const allPaths = [...new Set([
-          ...existingPaths,
-          skillsDir,
-          ...discoverSkills(worktreePath),
-        ])];
-        configObj.skills = { ...(configObj.skills as Record<string, unknown> || {}), paths: allPaths };
-
-        const existingAgents = (configObj.agent || {}) as Record<string, unknown>;
-        const discoveredAgents = discoverAgents(worktreePath);
-        for (const agent of discoveredAgents) {
-          if (!existingAgents[agent.name]) {
-            existingAgents[agent.name] = {
-              description: agent.desc,
-              prompt: agent.prompt,
-              mode: "subagent",
-              tools: getAgentTools(agent.name),
-            };
-          }
-        }
-        configObj.agent = existingAgents;
-
-        // Validate that sub-agent slots were registered
-        const registered = Object.keys(configObj.agent as Record<string, unknown>);
-        const coreAgents = ['explore', 'general', 'build', 'plan'];
-        const missing = coreAgents.filter(a => !registered.includes(a));
-        if (missing.length > 0) {
-          logger.warn(`Core agents not registered: ${missing.join(', ')}. Delegation to these agents will fail.`);
-        }
-
-        const hub = discoverAgentHub(worktreePath);
-        const hubSummary = formatHubSummary(hub);
-
         const cmdCfgObj = (configObj.command || {}) as Record<string, unknown>;
         for (const cmd of discoverCommands(worktreePath)) {
           if (!cmdCfgObj[cmd.name]) {
             cmdCfgObj[cmd.name] = {
               description: cmd.desc,
               template: `${cmd.template}\n\n$ARGUMENTS`,
-              ...(cmd.agent ? { agent: cmd.agent } : {}),
-              ...(cmd.subtask ? { subtask: true } : {}),
             };
           }
         }
-        if (!cmdCfgObj['agent-hub']) {
-          cmdCfgObj['agent-hub'] = {
-            description: 'List all discovered agents, skills, and commands from the Agent Hub catalog',
-            template: `Present the following Agent Hub catalog as a formatted summary:\n\n${hubSummary}\n\nGroup by type and source, highlight delegatable agents.`,
-          };
-        }
         configObj.command = cmdCfgObj;
-
-        logger.info(`Plugin config applied: ${discoveredAgents.length} agents, ${Object.keys(cmdCfgObj).length} commands`);
       } catch (err) {
         logger.error('Failed to apply plugin config', err);
       }

@@ -1,6 +1,5 @@
 ---
 description: Remove dead code and consolidate duplicates
-agent: refactor-cleaner
 subtask: true
 ---
 

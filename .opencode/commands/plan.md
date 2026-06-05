@@ -1,6 +1,5 @@
 ---
 description: Create implementation plan with risk assessment
-agent: planner
 subtask: true
 ---
 

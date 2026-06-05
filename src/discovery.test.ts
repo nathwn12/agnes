@@ -3,11 +3,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  discoverAgents,
   discoverCommands,
-  discoverSkills,
   clearDiscoveryCache,
-} from "./discovery";
+} from "./discovery.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEST_BASE = path.join(__dirname, "..", ".agnes-test");
@@ -30,72 +28,6 @@ function writeFile(file: string, content: string): void {
   fs.writeFileSync(file, content, "utf8");
 }
 
-describe("discoverAgents", () => {
-  beforeEach(() => {
-    clearDiscoveryCache();
-    tmpDir = tmpRoot();
-  });
-
-  afterEach(() => {
-    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-  });
-
-  it("discovers agents from workspace .opencode directory", () => {
-    const agDir = testDir(".opencode", "prompts", "agents");
-    writeFile(path.join(agDir, "custom-agent.txt"), "You are a custom agent.\nDo things.\n");
-    const agents = discoverAgents(tmpDir);
-    const agent = agents.find((a) => a.name === "custom-agent");
-    expect(agent).toBeDefined();
-    expect(agent!.source).toBe("workspace");
-    expect(agent!.desc).toBe("custom agent");
-  });
-
-  it("discovery is additive for unique names", () => {
-    const agDir = testDir(".opencode", "prompts", "agents");
-    writeFile(path.join(agDir, "team-agent.txt"), "You are a team agent.\nDo things.\n");
-    writeFile(path.join(agDir, "qa-agent.txt"), "You are a QA agent.\nCheck things.\n");
-    const agents = discoverAgents(tmpDir);
-    const workspace = agents.filter((a) => a.source === "workspace");
-    expect(workspace.length).toBe(2);
-  });
-
-  it("handles missing workspace directory gracefully", () => {
-    clearDiscoveryCache();
-    const agents = discoverAgents(path.join(tmpDir, "nonexistent"));
-    expect(agents.length).toBeGreaterThanOrEqual(3);
-  });
-
-  it("reads agent prompt content", () => {
-    const agDir = testDir(".opencode", "prompts", "agents");
-    writeFile(path.join(agDir, "helper.txt"), "You are a helpful assistant.\nAnswer questions.\n");
-    const agents = discoverAgents(tmpDir);
-    const agent = agents.find((a) => a.name === "helper");
-    expect(agent).toBeDefined();
-    expect(agent!.prompt).toContain("helpful assistant");
-  });
-
-  it("skips non-.txt files in agent directory", () => {
-    const agDir = testDir(".opencode", "prompts", "agents");
-    writeFile(path.join(agDir, "readme.md"), "# Not an agent\n");
-    writeFile(path.join(agDir, "real.txt"), "You are a real agent.\n");
-    const agents = discoverAgents(tmpDir);
-    const workspace = agents.filter((a) => a.source === "workspace");
-    expect(workspace.length).toBe(1);
-    expect(workspace[0].name).toBe("real");
-  });
-
-  it("includes bundled AGNES agents", () => {
-    const agents = discoverAgents(tmpDir);
-    const planner = agents.find((a) => a.name === "planner");
-    const reviewer = agents.find((a) => a.name === "reviewer");
-
-    expect(planner?.source).toBe("agnes");
-    expect(reviewer?.source).toBe("agnes");
-    expect(planner).toBeDefined();
-    expect(reviewer).toBeDefined();
-  });
-});
-
 describe("discoverCommands", () => {
   beforeEach(() => {
     clearDiscoveryCache();
@@ -116,16 +48,6 @@ describe("discoverCommands", () => {
     expect(cmd!.desc).toBe("Ship it command");
   });
 
-  it("handles frontmatter parsing for workspace commands", () => {
-    const cmdDir = testDir(".opencode", "commands");
-    writeFile(cmdDir + "/custom.md", "---\ndescription: Custom\nagent: planner\nsubtask: true\n---\nRun planner.\n");
-    const cmds = discoverCommands(tmpDir);
-    const cmd = cmds.find((c) => c.name === "custom");
-    expect(cmd).toBeDefined();
-    expect(cmd!.agent).toBe("planner");
-    expect(cmd!.subtask).toBe(true);
-  });
-
   it("commands are additive for unique names", () => {
     const cmdDir = testDir(".opencode", "commands");
     writeFile(cmdDir + "/cmd1.md", "---\ndescription: First\n---\nDo first.\n");
@@ -138,7 +60,7 @@ describe("discoverCommands", () => {
   it("handles missing workspace directory gracefully", () => {
     clearDiscoveryCache();
     const cmds = discoverCommands(path.join(tmpDir, "nonexistent"));
-    expect(cmds.length).toBe(11);
+    expect(cmds.length).toBe(13);
   });
 
   it("skips non-.md files in command directory", () => {
@@ -161,50 +83,6 @@ describe("discoverCommands", () => {
   });
 });
 
-describe("discoverSkills", () => {
-  beforeEach(() => {
-    clearDiscoveryCache();
-    tmpDir = tmpRoot();
-  });
-
-  afterEach(() => {
-    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-  });
-
-  it("discovers skills from workspace .opencode directory", () => {
-    const skillDir = testDir(".opencode", "skills", "ws-skill");
-    writeFile(path.join(skillDir, "SKILL.md"), "# Workspace Skill\nDo things.\n");
-    const skills = discoverSkills(tmpDir);
-    expect(skills.some((s) => s.endsWith("ws-skill"))).toBe(true);
-  });
-
-  it("deduplicates skill paths from bundled and workspace", () => {
-    // Create workspace skill with same name — no conflict since bundled has none
-    const skillDir = testDir(".opencode", "skills", "test-skill");
-    writeFile(path.join(skillDir, "SKILL.md"), "# Test Skill\n");
-    const skills = discoverSkills(tmpDir);
-    const dirs = skills.map((s) => path.basename(s));
-    expect(new Set(dirs).size).toBe(dirs.length);
-  });
-
-  it("handles missing workspace directory gracefully", () => {
-    clearDiscoveryCache();
-    const skills = discoverSkills(path.join(tmpDir, "nonexistent"));
-    expect(skills.length).toBeGreaterThanOrEqual(20);
-  });
-
-  it("ignores directories without SKILL.md", () => {
-    const skillDir = testDir(".opencode", "skills", "not-a-skill");
-    writeFile(path.join(skillDir, "README.md"), "# Not a skill\n");
-    const otherDir = testDir(".opencode", "skills", "actual-skill");
-    writeFile(path.join(otherDir, "SKILL.md"), "# Actual Skill\n");
-    const skills = discoverSkills(tmpDir);
-    const names = skills.map((s) => path.basename(s));
-    expect(names).not.toContain("not-a-skill");
-    expect(names).toContain("actual-skill");
-  });
-});
-
 describe("discovery caching", () => {
   beforeEach(() => {
     clearDiscoveryCache();
@@ -213,56 +91,6 @@ describe("discovery caching", () => {
 
   afterEach(() => {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-  });
-
-  it("discoverAgents returns cached result on second call", () => {
-    const agDir = testDir(".opencode", "prompts", "agents");
-    writeFile(path.join(agDir, "first.txt"), "You are first.\n");
-    const first = discoverAgents(tmpDir);
-    writeFile(path.join(agDir, "late.txt"), "You are late.\n");
-    const second = discoverAgents(tmpDir);
-    expect(second.length).toBe(first.length);
-  });
-
-  it("scopes agent cache by worktree path", () => {
-    const otherDir = tmpRoot();
-    try {
-      writeFile(path.join(testDir(".opencode", "prompts", "agents"), "first.txt"), "You are first.\n");
-      writeFile(path.join(otherDir, ".opencode", "prompts", "agents", "second.txt"), "You are second.\n");
-
-      const first = discoverAgents(tmpDir);
-      const second = discoverAgents(otherDir);
-
-      expect(first.some((agent) => agent.name === "first")).toBe(true);
-      expect(first.some((agent) => agent.name === "second")).toBe(false);
-      expect(second.some((agent) => agent.name === "second")).toBe(true);
-      expect(second.some((agent) => agent.name === "first")).toBe(false);
-    } finally {
-      try { fs.rmSync(otherDir, { recursive: true, force: true }); } catch {}
-    }
-  });
-
-  it("clearDiscoveryCache resets and picks up new agents", () => {
-    const agDir = testDir(".opencode", "prompts", "agents");
-    writeFile(path.join(agDir, "old.txt"), "You are old.\n");
-    discoverAgents(tmpDir);
-    clearDiscoveryCache();
-    writeFile(path.join(agDir, "fresh.txt"), "You are fresh.\n");
-    const agents = discoverAgents(tmpDir);
-    expect(agents.some((a) => a.name === "fresh")).toBe(true);
-  });
-
-  it("each discovery type has independent cache", () => {
-    clearDiscoveryCache();
-    const agDir = testDir(".opencode", "prompts", "agents");
-    writeFile(path.join(agDir, "agent.txt"), "You are agent.\n");
-    discoverAgents(tmpDir);
-    const cmdDir = testDir(".opencode", "commands");
-    writeFile(cmdDir + "/cmd.md", "---\ndescription: Cmd\n---\nDo.\n");
-    clearDiscoveryCache();
-    const cmds = discoverCommands(tmpDir);
-    const workspace = cmds.filter((c) => c.source === "workspace");
-    expect(workspace.length).toBe(1);
   });
 
   it("scopes command cache by worktree path", () => {
@@ -278,24 +106,6 @@ describe("discovery caching", () => {
       expect(first.some((command) => command.name === "second")).toBe(false);
       expect(second.some((command) => command.name === "second")).toBe(true);
       expect(second.some((command) => command.name === "first")).toBe(false);
-    } finally {
-      try { fs.rmSync(otherDir, { recursive: true, force: true }); } catch {}
-    }
-  });
-
-  it("scopes skill cache by worktree path", () => {
-    const otherDir = tmpRoot();
-    try {
-      writeFile(path.join(testDir(".opencode", "skills", "first-skill"), "SKILL.md"), "# First\n");
-      writeFile(path.join(otherDir, ".opencode", "skills", "second-skill", "SKILL.md"), "# Second\n");
-
-      const first = discoverSkills(tmpDir);
-      const second = discoverSkills(otherDir);
-
-      expect(first.some((skill) => skill.endsWith("first-skill"))).toBe(true);
-      expect(first.some((skill) => skill.endsWith("second-skill"))).toBe(false);
-      expect(second.some((skill) => skill.endsWith("second-skill"))).toBe(true);
-      expect(second.some((skill) => skill.endsWith("first-skill"))).toBe(false);
     } finally {
       try { fs.rmSync(otherDir, { recursive: true, force: true }); } catch {}
     }
