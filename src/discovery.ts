@@ -4,9 +4,7 @@ import * as os from "node:os";
 import { fileURLToPath } from "node:url";
 import { findPackageRoot } from "./bootstrap.js";
 import { stripYamlFrontmatter } from "./plugin-support.js";
-import { inferAgentDesc, inferAgentPermission, mergeByName, parseCommandFrontmatter } from "./discovery-policy.js";
-
-export type AgentPermissionValue = string | Record<string, string>;
+import { inferAgentDesc, mergeByName, parseCommandFrontmatter } from "./discovery-policy.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = findPackageRoot(__dirname) ?? path.resolve(__dirname, "..", "..");
@@ -18,7 +16,6 @@ export interface AgentDiscovery {
   name: string;
   desc: string;
   prompt: string;
-  permission?: Record<string, AgentPermissionValue>;
   source: "agnes" | "global" | "workspace";
 }
 
@@ -48,7 +45,7 @@ function scanAgentDir(dir: string, source: AgentDiscovery["source"]): AgentDisco
       const name = entry.name.slice(0, -4);
       const prompt = readFileSafe(path.join(dir, entry.name));
       if (!prompt) continue;
-      results.push({ name, desc: inferAgentDesc(name, prompt), prompt, permission: inferAgentPermission(name), source });
+      results.push({ name, desc: inferAgentDesc(name, prompt), prompt, source });
     }
   } catch { /* dir missing — skip */ }
   return results;

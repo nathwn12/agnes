@@ -8,7 +8,6 @@ export interface AgentHubEntry {
   name: string;
   description: string;
   source: HubSource;
-  permission?: Record<string, unknown>;
   delegatable: boolean;
 }
 
@@ -52,7 +51,6 @@ export function discoverAgentHub(worktreePath: string): AgentHub {
     name: a.name,
     description: a.desc,
     source: a.source,
-    permission: a.permission as Record<string, unknown> | undefined,
     delegatable: DELEGATABLE_NAMES.has(a.name),
   }));
 

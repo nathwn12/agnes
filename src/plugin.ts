@@ -48,6 +48,13 @@ const skillsDir = path.resolve(__dirname, '../skills');
 let _plannerMode: 'auto' | 'builtin' | 'full' = 'auto';
 const _injectedSessions = new Set<string>();
 
+function getAgentTools(name: string): Record<string, boolean> {
+  const readonly = ["reviewer", "planner", "architect", "lookup"].some(p => name.includes(p));
+  return readonly
+    ? { read: true, bash: true }
+    : { read: true, write: true, edit: true, bash: true };
+}
+
 function buildStructuredBootstrap(
   planner?: PlannerRoutingContext,
   workspaceRoot?: string,
@@ -108,14 +115,12 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
       const existingAgents = (configObj.agent || {}) as Record<string, unknown>;
       for (const agent of discoverAgents(worktreePath)) {
         if (!existingAgents[agent.name]) {
-          const entry: Record<string, unknown> = {
+          existingAgents[agent.name] = {
             description: agent.desc,
             prompt: agent.prompt,
+            mode: "subagent",
+            tools: getAgentTools(agent.name),
           };
-          if (agent.permission) {
-            entry.permission = agent.permission;
-          }
-          existingAgents[agent.name] = entry;
         }
       }
       configObj.agent = existingAgents;

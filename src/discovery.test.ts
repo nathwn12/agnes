@@ -84,17 +84,15 @@ describe("discoverAgents", () => {
     expect(workspace[0].name).toBe("real");
   });
 
-  it("includes bundled AGNES agents with scoped permissions", () => {
+  it("includes bundled AGNES agents", () => {
     const agents = discoverAgents(tmpDir);
     const planner = agents.find((a) => a.name === "planner");
     const reviewer = agents.find((a) => a.name === "reviewer");
 
     expect(planner?.source).toBe("agnes");
     expect(reviewer?.source).toBe("agnes");
-
     expect(planner).toBeDefined();
-    expect(planner?.permission).toEqual({ edit: "deny", write: "deny", bash: "deny", task: "deny" });
-    expect(reviewer?.permission).toEqual({ edit: "deny", bash: "deny", task: "deny" });
+    expect(reviewer).toBeDefined();
   });
 });
 
