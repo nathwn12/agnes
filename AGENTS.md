@@ -74,7 +74,7 @@ CI: `bun install -> bun run lint -> bun run typecheck -> bun test -> bun run bun
 
 | Path | Role |
 |------|------|
-| src/plugin.ts | OpenCode entry point. Registers all hooks, injects bootstrap, registers skills/commands/agents. |
+| src/plugin.ts | OpenCode entry point. Registers hooks, injects bootstrap, registers skills/commands/agents, exposes custom `agnes_delegate`/`agnes_get_result` tools. |
 | src/bootstrap.ts | Injects SOUL.md + structured YAML blocks as system prompt. Cached by content hash. |
 | src/state.ts | Plan index CRUD — .agnes/index.json + plans/plan-NNN.yaml. Immutable plan files, append-only iterations. |
 | src/runtime.ts | Session tracking, attempt counting, struggle detection, wave dispatch, planner routing, gate integration. |
@@ -86,6 +86,7 @@ CI: `bun install -> bun run lint -> bun run typecheck -> bun test -> bun run bun
 | src/model-routing-policy.ts | Config types, default model, agent list population, apply logic. |
 | src/plugin-support.ts | Project profile detection, compaction context builder. |
 | src/verification.ts | Structured gates (PASS/FAIL/SKIP) with blocking gate short-circuit. |
+| src/delegate.ts | Programmatic subagent delegation via OpenCode client API. Creates child sessions, sends prompts, polls for results. Bypasses unreliable built-in `delegate_task`/`get_task_result`. |
 | src/compaction.ts | Token-count evaluation (nudge/alert/compact) with discretionary struggle-aware thresholds. |
 | src/logger.ts | Stderr logger — debug/info/warn/error with [agnes] prefix. |
 

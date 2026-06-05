@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPlanSummary } from './state.js';
 import type { PlanIndex, PlannerRoutingContext } from './state.js';
+import * as logger from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -49,7 +50,6 @@ let _bootstrapCache: BootstrapCacheEntry | undefined = undefined;
 
 export function getStaticBootstrapContent(): string | null {
   const soulPath = path.join(packageRoot, 'SOUL.md');
-  if (!fs.existsSync(soulPath)) return null;
   const version = getPackageVersion();
   try {
     const stat = fs.statSync(soulPath);
@@ -58,7 +58,18 @@ export function getStaticBootstrapContent(): string | null {
 
     const fullContent = fs.readFileSync(soulPath, 'utf8');
 
-    const toolMapping = `**Tool Mapping for OpenCode:**
+    const staticContent = buildBootstrapFromSoul(fullContent, version);
+    _bootstrapCache = { content: staticContent, key: statKey };
+    return staticContent;
+  } catch (err) {
+    logger.warn(`Failed to load SOUL.md from ${soulPath}`, err);
+    // Return a minimal working bootstrap as fallback
+    return buildMinimalBootstrap(version);
+  }
+}
+
+function buildBootstrapFromSoul(fullContent: string, version: string): string {
+  const toolMapping = `**Tool Mapping for OpenCode:**
 When skills reference tools you don't have, substitute OpenCode equivalents:
 - \`TodoWrite\` → \`todowrite\`
 - \`Task\` with subagents → OpenCode's subagent system (@mention)
@@ -67,7 +78,7 @@ When skills reference tools you don't have, substitute OpenCode equivalents:
 
 Use OpenCode's native \`skill\` tool to list and load skills.`;
 
-    const staticContent = `<EXTREMELY_IMPORTANT>
+  return `<EXTREMELY_IMPORTANT>
 You are AGNES.
 
 **Runtime Identity** (AGNES internal install paths — distinct from the current project workspace)
@@ -79,6 +90,15 @@ You are AGNES.
 
 === AGNES ORCHESTRATION CONTRACT ===
 You are the MAIN AGENT. You DELEGATE. You NEVER execute directly.
+
+**DELEGATION PROTOCOL (CRITICAL — follow exactly)**
+ONLY use \`agnes_delegate\` and \`agnes_get_result\` for subagent delegation. The built-in \`delegate_task\` and \`get_task_result\` tools are DEPRECATED and may fail randomly — do NOT use them.
+1. \`agnes_delegate(agent, description, prompt, background=false)\` → returns result inline (blocking).
+2. \`agnes_delegate(agent, description, prompt, background=true)\` → returns a task reference string (session ID) immediately.
+3. For background tasks: use \`agnes_get_result(taskRef)\` with the returned task reference to poll for completion.
+4. If \`agnes_get_result\` returns ERROR or NOT_FOUND — the task did NOT complete. Re-delegate or report failure. Never assume completion.
+5. If \`agnes_get_result\` returns PENDING — the subagent is still working. Retry after a brief wait.
+6. Always verify subagent work exists (files written, changes applied) before synthesizing.
 
 **FRAGMENT FIRST — then delegate**
 Every task MUST be split into the smallest possible independent chunks BEFORE delegating. Decompose by directory, file, or concern. Fire N subagents in parallel — one per chunk. Never assign a monolithic task to a single subagent.
@@ -127,14 +147,25 @@ ${fullContent.trim()}
 
 ${toolMapping}
 </EXTREMELY_IMPORTANT>`;
-
-    _bootstrapCache = { content: staticContent, key: statKey };
-    return staticContent;
-  } catch {
-    return null;
-  }
 }
+function buildMinimalBootstrap(version: string): string {
+  return `<EXTREMELY_IMPORTANT>
+You are AGNES v${version}.
 
+**CRITICAL: Delegation Protocol**
+Use \`agnes_delegate\` and \`agnes_get_result\` for ALL subagent work. Built-in \`delegate_task\`/\`get_task_result\` are DEPRECATED and unreliable.
+1. \`agnes_delegate(agent, description, prompt, background=false)\` → blocking, returns result.
+2. \`agnes_delegate(agent, description, prompt, background=true)\` → returns task reference (session ID).
+3. \`agnes_get_result(taskRef)\` → polls for result. Returns output, PENDING, or ERROR.
+4. If result is PENDING → retry after a brief wait.
+5. If result is ERROR → re-delegate or fail explicitly.
+6. ALWAYS verify subagent work before claiming completion.
+
+Available agents: @explore (read-only), @general (write+bash), @plan (read-only), @build (write+bash)
+
+You are a swarm orchestrator. You NEVER do work yourself. Delegate everything.
+</EXTREMELY_IMPORTANT>`;
+}
 export function getBootstrapContent(planner?: PlannerRoutingContext, projectRoot?: string, index?: PlanIndex | null): string | null {
   const staticContent = getStaticBootstrapContent();
   if (!staticContent) return null;

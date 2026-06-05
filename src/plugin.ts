@@ -1,4 +1,5 @@
 import type { Plugin } from '@opencode-ai/plugin';
+import { tool } from '@opencode-ai/plugin';
 import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,6 +20,13 @@ import {
 } from './plugin-support.js';
 import type { ProjectProfile } from './plugin-support.js';
 import * as logger from './logger.js';
+import {
+  delegateBlocking,
+  delegateAsync,
+  getSubagentResult,
+  recordTaskRef,
+  lookupTaskRef,
+} from './delegate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const skillsDir = path.resolve(__dirname, '../skills');
@@ -33,74 +41,170 @@ function getAgentTools(name: string): Record<string, boolean> {
     : { read: true, write: true, edit: true, bash: true };
 }
 
-export const AgnesPlugin: Plugin = async ({ directory, worktree }) => {
+export const AgnesPlugin: Plugin = async (input) => {
+  const { directory, worktree } = input;
   const worktreePath = worktree || directory;
   const editedFiles = new Set<string>();
   let projectProfile: ProjectProfile | null = null;
 
   return {
     config: async (config: Record<string, unknown>) => {
-      const configObj = config as Record<string, unknown>;
+      try {
+        const configObj = config as Record<string, unknown>;
 
-      const plannerConfig = (configObj.planner as Record<string, unknown> | undefined) ?? {};
-      _plannerMode = typeof plannerConfig.mode === 'string' && ['auto', 'builtin', 'full'].includes(plannerConfig.mode)
-        ? plannerConfig.mode as 'auto' | 'builtin' | 'full'
-        : 'auto';
-      configObj.planner = {
-        ...plannerConfig,
-        mode: _plannerMode,
-      } as Record<string, unknown>;
+        const plannerConfig = (configObj.planner as Record<string, unknown> | undefined) ?? {};
+        _plannerMode = typeof plannerConfig.mode === 'string' && ['auto', 'builtin', 'full'].includes(plannerConfig.mode)
+          ? plannerConfig.mode as 'auto' | 'builtin' | 'full'
+          : 'auto';
+        configObj.planner = {
+          ...plannerConfig,
+          mode: _plannerMode,
+        } as Record<string, unknown>;
 
-      const skillsConfig = configObj.skills as { paths?: string[] } | undefined;
-      const existingPaths = skillsConfig?.paths ? [...skillsConfig.paths] : [];
-      const allPaths = [...new Set([
-        ...existingPaths,
-        skillsDir,
-        ...discoverSkills(worktreePath),
-      ])];
-      configObj.skills = { ...(configObj.skills as Record<string, unknown> || {}), paths: allPaths };
+        const skillsConfig = configObj.skills as { paths?: string[] } | undefined;
+        const existingPaths = skillsConfig?.paths ? [...skillsConfig.paths] : [];
+        const allPaths = [...new Set([
+          ...existingPaths,
+          skillsDir,
+          ...discoverSkills(worktreePath),
+        ])];
+        configObj.skills = { ...(configObj.skills as Record<string, unknown> || {}), paths: allPaths };
 
-      const existingAgents = (configObj.agent || {}) as Record<string, unknown>;
-      for (const agent of discoverAgents(worktreePath)) {
-        if (!existingAgents[agent.name]) {
-          existingAgents[agent.name] = {
-            description: agent.desc,
-            prompt: agent.prompt,
-            mode: "subagent",
-            tools: getAgentTools(agent.name),
+        const existingAgents = (configObj.agent || {}) as Record<string, unknown>;
+        const discoveredAgents = discoverAgents(worktreePath);
+        for (const agent of discoveredAgents) {
+          if (!existingAgents[agent.name]) {
+            existingAgents[agent.name] = {
+              description: agent.desc,
+              prompt: agent.prompt,
+              mode: "subagent",
+              tools: getAgentTools(agent.name),
+            };
+          }
+        }
+        configObj.agent = existingAgents;
+
+        // Validate that sub-agent slots were registered
+        const registered = Object.keys(configObj.agent as Record<string, unknown>);
+        const coreAgents = ['explore', 'general', 'build', 'plan'];
+        const missing = coreAgents.filter(a => !registered.includes(a));
+        if (missing.length > 0) {
+          logger.warn(`Core agents not registered: ${missing.join(', ')}. Delegation to these agents will fail.`);
+        }
+
+        const hub = discoverAgentHub(worktreePath);
+        const hubSummary = formatHubSummary(hub);
+
+        const cmdCfgObj = (configObj.command || {}) as Record<string, unknown>;
+        for (const cmd of discoverCommands(worktreePath)) {
+          if (!cmdCfgObj[cmd.name]) {
+            cmdCfgObj[cmd.name] = {
+              description: cmd.desc,
+              template: `${cmd.template}\n\n$ARGUMENTS`,
+              ...(cmd.agent ? { agent: cmd.agent } : {}),
+              ...(cmd.subtask ? { subtask: true } : {}),
+            };
+          }
+        }
+        if (!cmdCfgObj['agent-hub']) {
+          cmdCfgObj['agent-hub'] = {
+            description: 'List all discovered agents, skills, and commands from the Agent Hub catalog',
+            template: `Present the following Agent Hub catalog as a formatted summary:\n\n${hubSummary}\n\nGroup by type and source, highlight delegatable agents.`,
           };
         }
-      }
-      configObj.agent = existingAgents;
+        configObj.command = cmdCfgObj;
 
-      const hub = discoverAgentHub(worktreePath);
-      const hubSummary = formatHubSummary(hub);
-
-      const cmdCfgObj = (configObj.command || {}) as Record<string, unknown>;
-      for (const cmd of discoverCommands(worktreePath)) {
-        if (!cmdCfgObj[cmd.name]) {
-          cmdCfgObj[cmd.name] = {
-            description: cmd.desc,
-            template: `${cmd.template}\n\n$ARGUMENTS`,
-            ...(cmd.agent ? { agent: cmd.agent } : {}),
-            ...(cmd.subtask ? { subtask: true } : {}),
-          };
-        }
+        logger.info(`Plugin config applied: ${discoveredAgents.length} agents, ${Object.keys(cmdCfgObj).length} commands`);
+      } catch (err) {
+        logger.error('Failed to apply plugin config', err);
       }
-      if (!cmdCfgObj['agent-hub']) {
-        cmdCfgObj['agent-hub'] = {
-          description: 'List all discovered agents, skills, and commands from the Agent Hub catalog',
-          template: `Present the following Agent Hub catalog as a formatted summary:\n\n${hubSummary}\n\nGroup by type and source, highlight delegatable agents.`,
-        };
-      }
-      configObj.command = cmdCfgObj;
     },
 
     'session.created': async (_event: any) => {
-      projectProfile = detectProject(worktreePath);
+      try {
+        projectProfile = detectProject(worktreePath);
+      } catch (err) {
+        logger.warn('Failed to detect project profile', err);
+      }
     },
 
-    'tool.definition': async () => {},
+    tool: {
+      agnes_delegate: tool({
+        description: 'Delegate a task to a subagent. Use this instead of the built-in delegate_task (which is deprecated and unreliable).',
+        args: {
+          agent: tool.schema.enum(['explore', 'general', 'build', 'plan']).describe('Which agent type to delegate to'),
+          description: tool.schema.string().describe('Short description of the task'),
+          prompt: tool.schema.string().describe('Full instructions for the subagent'),
+          background: tool.schema.boolean().default(false).describe('If true, returns a task reference for later polling with agnes_get_result. If false, blocks until complete.'),
+        },
+        async execute(args, ctx) {
+          try {
+            if (args.background) {
+              const ref = await delegateAsync(input.client, {
+                agent: args.agent,
+                description: args.description,
+                prompt: args.prompt,
+                sessionID: ctx.sessionID,
+                directory: ctx.directory,
+              });
+              recordTaskRef(ref, {
+                sessionID: ref,
+                directory: ctx.directory,
+                agent: args.agent,
+                description: args.description,
+              });
+              return ref;
+            }
+            return await delegateBlocking(input.client, {
+              agent: args.agent,
+              description: args.description,
+              prompt: args.prompt,
+              sessionID: ctx.sessionID,
+              directory: ctx.directory,
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `ERROR: agnes_delegate failed — ${msg}`;
+          }
+        },
+      }),
+
+      agnes_get_result: tool({
+        description: 'Get the result of a previously-delegated async task (delegated via agnes_delegate with background=true).',
+        args: {
+          taskRef: tool.schema.string().describe('The task reference string returned by agnes_delegate(background=true)'),
+        },
+        async execute(args, ctx) {
+          try {
+            const info = lookupTaskRef(args.taskRef);
+            const directory = info?.directory ?? ctx.directory;
+            const result = await getSubagentResult(input.client, args.taskRef, directory);
+            switch (result.status) {
+              case 'completed':
+                return result.output ?? '(no output)';
+              case 'pending':
+                return 'PENDING — subagent still working. Try agnes_get_result again shortly.';
+              case 'not_found':
+                return `ERROR: task reference "${args.taskRef}" not found. The session may have been cleaned up or never started.`;
+              case 'error':
+                return `ERROR: ${result.error ?? 'unknown error'}`;
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `ERROR: agnes_get_result failed — ${msg}`;
+          }
+        },
+      }),
+    },
+
+    'tool.definition': async ({ toolID }, output) => {
+      if (toolID === 'delegate_task') {
+        output.description = 'DEPRECATED — Use agnes_delegate instead. This tool may return inconsistent task IDs and is not recommended.';
+      }
+      if (toolID === 'get_task_result') {
+        output.description = 'DEPRECATED — Use agnes_get_result instead. This tool may fail to resolve task references.';
+      }
+    },
 
     'file.edited': async (event: { path: string }) => {
       editedFiles.add(event.path);
@@ -114,9 +218,13 @@ export const AgnesPlugin: Plugin = async ({ directory, worktree }) => {
     },
 
     'session.deleted': async (_event: any) => {
-      editedFiles.clear();
-      projectProfile = null;
-      _injectedSessions.clear();
+      try {
+        editedFiles.clear();
+        projectProfile = null;
+        _injectedSessions.clear();
+      } catch (err) {
+        logger.warn('Failed to clean up session state', err);
+      }
     },
 
     'experimental.chat.messages.transform': async (_input, output) => {
@@ -154,10 +262,15 @@ export const AgnesPlugin: Plugin = async ({ directory, worktree }) => {
     },
 
     'experimental.session.compacting': async (_input: any, output: any) => {
-      const pkg = getBootstrapPackageInfo();
-      for (const line of buildCompactionContext({ pkg, projectProfile, editedFiles })) {
-        output.context.push(line);
+      try {
+        const pkg = getBootstrapPackageInfo();
+        for (const line of buildCompactionContext({ pkg, projectProfile, editedFiles })) {
+          output.context.push(line);
+        }
+      } catch (err) {
+        logger.warn('Failed to build compaction context', err);
       }
     },
+
   };
 };

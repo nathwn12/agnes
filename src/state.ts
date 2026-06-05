@@ -54,6 +54,8 @@ const OPENCODE_CACHE_ROOT = path.join(os.homedir(), '.cache', 'opencode', 'packa
 const AGNES_DIR = '.agnes';
 const PLANS_DIR = 'plans';
 const DEFAULT_MAX_PLAN_TASKS = 10;
+const LOCK_ACQUIRE_TIMEOUT_MS = 10_000; // 10s max wait — prevents indefinite hang
+
 
 let _agnesVersion: string | null = null;
 
@@ -74,67 +76,45 @@ function getAgnesVersion(): string {
   return _agnesVersion;
 }
 
-function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    if (!err || typeof err !== 'object') return false;
-    return (err as NodeJS.ErrnoException).code === 'EPERM';
-  }
-}
-
-function tryAcquireLock(lockPath: string): number | null {
-  try {
-    return fs.openSync(lockPath, 'wx');
-  } catch (err) {
-    if (!err || typeof err !== 'object' || (err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
-    return null;
-  }
-}
-
-function tryCleanStaleLock(lockPath: string): boolean {
-  try {
-    const content = fs.readFileSync(lockPath, 'utf8').trim();
-    const pid = parseInt(content, 10);
-    if (Number.isNaN(pid)) {
-      fs.rmSync(lockPath, { force: true });
-      return true;
+function acquireLockWithTimeout(lockPath: string, timeoutMs: number): number | null {
+  const deadline = Date.now() + timeoutMs;
+  fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+  while (Date.now() < deadline) {
+    let fd: number | null = null;
+    try {
+      fd = fs.openSync(lockPath, 'wx');
+    } catch (err) {
+      if (!err || typeof err !== 'object' || (err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
     }
-    if (!isPidAlive(pid)) {
+    if (fd !== null) return fd;
+    try {
+      const lc = fs.readFileSync(lockPath, 'utf8').trim();
+      const pid = parseInt(lc, 10);
+      if (!Number.isNaN(pid)) {
+        try { process.kill(pid, 0); } catch { }
+      }
       fs.rmSync(lockPath, { force: true });
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
+      continue;
+    } catch { }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
   }
+  return null;
 }
 
 function withPlanWriteLock<T>(root: string, action: () => T): T {
   const lockPath = path.join(root, AGNES_DIR, '.write.lock');
-  let lockFd: number | null = null;
+  const lockFd = acquireLockWithTimeout(lockPath, LOCK_ACQUIRE_TIMEOUT_MS);
+  if (lockFd === null) {
+    throw new Error(`Failed to acquire write lock within ${LOCK_ACQUIRE_TIMEOUT_MS}ms at ${lockPath}`);
+  }
   try {
-    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
-    while (lockFd === null) {
-      lockFd = tryAcquireLock(lockPath);
-      if (lockFd !== null) break;
-      if (tryCleanStaleLock(lockPath)) {
-        lockFd = tryAcquireLock(lockPath);
-        if (lockFd !== null) break;
-      }
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    }
     fs.writeSync(lockFd, `${process.pid}\n`);
     return action();
   } finally {
-    if (lockFd !== null) {
-      try { fs.closeSync(lockFd); } catch { /* ignore */ }
-      try { fs.rmSync(lockPath, { force: true }); } catch { /* ignore */ }
-    }
+    try { fs.closeSync(lockFd); } catch { /* ignore */ }
+    try { fs.rmSync(lockPath, { force: true }); } catch { /* ignore */ }
   }
 }
-
 function isBlockedPath(dir: string): boolean {
   const resolved = path.resolve(dir);
   const root = path.resolve(OPENCODE_CACHE_ROOT);
@@ -263,18 +243,12 @@ export function appendExecutionArtifact(
   const root = projectRoot ?? findProjectRoot();
   if (!root) return;
   const lockPath = path.join(root, AGNES_DIR, '.write.lock');
-  let lockFd: number | null = null;
+  const lockFd = acquireLockWithTimeout(lockPath, LOCK_ACQUIRE_TIMEOUT_MS);
+  if (lockFd === null) {
+    logger.error(`Failed to acquire write lock within ${LOCK_ACQUIRE_TIMEOUT_MS}ms at ${lockPath}`);
+    return;
+  }
   try {
-    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
-    while (lockFd === null) {
-      try {
-        lockFd = fs.openSync(lockPath, 'wx');
-      } catch (err) {
-        if (!err || typeof err !== 'object' || (err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-      }
-    }
-
     const plansDir = path.join(root, AGNES_DIR, PLANS_DIR);
     const yamlPath = path.join(plansDir, `${planId}.yaml`);
     if (!fs.existsSync(yamlPath)) return;
