@@ -124,6 +124,7 @@ Every task MUST be split into the smallest possible independent chunks BEFORE de
 - @general — Implementation agent with bash+write access for modifying files, running commands, testing
 - Destructive/lossy/irreversible → Ask user first
 - Available subagents: explore (read-only), build (write+bash), plan (read-only), general (bash)
+- /agent-hub — List available agents, skills, and commands
 === END AGNES ROUTING ===
 
 **IMPORTANT: AGNES SOUL.md is loaded below.**

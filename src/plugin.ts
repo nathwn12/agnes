@@ -8,9 +8,11 @@ import {
   getBootstrapPackageInfo,
 } from './bootstrap.js';
 import {
+  discoverAgents,
   discoverCommands,
   discoverSkills,
 } from './discovery.js';
+import { discoverAgentHub, formatHubSummary } from './agent-hub.js';
 import type { PlanIndex } from './state.js';
 import {
   findProjectRoot,
@@ -103,7 +105,23 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
       ])];
       configObj.skills = { ...(configObj.skills as Record<string, unknown> || {}), paths: allPaths };
 
-      configObj.agent = (configObj.agent || {}) as Record<string, unknown>;
+      const existingAgents = (configObj.agent || {}) as Record<string, unknown>;
+      for (const agent of discoverAgents(worktreePath)) {
+        if (!existingAgents[agent.name]) {
+          const entry: Record<string, unknown> = {
+            description: agent.desc,
+            prompt: agent.prompt,
+          };
+          if (agent.permission) {
+            entry.permission = agent.permission;
+          }
+          existingAgents[agent.name] = entry;
+        }
+      }
+      configObj.agent = existingAgents;
+
+      const hub = discoverAgentHub(worktreePath);
+      const hubSummary = formatHubSummary(hub);
 
       const cmdCfgObj = (configObj.command || {}) as Record<string, unknown>;
       for (const cmd of discoverCommands(worktreePath)) {
@@ -115,6 +133,12 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
             ...(cmd.subtask ? { subtask: true } : {}),
           };
         }
+      }
+      if (!cmdCfgObj['agent-hub']) {
+        cmdCfgObj['agent-hub'] = {
+          description: 'List all discovered agents, skills, and commands from the Agent Hub catalog',
+          template: `Present the following Agent Hub catalog as a formatted summary:\n\n${hubSummary}\n\nGroup by type and source, highlight delegatable agents.`,
+        };
       }
       configObj.command = cmdCfgObj;
     },
