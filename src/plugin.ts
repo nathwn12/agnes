@@ -193,7 +193,6 @@ export const AgnesPlugin: Plugin = async ({ client, directory, worktree }) => {
 
       // Then fall through to original bootstrap injection
       if (!output.messages?.length) return;
-      if (!output.messages?.length) return;
 
       const firstUser = output.messages.find((m) => m.info?.role === 'user');
       if (!firstUser?.parts?.length) return;

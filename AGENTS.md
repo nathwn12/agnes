@@ -80,11 +80,9 @@ CI: `bun install -> bun run lint -> bun run typecheck -> bun test -> bun run bun
 | src/runtime.ts | Session tracking, attempt counting, struggle detection, wave dispatch, planner routing, gate integration. |
 | src/protocol.ts | <agnes:message> JSON protocol (task/result/error/status/completion). |
 | src/schema.ts | Zod schemas for Plan, Bootstrap Block, Message. |
-| src/shell.ts | Detects pwsh/bash/git-bash/cmd/wsl. Cached per-process. Uses MSYSTEM env for Git Bash. |
 | src/validation.ts | Allowlist-based message validation and injection protection. |
 | src/discovery.ts | Scans 3 layers (bundled/global/workspace) for agents, commands, skills. |
 | src/discovery-policy.ts | YAML frontmatter parsing, agent permission inference, merge-by-name dedup. |
-| src/model-routing.ts | Reads model routing config from ~/.config/opencode/agnes.json. |
 | src/model-routing-policy.ts | Config types, default model, agent list population, apply logic. |
 | src/plugin-support.ts | Project profile detection, compaction context builder. |
 | src/verification.ts | Structured gates (PASS/FAIL/SKIP) with blocking gate short-circuit. |
@@ -95,7 +93,7 @@ CI: `bun install -> bun run lint -> bun run typecheck -> bun test -> bun run bun
 
 - **State dir**: .agnes/ at project root. Auto-prunes done/abandoned plans after 7 days.
 - **Bootstrap cache**: Invalidated when package version or SOUL.md content hash changes.
-- **Model routing config**: ~/.config/opencode/agnes.json — auto-heals with defaults if missing.
+- **Model routing config**: ~/.config/opencode/agnes.json — auto-heals with defaults if missing (via model-routing-policy.ts).
 - **No opencode.json in repo**: Plugin is installed via opencode.json in the workspace using config.
 - **Locked file**: `nul` at repo root — Windows sentinel, do not touch.
 - **Skills**: 22 bundled SKILL.md files in .opencode/skills/. Registered by discoverSkills() at startup.

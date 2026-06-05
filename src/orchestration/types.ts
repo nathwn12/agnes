@@ -3,7 +3,6 @@ export interface AgentDef {
   description: string;
   canWrite: boolean;
   canBash: boolean;
-  terminal: boolean;
 }
 
 export interface DelegateTask {
@@ -19,11 +18,8 @@ export interface DelegateTask {
   createdAt: number;
   completedAt: number | null;
   depth: number;
-  mode?: 'normal' | 'race' | 'fractal';
   groupID?: string;
   noReply?: boolean;
-  stablePolls?: number;
-  hasStartedOutputting?: boolean;
 }
 
 export type DelegateMode = 'sync' | 'background';
@@ -36,17 +32,6 @@ export interface DelegateInput {
   depth?: number;
   groupID?: string;
   noReply?: boolean;
-  modeType?: 'normal' | 'race' | 'fractal';
-}
-
-export interface LoopConfig {
-  max: number;
-  until: string;
-}
-
-export interface ReturnChainState {
-  items: string[];
-  stacked: string[][];
 }
 
 export const DELEGATION_LIMITS = {
@@ -62,28 +47,24 @@ export const AGENTS: Record<string, AgentDef> = {
     description: 'Read-only codebase exploration. Use for research, search, lookup, understanding existing code.',
     canWrite: false,
     canBash: false,
-    terminal: true,
   },
   build: {
     id: 'build',
     description: 'File modification and implementation. Use for creating, editing, running commands. Has bash and write access.',
     canWrite: true,
     canBash: true,
-    terminal: true,
   },
   plan: {
     id: 'plan',
     description: 'Architecture design and planning. Plans before implementation. Read-only.',
     canWrite: false,
     canBash: false,
-    terminal: false,
   },
   'general': {
     id: 'general',
     description: 'General-purpose agent for verification, review, testing, and validation. Has bash access.',
     canWrite: false,
     canBash: true,
-    terminal: true,
   },
 };
 

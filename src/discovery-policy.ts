@@ -1,7 +1,3 @@
-export function stripYamlFrontmatter(content: string): string {
-  return content.replace(/^---[\s\S]*?---\n/, "");
-}
-
 export function parseCommandFrontmatter(content: string): Record<string, unknown> {
   const match = content.match(/^---\n([\s\S]*?)\n---/);
   if (!match) return {};

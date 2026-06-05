@@ -3,7 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import { fileURLToPath } from "node:url";
 import { findPackageRoot } from "./bootstrap.js";
-import { inferAgentDesc, inferAgentPermission, mergeByName, parseCommandFrontmatter, stripYamlFrontmatter } from "./discovery-policy.js";
+import { stripYamlFrontmatter } from "./plugin-support.js";
+import { inferAgentDesc, inferAgentPermission, mergeByName, parseCommandFrontmatter } from "./discovery-policy.js";
 
 export type AgentPermissionValue = string | Record<string, string>;
 
