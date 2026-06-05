@@ -21,18 +21,14 @@ phases:
       - [x] Add concurrency limits type + per-agent slot tracking
 
   - id: phase-2
-    title: "Refactor DelegationManager → OrchestratorManager"
-    description: "Rewrite the orchestration engine as composed components. Core dispatch mechanism."
-    status: complete
+    title: "Refactor DelegationManager → OrchestratorManager (OBSOLETE — REMOVED v0.25.0)"
+    description: "Entire orchestration/ directory was deleted. AGNES now delegates via native task tool with subagent_type."
+    status: superseded
     tasks:
-      - [x] Build ConcurrencyController (per-agent limits, acquire/release)
-      - [x] Build adaptive TaskPoller (poll interval 500ms-5s based on running count)
-      - [x] Build TaskLauncher (depth guard, concurrency slot, fire promptAsync, poll)
-      - [x] Compose OrchestratorManager from TaskStore + ConcurrencyController + TaskPoller + TaskLauncher
-      - [x] Wire delegate_task tool to new OrchestratorManager
-      - [x] Wire get_task_result tool to new TaskStore
-      - [x] Wire cancel_task tool to new OrchestratorManager
-      - [x] Remove old DelegationManager, old polling code from tools.ts
+      - [x] REMOVED: src/orchestration/ deleted entirely
+      - [x] REMOVED: delegate_task, get_task_result, cancel_task tool registrations
+      - [x] REMOVED: OrchestratorManager, SessionStore, ConcurrencyController
+      - [x] REPLACED WITH: native `task` tool with `subagent_type`
 
   - id: phase-3
     title: "Return Chain Processing (session.idle)"

@@ -2,10 +2,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildPlanSummary, getLatestActivePlan } from './state.js';
+import { buildPlanSummary } from './state.js';
 import type { PlanIndex, PlannerRoutingContext } from './state.js';
-import { stringify as yamlDump } from 'yaml';
-import type { CompactionPolicyState } from './compaction.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -18,7 +16,6 @@ export function findPackageRoot(fromDir: string): string | null {
         const pkg = JSON.parse(fs.readFileSync(pj, 'utf8')) as { name?: string };
         if (pkg.name === 'agnes') return current;
       } catch {
-        // ignore malformed package.json and keep walking
       }
     }
     const parent = path.resolve(current, '..');
@@ -35,7 +32,6 @@ const opencodePackageCache = path.join(os.homedir(), '.cache', 'opencode', 'pack
 
 function getPackageVersion(): string {
   if (!fs.existsSync(packageJsonPath)) return 'unknown';
-
   try {
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as { version?: string };
     return packageJson.version || 'unknown';
@@ -54,9 +50,7 @@ let _bootstrapCache: BootstrapCacheEntry | undefined = undefined;
 export function getStaticBootstrapContent(): string | null {
   const soulPath = path.join(packageRoot, 'SOUL.md');
   if (!fs.existsSync(soulPath)) return null;
-
   const version = getPackageVersion();
-
   try {
     const stat = fs.statSync(soulPath);
     const statKey = `${version}:${stat.size}:${stat.mtimeMs}`;
@@ -154,87 +148,6 @@ ${planSummary}
 </AGNES_PLAN_STATE>`;
 }
 
-// ── Structured Protocol block builders ───────────────────────────────────────
-
-export interface BootstrapContext {
-  pkg: { version: string; root: string; skillsDir: string; cacheRoot: string };
-  index: PlanIndex | null;
-  planner?: PlannerRoutingContext;
-  exec: { attempt: number; struggleDetected: boolean; lastPromiseTag: string | null };
-}
-
-function wrapStructured(type: string, inner: string): string {
-  return `<structured type="${type}">\n${inner}\n</structured>`;
-}
-
-export function buildRuntimeBlock(pkg: { version: string; root: string; skillsDir: string; cacheRoot: string }): string {
-  return wrapStructured('runtime', yamlDump({
-    type: 'runtime',
-    agnes_version: pkg.version,
-    package_root: pkg.root,
-    skills_dir: pkg.skillsDir,
-    cache_root: pkg.cacheRoot,
-  }));
-}
-
-export function buildPlanStateBlock(index: PlanIndex | null, planner?: PlannerRoutingContext): string {
-  const plan = index ? getLatestActivePlan(index.projectDir) : null;
-  if (!plan) {
-    return wrapStructured('plan_state', yamlDump({
-      type: 'plan_state',
-      active_plan: null,
-      status: 'none',
-      message: 'No active plan. For simple tasks, just ask. For complex tasks, use the current planner path.',
-      ...(planner ? {
-        planner_mode: planner.mode,
-        planner_route: planner.route,
-        planner_reason: planner.reason,
-      } : {}),
-    }));
-  }
-  return wrapStructured('plan_state', yamlDump({
-    type: 'plan_state',
-    active_plan: plan.entry.id,
-    status: plan.entry.status,
-    completed: plan.entry.completed,
-    total: plan.entry.total,
-    blocked: plan.entry.blocked,
-    goal: plan.entry.summary || 'No goal set',
-    struggle_detected: (plan.entry.struggle?.noProgressIterations || 0) >= 3,
-    ...(plan.entry.plannerMode ? { planner_mode: plan.entry.plannerMode } : {}),
-    ...(plan.entry.plannerSource ? { planner_source: plan.entry.plannerSource } : {}),
-    ...(planner ? {
-      planner_mode: planner.mode,
-      planner_route: planner.route,
-      planner_reason: planner.reason,
-    } : {}),
-  }));
-}
-
-export function buildExecutionContextBlock(ctx: {
-  attempt: number;
-  struggleDetected: boolean;
-  lastPromiseTag: string | null;
-  compaction?: CompactionPolicyState;
-}): string {
-  return wrapStructured('execution', yamlDump({
-    type: 'execution',
-    attempt: ctx.attempt || 1,
-    struggle_detected: ctx.struggleDetected || false,
-    last_promise_tag: ctx.lastPromiseTag || null,
-    ...(ctx.compaction ? {
-      compaction: {
-        token_count: ctx.compaction.tokenCount,
-        soft_limit: ctx.compaction.softLimit,
-        hard_limit: ctx.compaction.hardLimit,
-        last_action: ctx.compaction.lastAction,
-        last_reason: ctx.compaction.lastReason,
-        last_triggered_at: ctx.compaction.lastTriggeredAt,
-      },
-    } : {}),
-  }));
-}
-
 export function getBootstrapPackageInfo(): { version: string; root: string; skillsDir: string; cacheRoot: string } {
   return {
     version: getPackageVersion(),
@@ -242,13 +155,4 @@ export function getBootstrapPackageInfo(): { version: string; root: string; skil
     skillsDir,
     cacheRoot: opencodePackageCache,
   };
-}
-
-export function buildBootstrap(context: BootstrapContext): string {
-  const blocks: string[] = [
-    buildRuntimeBlock(context.pkg),
-    ...(context.index || context.planner ? [buildPlanStateBlock(context.index, context.planner)] : []),
-    buildExecutionContextBlock(context.exec),
-  ];
-  return blocks.filter(Boolean).join('\n');
 }

@@ -115,47 +115,6 @@ export function createPromiseComplianceGate(output: string): Gate {
     },
   };
 }
-
-export function createPlanExistsGate(projectRoot?: string): Gate {
-  return {
-    id: 'plan-exists',
-    name: 'Plan Exists',
-    description: 'Checks that .agnes/index.json has an active plan',
-    isBlocking: true,
-    run: async () => {
-      const start = Date.now();
-      const errors: string[] = [];
-      try {
-        const fs = await import('fs/promises');
-        const basePath = projectRoot ?? process.cwd();
-        const content = await fs.readFile(`${basePath}/.agnes/index.json`, 'utf-8');
-        const index = JSON.parse(content);
-        if (!index.activePlanId) {
-          errors.push('No active plan found in .agnes/index.json');
-        } else {
-          const activePlan = Array.isArray(index.plans)
-            ? index.plans.find((plan: { id?: unknown }) => plan.id === index.activePlanId)
-            : undefined;
-          if (!activePlan) {
-            errors.push(`Active plan ${index.activePlanId} was not found`);
-          } else if (activePlan.status !== 'approved') {
-            errors.push(`Active plan ${index.activePlanId} is ${String(activePlan.status)}; expected approved`);
-          }
-        }
-      } catch (err) {
-        errors.push(err instanceof Error ? err.message : String(err));
-      }
-      return {
-        gateId: 'plan-exists',
-        status: errors.length === 0 ? 'PASS' : 'FAIL',
-        evidence: { errors, command: 'check-active-plan', exitCode: errors.length === 0 ? 0 : 1 },
-        timestamp: new Date().toISOString(),
-        durationMs: Date.now() - start,
-      };
-    },
-  };
-}
-
 export function gateResultToEvidence(result: GateResult): GateEvidence {
   return {
     gateId: result.gateId,

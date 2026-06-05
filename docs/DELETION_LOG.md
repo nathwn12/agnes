@@ -14,6 +14,7 @@ These functions were exported but had zero references outside their own module:
 | `src/orchestration/loop.ts` | `startLoop`, `isLoopComplete`, `setPendingEvaluation` | No callers anywhere in codebase |
 | `src/orchestration/returns.ts` | `setReturnChain`, `getReturnChain`, `deleteReturnChain`, `clearReturnStacks`, `setDeferredPromptReturn`, `hasPendingPromptReturn`, `getLastReturnType`, `clearLastReturnType` | Zero external references |
 | `src/orchestration/session.ts` | `createSessionStore` | No callers (singleton pattern via `getGlobalSessionStore` used instead) |
+| `src/orchestration/` (entire dir) | All 5 files — manager.ts, tools.ts, types.ts, session.ts, concurrency.ts | **v0.25.0:** Entire orchestration layer deleted. delegate_task/get_task_result/cancel_task removed. AGNES delegates via native `task` tool with `subagent_type`. |
 | `src/logger.ts` | `debug`, `error` | Never used — only `logger.warn()` and `logger.info()` are called |
 
 ### Unused Type Removed

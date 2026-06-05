@@ -3,78 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-import { getBootstrapContent, buildRuntimeBlock, buildPlanStateBlock, buildExecutionContextBlock, buildBootstrap } from './bootstrap.js';
-import type { PlanIndex } from './state.js';
-
-describe('structured block builders', () => {
-  const pkg = { version: '0.10.2', root: '/test/root', skillsDir: '/test/skills', cacheRoot: '/test/cache' };
-  const exec = { attempt: 2, struggleDetected: true, lastPromiseTag: 'DONE' };
-
-  test('buildRuntimeBlock produces correct structured type tag', () => {
-    const block = buildRuntimeBlock(pkg);
-    expect(block).toContain('<structured type="runtime">');
-    expect(block).toContain('</structured>');
-  });
-
-  test('buildRuntimeBlock contains expected fields', () => {
-    const block = buildRuntimeBlock(pkg);
-    expect(block).toContain('agnes_version:');
-    expect(block).toContain('package_root:');
-    expect(block).toContain('skills_dir:');
-    expect(block).toContain('cache_root:');
-  });
-
-  test('buildPlanStateBlock says no active plan when index empty', () => {
-    const emptyIndex: PlanIndex = {
-      agnesVersion: '0.10.2',
-      schemaVersion: 2,
-      projectDir: fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-bs-')),
-      projectName: 'test',
-      updatedAt: new Date().toISOString(),
-      activePlanId: null,
-      plans: [],
-    };
-    const block = buildPlanStateBlock(emptyIndex);
-    expect(block).toContain('No active plan');
-  });
-
-  test('buildPlanStateBlock includes planner provenance when provided', () => {
-    const block = buildPlanStateBlock(null, { mode: 'builtin', route: 'builtin', reason: 'eligible lightweight boundary' });
-    expect(block).toContain('planner_mode: builtin');
-    expect(block).toContain('planner_route: builtin');
-    expect(block).toContain('planner_reason: eligible lightweight boundary');
-  });
-
-  test('buildPlanStateBlock produces correct type tag', () => {
-    const emptyIndex: PlanIndex = {
-      agnesVersion: '0.10.2',
-      schemaVersion: 2,
-      projectDir: fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-bs-')),
-      projectName: 'test',
-      updatedAt: new Date().toISOString(),
-      activePlanId: null,
-      plans: [],
-    };
-    const block = buildPlanStateBlock(emptyIndex);
-    expect(block).toContain('<structured type="plan_state">');
-  });
-
-  test('buildExecutionContextBlock includes attempt info', () => {
-    const block = buildExecutionContextBlock(exec);
-    expect(block).toContain('attempt: 2');
-    expect(block).toContain('struggle_detected: true');
-    expect(block).toContain('last_promise_tag:');
-    expect(block).toContain('DONE');
-  });
-
-  test('block output can be parsed back via YAML/structured tag regex', () => {
-    const block = buildRuntimeBlock(pkg);
-    const match = block.match(/<structured type="(\w+)">\n([\s\S]*?)\n<\/structured>/);
-    expect(match).not.toBeNull();
-    expect(match![1]).toBe('runtime');
-    expect(match![2]).toContain('agnes_version:');
-  });
-});
+import { getBootstrapContent } from './bootstrap.js';
 
 describe('getBootstrapContent', () => {
   test('returns content including AGNES identity', () => {
@@ -128,49 +57,4 @@ describe('getBootstrapContent', () => {
   });
 });
 
-describe('buildBootstrap', () => {
-  const pkg = { version: '0.10.2', root: '/test/root', skillsDir: '/test/skills', cacheRoot: '/test/cache' };
-  const exec = { attempt: 1, struggleDetected: false, lastPromiseTag: null };
 
-  test('assembles structured blocks without orchestration layers', () => {
-    const result = buildBootstrap({ pkg, index: null, exec });
-    const blockTypes = [...result.matchAll(/type="(\w+)"/g)].map(m => m[1]);
-    expect(blockTypes.length).toBeGreaterThanOrEqual(2);
-    expect(blockTypes[0]).toBe('runtime');
-    expect(blockTypes).toContain('execution');
-  });
-
-  test('does not include removed blocks', () => {
-    const result = buildBootstrap({ pkg, index: null, exec });
-    expect(result).not.toContain('orchestrator');
-    expect(result).not.toContain('delegate_or_die');
-    expect(result).not.toContain('named_roles');
-    expect(result).not.toContain('tool_access');
-    expect(result).not.toContain('protocol');
-    expect(result).not.toContain('skill_registry');
-  });
-
-  test('includes plan_state block when index is provided', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-test-bb-'));
-    try {
-      const index: PlanIndex = {
-        agnesVersion: '0.10.2',
-        schemaVersion: 2,
-        projectDir: tmp,
-        projectName: 'test',
-        updatedAt: new Date().toISOString(),
-        activePlanId: null,
-        plans: [],
-      };
-      const result = buildBootstrap({ pkg, index, exec });
-      expect(result).toContain('type="plan_state"');
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
-  test('excludes plan_state block when no index and no planner', () => {
-    const result = buildBootstrap({ pkg, index: null, exec });
-    expect(result).not.toContain('type="plan_state"');
-  });
-});

@@ -1,29 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { buildBootstrap, getBootstrapContent, getBootstrapPackageInfo } from './bootstrap.js';
-
-describe('buildStructuredBootstrap (via buildBootstrap integration)', () => {
-  const pkg = getBootstrapPackageInfo();
-  const exec = { attempt: 1, struggleDetected: false, lastPromiseTag: null };
-
-  test('produces combined output with all structured blocks', () => {
-    const result = buildBootstrap({
-      pkg,
-      index: null,
-      exec,
-    });
-
-    expect(result).toContain('runtime');
-    expect(result).toContain('execution');
-  });
-
-  test('includes runtime and execution blocks', () => {
-    const result = buildBootstrap({
-      pkg, index: null,
-      exec,
-    });
-    expect(result).toContain('execution');
-  });
-});
+import { getBootstrapContent } from './bootstrap.js';
 
 describe('AgnesPlugin structure', () => {
   test('plugin factory returns an object with config and message hooks', async () => {

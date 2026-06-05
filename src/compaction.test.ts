@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import { buildExecutionContextBlock } from './bootstrap.js';
 import {
   buildCompactionBlock,
   buildCompactionContext,
@@ -80,13 +79,5 @@ describe('evaluateCompactionPolicy', () => {
     expect(getCompactionState('session-store')).toEqual(decision.state);
     expect(buildCompactionBlock(decision.state)).toContain('last_action');
     expect(buildCompactionContext(decision.state)).toContain('Approximate prompt load');
-    expect(
-      buildExecutionContextBlock({
-        attempt: 1,
-        struggleDetected: false,
-        lastPromiseTag: null,
-        compaction: decision.state,
-      }),
-    ).toContain('last_action: nudge');
   });
 });

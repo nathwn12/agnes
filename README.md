@@ -110,15 +110,7 @@ Verify/test          → @general (bash, no write)
 Destructive/irreversible → Ask user first (Ask Once Gate)
 ```
 
-**3 tools, not 5.** After hardening, AGNES exposes only essential tools:
-
-| Tool | Purpose |
-|------|---------|
-| `delegate_task` | Fire a subagent (sync or background) |
-| `get_task_result` | Collect a background task's result |
-| `cancel_task` | Cancel a running subagent |
-
-Agent descriptions and task listing are built into the bootstrap prompt — no extra tools needed.
+AGNES delegates via OpenCode's native `task` tool with `subagent_type` — no custom delegation tools needed.
 
 ---
 
@@ -171,12 +163,8 @@ opencode session
        │    ├─ Planner routing (builtin/full/auto)
        │    └─ Plan gate checking
        │
-       ├─ Delegation (orchestration/)
-       │    ├─ DelegationManager — spawns opencode sub-sessions
-       │    ├─ SessionStore — isolated task state (instance-based)
-       │    ├─ 3 tools: delegate_task, get_task_result, cancel_task
-       │    └─ Polling with content-based stability + final verification
-       │
+        ├─ Delegation via native `task` tool with `subagent_type`
+        │
        ├─ Gates (verification.ts)
        │    ├─ Promise Compliance Gate
        │    ├─ Plan Exists Gate
