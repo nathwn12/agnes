@@ -34655,9 +34655,6 @@ $ARGUMENTS`
         warn("tool.definition hook failed", err);
       }
     },
-    "file.edited": async (event) => {
-      editedFiles.add(event.path);
-    },
     "tool.execute.after": async (input2, _output) => {
       const filePath = input2.args?.filePath;
       if ((input2.tool === "edit" || input2.tool === "write") && filePath) {
@@ -34665,22 +34662,34 @@ $ARGUMENTS`
       }
     },
     event: async ({ event }) => {
-      if (event.type === "session.created" && event.sessionID) {
-        try {
-          const bootstrap = getBootstrapContent();
-          if (bootstrap && !_bootstrapInjected) {
-            await input.client.session.prompt({
-              path: { id: event.sessionID },
-              body: {
-                noReply: true,
-                parts: [{ type: "text", text: bootstrap }]
+      try {
+        switch (event.type) {
+          case "session.created":
+            if (event.sessionID && !_bootstrapInjected) {
+              const bootstrap = getBootstrapContent();
+              if (bootstrap) {
+                await input.client.session.prompt({
+                  path: { id: event.sessionID },
+                  body: {
+                    noReply: true,
+                    parts: [{ type: "text", text: bootstrap }]
+                  }
+                });
+                _bootstrapInjected = true;
               }
-            });
-            _bootstrapInjected = true;
-          }
-        } catch (err) {
-          warn("Failed to inject bootstrap on session.created", err);
+            }
+            break;
+          case "file.edited":
+            if (event.path)
+              editedFiles.add(event.path);
+            break;
+          case "session.deleted":
+            editedFiles.clear();
+            _bootstrapInjected = false;
+            break;
         }
+      } catch (err) {
+        warn("Failed to handle event " + event.type, err);
       }
     },
     "experimental.session.compacting": async (_input, output) => {
