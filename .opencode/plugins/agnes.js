@@ -19279,8 +19279,8 @@ function tool(input) {
 tool.schema = exports_external;
 // src/plugin.ts
 import { randomUUID as randomUUID2 } from "crypto";
-import * as fs5 from "fs";
-import * as path4 from "path";
+import * as fs6 from "fs";
+import * as path5 from "path";
 
 // src/bootstrap.ts
 import * as fs2 from "fs";
@@ -34162,7 +34162,11 @@ function freshStruggleMetrics() {
 var __dirname2 = path2.dirname(fileURLToPath(import.meta.url));
 function findPackageRoot(fromDir) {
   let current = fromDir;
-  for (let i = 0;i < 5; i++) {
+  for (let i = 0;i < 10; i++) {
+    const bundlePath = path2.join(current, ".opencode", "plugins", "agnes.js");
+    if (fs2.existsSync(bundlePath)) {
+      return current;
+    }
     const pj = path2.join(current, "package.json");
     if (fs2.existsSync(pj)) {
       try {
@@ -34376,6 +34380,8 @@ function discoverCommands(worktreePath) {
 }
 
 // src/delegate.ts
+import * as fs5 from "fs";
+import * as path4 from "path";
 function extractText(response) {
   if (!response || typeof response !== "object")
     return "";
@@ -34393,8 +34399,7 @@ async function createChildSession(client, params) {
     body: {
       parentID: params.sessionID,
       title: `AGNES: ${params.agent} \u2014 ${params.description}`
-    },
-    query: { directory: params.directory }
+    }
   });
   if (createResp.error) {
     throw new Error(`Failed to create child session: ${JSON.stringify(createResp.error)}`);
@@ -34414,8 +34419,7 @@ async function delegateBlocking(client, params) {
     body: {
       agent: params.agent,
       parts: [{ type: "text", text: params.prompt }]
-    },
-    query: { directory: params.directory }
+    }
   });
   if (promptResp.error) {
     return `ERROR: delegation failed \u2014 ${JSON.stringify(promptResp.error)}`;
@@ -34430,24 +34434,23 @@ async function delegateAsync(client, params) {
     const msg = err instanceof Error ? err.message : String(err);
     return `ERROR: failed to create child session \u2014 ${msg}`;
   }
-  const resp = await client.session.promptAsync({
+  const resp = await client.session.prompt({
     path: { id: childId },
     body: {
       agent: params.agent,
-      parts: [{ type: "text", text: params.prompt }]
-    },
-    query: { directory: params.directory }
+      parts: [{ type: "text", text: params.prompt }],
+      noReply: true
+    }
   });
-  if (resp.error) {
+  if (resp?.error) {
     return `ERROR: async delegation failed \u2014 ${JSON.stringify(resp.error)}`;
   }
   return childId;
 }
-async function getSubagentResult(client, sessionID, directory) {
+async function getSubagentResult(client, sessionID, _directory) {
   try {
     const sessionResp = await client.session.get({
-      path: { id: sessionID },
-      query: { directory }
+      path: { id: sessionID }
     });
     if (sessionResp.error) {
       if (sessionResp.error.status === 404) {
@@ -34457,7 +34460,7 @@ async function getSubagentResult(client, sessionID, directory) {
     }
     const messagesResp = await client.session.messages({
       path: { id: sessionID },
-      query: { directory, limit: 5 }
+      query: { limit: 5 }
     });
     if (messagesResp.error) {
       return { status: "error", error: JSON.stringify(messagesResp.error) };
@@ -34479,24 +34482,65 @@ async function getSubagentResult(client, sessionID, directory) {
     return { status: "error", error: msg };
   }
 }
-var taskRefs = new Map;
+var TASK_REFS_FILE = "task-refs.json";
+var _taskRefsPersistDir = null;
+var _taskRefs = new Map;
+var _taskRefsDirty = false;
+function getTaskRefsPath() {
+  return _taskRefsPersistDir ? path4.join(_taskRefsPersistDir, ".agnes", TASK_REFS_FILE) : null;
+}
+function loadTaskRefsFromDisk(projectDir) {
+  try {
+    const filePath = path4.join(projectDir, ".agnes", TASK_REFS_FILE);
+    const raw = fs5.readFileSync(filePath, "utf8");
+    const entries = JSON.parse(raw);
+    return new Map(Object.entries(entries));
+  } catch {
+    return new Map;
+  }
+}
+function flushTaskRefs() {
+  if (!_taskRefsDirty)
+    return;
+  _taskRefsDirty = false;
+  const filePath = getTaskRefsPath();
+  if (!filePath)
+    return;
+  try {
+    fs5.mkdirSync(path4.dirname(filePath), { recursive: true });
+    fs5.writeFileSync(filePath, JSON.stringify(Object.fromEntries(_taskRefs), null, 2), "utf8");
+  } catch (err) {
+    warn("Failed to persist task refs", err);
+  }
+}
+function initTaskRefStore(projectDir) {
+  _taskRefsPersistDir = projectDir;
+  _taskRefs = loadTaskRefsFromDisk(projectDir);
+  _taskRefsDirty = false;
+}
 function recordTaskRef(taskRef, info) {
-  taskRefs.set(taskRef, info);
+  _taskRefs.set(taskRef, info);
+  _taskRefsDirty = true;
+  flushTaskRefs();
 }
 function lookupTaskRef(taskRef) {
-  return taskRefs.get(taskRef);
+  return _taskRefs.get(taskRef);
 }
 
 // src/runtime.ts
-function setYoloMode(_enabled) {}
+var _yoloMode = false;
+function setYoloMode(enabled) {
+  _yoloMode = enabled;
+}
 
 // src/plugin.ts
 var _plannerMode = "auto";
-var _injectedSessions = new Set;
+var _bootstrapInjected = false;
 var AgnesPlugin = async (input) => {
   const { directory, worktree } = input;
   const worktreePath = worktree || directory;
   const editedFiles = new Set;
+  initTaskRefStore(worktreePath);
   return {
     config: async (config3) => {
       try {
@@ -34507,8 +34551,8 @@ var AgnesPlugin = async (input) => {
           ...plannerConfig,
           mode: _plannerMode
         };
-        const skillsPath = path4.join(worktreePath, ".opencode", "skills");
-        if (fs5.existsSync(skillsPath)) {
+        const skillsPath = path5.join(worktreePath, ".opencode", "skills");
+        if (fs6.existsSync(skillsPath)) {
           configObj.skills = configObj.skills || {};
           const skillsObj = configObj.skills;
           skillsObj.paths = skillsObj.paths || [];
@@ -34600,11 +34644,15 @@ $ARGUMENTS`
       })
     },
     "tool.definition": async ({ toolID }, output) => {
-      if (toolID === "delegate_task") {
-        output.description = "DEPRECATED \u2014 Use agnes_delegate instead. This tool may return inconsistent task IDs and is not recommended.";
-      }
-      if (toolID === "get_task_result") {
-        output.description = "DEPRECATED \u2014 Use agnes_get_result instead. This tool may fail to resolve task references.";
+      try {
+        if (toolID === "delegate_task") {
+          output.description = "DEPRECATED \u2014 Use agnes_delegate instead. This tool may return inconsistent task IDs and is not recommended.";
+        }
+        if (toolID === "get_task_result") {
+          output.description = "DEPRECATED \u2014 Use agnes_get_result instead. This tool may fail to resolve task references.";
+        }
+      } catch (err) {
+        warn("tool.definition hook failed", err);
       }
     },
     "file.edited": async (event) => {
@@ -34616,15 +34664,51 @@ $ARGUMENTS`
         editedFiles.add(filePath);
       }
     },
-    "session.deleted": async (_event) => {
+    event: async ({ event }) => {
+      if (event.type === "session.created" && event.sessionID) {
+        try {
+          const bootstrap = getBootstrapContent();
+          if (bootstrap && !_bootstrapInjected) {
+            await input.client.session.prompt({
+              path: { id: event.sessionID },
+              body: {
+                noReply: true,
+                parts: [{ type: "text", text: bootstrap }]
+              }
+            });
+            _bootstrapInjected = true;
+          }
+        } catch (err) {
+          warn("Failed to inject bootstrap on session.created", err);
+        }
+      }
+    },
+    "experimental.session.compacting": async (_input, output) => {
+      try {
+        const bootstrap = getBootstrapContent();
+        if (bootstrap) {
+          output.context = output.context ?? [];
+          output.context.push(`
+
+${bootstrap}
+
+`);
+        }
+      } catch (err) {
+        warn("Failed to inject bootstrap into compaction context", err);
+      }
+    },
+    "session.deleted": async () => {
       try {
         editedFiles.clear();
-        _injectedSessions.clear();
+        _bootstrapInjected = false;
       } catch (err) {
         warn("Failed to clean up session state", err);
       }
     },
     "experimental.chat.messages.transform": async (_input, output) => {
+      if (_bootstrapInjected)
+        return;
       if (!output.messages?.length)
         return;
       const firstUser = output.messages.find((m) => m.info?.role === "user");
@@ -34634,11 +34718,6 @@ $ARGUMENTS`
         return;
       if (firstUser.parts.some((p) => p.type === "agent"))
         return;
-      const injectionSessionID = firstUser.parts[0].sessionID ?? "";
-      if (injectionSessionID && _injectedSessions.has(injectionSessionID))
-        return;
-      if (injectionSessionID)
-        _injectedSessions.add(injectionSessionID);
       const userText = firstUser.parts.filter((p) => p.type === "text" && typeof p.text === "string").map((p) => p.text.toLowerCase()).join(" ");
       const yoloFlags = ["--yolo", "--auto", "/yolo", "/auto", "yolo mode", "--yes"];
       setYoloMode(yoloFlags.some((flag) => userText.includes(flag)));
@@ -34656,19 +34735,25 @@ For partial results:
 ${serializeAgnesMessage({ type: "result", taskId: "task-000", id: randomUUID2(), timestamp: new Date().toISOString(), status: "DONE", content: "...", artifact: {} })}
 `;
         const messageID = firstUser.parts[0].messageID ?? "";
+        const sessionID = firstUser.parts[0].sessionID ?? "";
         firstUser.parts.unshift({
           id: randomUUID2(),
-          sessionID: injectionSessionID,
+          sessionID,
           messageID,
           type: "text",
           text: fullBootstrap
         });
+        _bootstrapInjected = true;
       } catch (err) {
         warn("Failed to build bootstrap", err);
       }
     }
   };
 };
+function __resetBootstrapInjected() {
+  _bootstrapInjected = false;
+}
 export {
+  __resetBootstrapInjected,
   AgnesPlugin
 };

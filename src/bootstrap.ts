@@ -10,7 +10,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function findPackageRoot(fromDir: string): string | null {
   let current = fromDir;
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 10; i++) {
+    const bundlePath = path.join(current, '.opencode', 'plugins', 'agnes.js');
+    if (fs.existsSync(bundlePath)) {
+      return current;
+    }
     const pj = path.join(current, 'package.json');
     if (fs.existsSync(pj)) {
       try {

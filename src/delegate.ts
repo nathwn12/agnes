@@ -1,3 +1,5 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as logger from './logger.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -15,6 +17,13 @@ export interface SubagentResult {
   status: 'pending' | 'completed' | 'error' | 'not_found';
   output?: string;
   error?: string;
+}
+
+interface TaskRefInfo {
+  sessionID: string;
+  directory: string;
+  agent: string;
+  description: string;
 }
 
 function extractText(response: unknown): string {
@@ -41,7 +50,6 @@ async function createChildSession(
       parentID: params.sessionID,
       title: `AGNES: ${params.agent} — ${params.description}`,
     },
-    query: { directory: params.directory },
   });
 
   if (createResp.error) {
@@ -69,7 +77,6 @@ export async function delegateBlocking(
       agent: params.agent,
       parts: [{ type: 'text', text: params.prompt }],
     },
-    query: { directory: params.directory },
   });
 
   if (promptResp.error) {
@@ -91,16 +98,16 @@ export async function delegateAsync(
     return `ERROR: failed to create child session — ${msg}`;
   }
 
-  const resp = await client.session.promptAsync({
+  const resp = await client.session.prompt({
     path: { id: childId },
     body: {
       agent: params.agent,
       parts: [{ type: 'text', text: params.prompt }],
+      noReply: true,
     },
-    query: { directory: params.directory },
   });
 
-  if (resp.error) {
+  if (resp?.error) {
     return `ERROR: async delegation failed — ${JSON.stringify(resp.error)}`;
   }
 
@@ -110,12 +117,11 @@ export async function delegateAsync(
 export async function getSubagentResult(
   client: MinimalClient,
   sessionID: string,
-  directory: string,
+  _directory: string,
 ): Promise<SubagentResult> {
   try {
     const sessionResp = await client.session.get({
       path: { id: sessionID },
-      query: { directory },
     });
 
     if (sessionResp.error) {
@@ -127,7 +133,7 @@ export async function getSubagentResult(
 
     const messagesResp = await client.session.messages({
       path: { id: sessionID },
-      query: { directory, limit: 5 },
+      query: { limit: 5 },
     });
 
     if (messagesResp.error) {
@@ -155,21 +161,69 @@ export async function getSubagentResult(
   }
 }
 
-const taskRefs = new Map<string, { sessionID: string; directory: string; agent: string; description: string }>();
+// ── Persistent task ref store ────────────────────────────────────────────────
+
+const TASK_REFS_FILE = 'task-refs.json';
+
+let _taskRefsPersistDir: string | null = null;
+let _taskRefs: Map<string, TaskRefInfo> = new Map();
+let _taskRefsDirty = false;
+
+function getTaskRefsPath(): string | null {
+  return _taskRefsPersistDir
+    ? path.join(_taskRefsPersistDir, '.agnes', TASK_REFS_FILE)
+    : null;
+}
+
+function loadTaskRefsFromDisk(projectDir: string): Map<string, TaskRefInfo> {
+  try {
+    const filePath = path.join(projectDir, '.agnes', TASK_REFS_FILE);
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const entries = JSON.parse(raw) as Record<string, TaskRefInfo>;
+    return new Map(Object.entries(entries));
+  } catch {
+    return new Map();
+  }
+}
+
+function flushTaskRefs(): void {
+  if (!_taskRefsDirty) return;
+  _taskRefsDirty = false;
+  const filePath = getTaskRefsPath();
+  if (!filePath) return;
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(Object.fromEntries(_taskRefs), null, 2), 'utf8');
+  } catch (err) {
+    logger.warn('Failed to persist task refs', err);
+  }
+}
+
+export function initTaskRefStore(projectDir: string): void {
+  _taskRefsPersistDir = projectDir;
+  _taskRefs = loadTaskRefsFromDisk(projectDir);
+  _taskRefsDirty = false;
+}
 
 export function recordTaskRef(
   taskRef: string,
-  info: { sessionID: string; directory: string; agent: string; description: string },
+  info: TaskRefInfo,
 ): void {
-  taskRefs.set(taskRef, info);
+  _taskRefs.set(taskRef, info);
+  _taskRefsDirty = true;
+  flushTaskRefs();
 }
 
-export function lookupTaskRef(taskRef: string):
-  | { sessionID: string; directory: string; agent: string; description: string }
-  | undefined {
-  return taskRefs.get(taskRef);
+export function lookupTaskRef(taskRef: string): TaskRefInfo | undefined {
+  return _taskRefs.get(taskRef);
 }
 
 export function clearTaskRefs(): void {
-  taskRefs.clear();
+  _taskRefs.clear();
+  _taskRefsDirty = true;
+  flushTaskRefs();
+  const filePath = getTaskRefsPath();
+  if (filePath) {
+    try { fs.rmSync(filePath, { force: true }); } catch {}
+  }
 }

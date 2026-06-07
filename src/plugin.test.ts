@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test, beforeEach } from 'bun:test';
 import { getBootstrapContent } from './bootstrap.js';
 
 describe('AgnesPlugin structure', () => {
@@ -67,6 +67,11 @@ describe('AgnesPlugin structure', () => {
 });
 
 describe('experimental.chat.messages.transform hook', () => {
+  beforeEach(async () => {
+    const { __resetBootstrapInjected } = await import('./plugin.js');
+    __resetBootstrapInjected();
+  });
+
   test('skips when no messages', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
     const plugin = await AgnesPlugin({ directory: process.cwd() });
@@ -126,7 +131,6 @@ describe('experimental.chat.messages.transform hook', () => {
       ],
     };
     await (plugin as any)['experimental.chat.messages.transform']({}, output);
-    // Should NOT have injected bootstrap (no EXTREMELY_IMPORTANT prefix)
     const textParts = output.messages[0].parts.filter((p: any) => p.type === 'text');
     const hasBootstrap = textParts.some((p: any) => p.text && p.text.includes('EXTREMELY_IMPORTANT'));
     expect(hasBootstrap).toBe(false);

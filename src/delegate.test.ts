@@ -43,9 +43,20 @@ function makeMockClient(overrides?: Record<string, unknown>) {
         const session = store.get(opts.path.id);
         return { data: session?.messages ?? [], error: null };
       },
-      prompt: async (opts: { path: { id: string }; body: { agent?: string; parts: Array<{ type: string; text: string }> } }) => {
-        if (overrides?.promptError) {
+      prompt: async (opts: { path: { id: string }; body: { agent?: string; noReply?: boolean; parts: Array<{ type: string; text: string }> } }) => {
+        if (overrides?.promptError && !opts.body.noReply) {
           return { data: undefined, error: { status: 500, message: 'prompt failed' } };
+        }
+        if (opts.body.noReply) {
+          if (overrides?.promptNoReplyError) {
+            return { error: { status: 500, message: 'noReply prompt failed' } };
+          }
+          store.set(opts.path.id, {
+            messages: [
+              { info: { role: 'user' }, parts: [{ type: 'text', text: opts.body.parts[0].text }] },
+            ],
+          });
+          return { error: null };
         }
         const response = {
           data: {
@@ -63,17 +74,6 @@ function makeMockClient(overrides?: Record<string, unknown>) {
           ],
         });
         return response;
-      },
-      promptAsync: async (opts: { path: { id: string }; body: { agent?: string; parts: Array<{ type: string; text: string }> } }) => {
-        if (overrides?.promptAsyncError) {
-          return { data: undefined, error: { status: 500, message: 'promptAsync failed' } };
-        }
-        store.set(opts.path.id, {
-          messages: [
-            { info: { role: 'user' }, parts: [{ type: 'text', text: opts.body.parts[0].text }] },
-          ],
-        });
-        return { error: null };
       },
     },
   };
@@ -123,11 +123,11 @@ describe('delegateAsync', () => {
     expect(result).toContain('create failed');
   });
 
-  test('returns error string when promptAsync fails', async () => {
-    const client = makeMockClient({ promptAsyncError: true });
+  test('returns error string when noReply prompt fails', async () => {
+    const client = makeMockClient({ promptNoReplyError: true });
     const result = await delegateAsync(client, defaultParams);
     expect(result).toContain('ERROR');
-    expect(result).toContain('promptAsync failed');
+    expect(result).toContain('async delegation failed');
   });
 });
 

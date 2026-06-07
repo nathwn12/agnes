@@ -18,16 +18,19 @@ import {
   getSubagentResult,
   recordTaskRef,
   lookupTaskRef,
+  initTaskRefStore,
 } from './delegate.js';
 import { setYoloMode } from './runtime.js';
 
 let _plannerMode: 'auto' | 'builtin' | 'full' = 'auto';
-const _injectedSessions = new Set<string>();
+let _bootstrapInjected = false;
 
 export const AgnesPlugin: Plugin = async (input) => {
   const { directory, worktree } = input;
   const worktreePath = worktree || directory;
   const editedFiles = new Set<string>();
+
+  initTaskRefStore(worktreePath);
 
   return {
     config: async (config: Record<string, unknown>) => {
@@ -67,8 +70,6 @@ export const AgnesPlugin: Plugin = async (input) => {
         logger.error('Failed to apply plugin config', err);
       }
     },
-
-
 
     tool: {
       agnes_delegate: tool({
@@ -140,16 +141,16 @@ export const AgnesPlugin: Plugin = async (input) => {
     },
 
     'tool.definition': async ({ toolID }, output) => {
-      if (toolID === 'delegate_task') {
-        output.description = 'DEPRECATED — Use agnes_delegate instead. This tool may return inconsistent task IDs and is not recommended.';
+      try {
+        if (toolID === 'delegate_task') {
+          output.description = 'DEPRECATED — Use agnes_delegate instead. This tool may return inconsistent task IDs and is not recommended.';
+        }
+        if (toolID === 'get_task_result') {
+          output.description = 'DEPRECATED — Use agnes_get_result instead. This tool may fail to resolve task references.';
+        }
+      } catch (err) {
+        logger.warn('tool.definition hook failed', err);
       }
-      if (toolID === 'get_task_result') {
-        output.description = 'DEPRECATED — Use agnes_get_result instead. This tool may fail to resolve task references.';
-      }
-    },
-
-    'file.edited': async (event: { path: string }) => {
-      editedFiles.add(event.path);
     },
 
     'tool.execute.after': async (input: { tool: string; args?: Record<string, unknown> }, _output: unknown) => {
@@ -159,16 +160,60 @@ export const AgnesPlugin: Plugin = async (input) => {
       }
     },
 
-    'session.deleted': async (_event: any) => {
+    event: async ({ event }: { event: { type: string; sessionID?: string; path?: string } }) => {
+      try {
+        switch (event.type) {
+          case 'session.created':
+            if (event.sessionID && !_bootstrapInjected) {
+              const bootstrap = getBootstrapContent();
+              if (bootstrap) {
+                await input.client.session.prompt({
+                  path: { id: event.sessionID },
+                  body: {
+                    noReply: true,
+                    parts: [{ type: 'text', text: bootstrap }],
+                  },
+                });
+                _bootstrapInjected = true;
+              }
+            }
+            break;
+          case 'file.edited':
+            if (event.path) editedFiles.add(event.path);
+            break;
+          case 'session.deleted':
+            editedFiles.clear();
+            _bootstrapInjected = false;
+            break;
+        }
+      } catch (err) {
+        logger.warn('Failed to handle event ' + event.type, err);
+      }
+    },
+
+    'experimental.session.compacting': async (_input: unknown, output: { context?: string[]; prompt?: string }) => {
+      try {
+        const bootstrap = getBootstrapContent();
+        if (bootstrap) {
+          output.context = output.context ?? [];
+          output.context.push(`\n\n${bootstrap}\n\n`);
+        }
+      } catch (err) {
+        logger.warn('Failed to inject bootstrap into compaction context', err);
+      }
+    },
+
+    'session.deleted': async () => {
       try {
         editedFiles.clear();
-        _injectedSessions.clear();
+        _bootstrapInjected = false;
       } catch (err) {
         logger.warn('Failed to clean up session state', err);
       }
     },
 
     'experimental.chat.messages.transform': async (_input, output) => {
+      if (_bootstrapInjected) return;
       if (!output.messages?.length) return;
 
       const firstUser = output.messages.find((m) => m.info?.role === 'user');
@@ -176,10 +221,6 @@ export const AgnesPlugin: Plugin = async (input) => {
 
       if (firstUser.parts.some((p) => p.type === 'text' && typeof p.text === 'string' && p.text.includes('EXTREMELY_IMPORTANT'))) return;
       if (firstUser.parts.some((p) => p.type === 'agent')) return;
-
-      const injectionSessionID = (firstUser.parts[0] as { sessionID?: string }).sessionID ?? '';
-      if (injectionSessionID && _injectedSessions.has(injectionSessionID)) return;
-      if (injectionSessionID) _injectedSessions.add(injectionSessionID);
 
       const userText = firstUser.parts
         .filter((p: any) => p.type === 'text' && typeof p.text === 'string')
@@ -197,13 +238,16 @@ export const AgnesPlugin: Plugin = async (input) => {
         fullBootstrap += `\n\n## Completion Protocol\nWhen all tasks are complete, place this HTML comment at the very end of your response (invisible to users, parsed by AGNES):\n${serializeAgnesMessage({type:'completion',id:randomUUID(),timestamp:new Date().toISOString(),status:'DONE',summary:'all tasks completed successfully'})}\nFor partial results:\n${serializeAgnesMessage({type:'result',taskId:'task-000',id:randomUUID(),timestamp:new Date().toISOString(),status:'DONE',content:'...',artifact:{}})}\n`;
 
         const messageID = (firstUser.parts[0] as { messageID?: string }).messageID ?? '';
+        const sessionID = (firstUser.parts[0] as { sessionID?: string }).sessionID ?? '';
         firstUser.parts.unshift({
           id: randomUUID(),
-          sessionID: injectionSessionID,
+          sessionID,
           messageID,
           type: 'text',
           text: fullBootstrap,
         });
+
+        _bootstrapInjected = true;
       } catch (err) {
         logger.warn('Failed to build bootstrap', err);
       }
@@ -211,3 +255,8 @@ export const AgnesPlugin: Plugin = async (input) => {
 
   };
 };
+
+/** @internal exposed for tests */
+export function __resetBootstrapInjected(): void {
+  _bootstrapInjected = false;
+}
