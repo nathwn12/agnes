@@ -12400,12 +12400,18 @@ function getPackageVersion() {
   }
 }
 var _bootstrapCache = undefined;
-function buildBootstrapContent(version2, project) {
+function buildBootstrapContent(version2, tier, project) {
+  if (tier === "small") {
+    return buildMinimalBootstrap(version2);
+  }
+  if (tier === "medium") {
+    return buildMediumBootstrap(version2);
+  }
   const soulPath = path.join(packageRoot, "SOUL.md");
   let soulContent;
   try {
     const stat = fs.statSync(soulPath);
-    const statKey = `${version2}:${stat.size}:${stat.mtimeMs}`;
+    const statKey = `${version2}:${stat.size}:${stat.mtimeMs}:${tier}`;
     if (_bootstrapCache?.key === statKey)
       return _bootstrapCache.content;
     soulContent = fs.readFileSync(soulPath, "utf8");
@@ -12427,12 +12433,16 @@ When done, end response with: \xA7AM{"t":"result","i":"task-000","s":"DONE","c":
   _bootstrapCache = { content, key: `${version2}:${soulContent.length}:${Date.now()}` };
   return content;
 }
-function buildMinimalBootstrap(version2) {
-  return `[AGNES v${version2}] Orchestrator plugin. Use agnes_delegate/agnes_get_result for subagent work. Agents: general, explore.`;
+function buildMediumBootstrap(version2) {
+  return `[AGNES v${version2}] Orchestrator plugin. Use agnes_delegate/agnes_get_result for subagent work. Always chunk exploration \u2014 never one big subagent. Split by folder or 10-15 files per subagent. SOUL.md available but trimmed \u2014 fewer parallel subagents, tighter context.`;
 }
-function getBootstrapContent(project) {
+function buildMinimalBootstrap(version2) {
+  return `[AGNES v${version2}] Orchestrator plugin. Use agnes_delegate/agnes_get_result for subagent work. Agents: general, explore. Chunk exploration by folder \u2014 never one big subagent.`;
+}
+function getBootstrapContent(project, tier) {
   const version2 = getPackageVersion();
-  return buildBootstrapContent(version2, project);
+  const modelTier = tier ?? "large";
+  return buildBootstrapContent(version2, modelTier, project);
 }
 
 // src/discovery.ts
@@ -12859,7 +12869,76 @@ function createPromiseComplianceGate(output) {
   };
 }
 
+// src/runtime.ts
+var _detectedTier = null;
+function detectModelTier() {
+  if (_detectedTier)
+    return _detectedTier;
+  const env = process.env.AGNES_MODEL_TIER?.toLowerCase();
+  if (env === "small" || env === "medium" || env === "large")
+    return env;
+  return "medium";
+}
+function setModelId(modelID) {
+  const env = process.env.AGNES_MODEL_TIER?.toLowerCase();
+  if (env === "small" || env === "medium" || env === "large")
+    return;
+  const id = modelID.toLowerCase();
+  if (/^opencode(-go)?\//.test(id)) {
+    _detectedTier = "large";
+    return;
+  }
+  const paramMatch = id.match(/(\d{1,3})b/);
+  if (paramMatch) {
+    const params = parseInt(paramMatch[1], 10);
+    if (params <= 13) {
+      _detectedTier = "small";
+      return;
+    }
+    if (params <= 60) {
+      _detectedTier = "medium";
+      return;
+    }
+    _detectedTier = "large";
+    return;
+  }
+  if (/\b(mini|nano|tiny)\b/.test(id)) {
+    _detectedTier = "small";
+    return;
+  }
+  if (/\b(flash|haiku|spark|lite)\b/.test(id)) {
+    _detectedTier = "medium";
+    return;
+  }
+  _detectedTier = "large";
+}
+function getMaxResultChars(tier) {
+  switch (tier) {
+    case "small":
+      return 2000;
+    case "medium":
+      return 4000;
+    case "large":
+      return 8000;
+  }
+}
+function truncateResult(text, maxChars) {
+  if (!text || text.length <= maxChars)
+    return text;
+  return text.slice(0, maxChars) + `
+[...truncated, ${text.length - maxChars} chars omitted]`;
+}
+var _yoloMode = false;
+function setYoloMode(v) {
+  _yoloMode = v;
+}
+function isYoloMode() {
+  return _yoloMode;
+}
+
 // src/delegate.ts
+var SUBAGENT_TIMEOUT_MS = 120000;
+var SESSION_TTL_MS = 10 * 60 * 1000;
 function extractText(response) {
   if (!response || typeof response !== "object")
     return "";
@@ -12892,20 +12971,43 @@ async function delegateBlocking(client, params) {
     const msg = err instanceof Error ? err.message : String(err);
     return `ERROR: failed to create child session \u2014 ${msg}`;
   }
-  const promptResp = await client.session.prompt({
-    path: { id: childId },
-    body: {
-      agent: params.agent,
-      parts: [{ type: "text", text: params.prompt }]
+  const maxAttempts = 3;
+  for (let attempt = 1;attempt <= maxAttempts; attempt++) {
+    try {
+      const promptResp = await client.session.prompt({
+        path: { id: childId },
+        body: {
+          agent: params.agent,
+          parts: [{ type: "text", text: params.prompt }]
+        }
+      });
+      if (promptResp.error) {
+        if (attempt < maxAttempts) {
+          await sleep(Math.pow(3, attempt - 1) * 1000);
+          continue;
+        }
+        return `ERROR: delegation failed after ${maxAttempts} attempts \u2014 ${JSON.stringify(promptResp.error)}`;
+      }
+      const output = extractText(promptResp.data);
+      const tier = detectModelTier();
+      const maxChars = getMaxResultChars(tier);
+      const truncated = truncateResult(output, maxChars);
+      const gates = [createPromiseComplianceGate(truncated)];
+      await runGates(gates);
+      return truncated;
+    } catch (err) {
+      if (attempt < maxAttempts) {
+        await sleep(Math.pow(3, attempt - 1) * 1000);
+        continue;
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      return `ERROR: delegation failed after ${maxAttempts} attempts \u2014 ${msg}`;
     }
-  });
-  if (promptResp.error) {
-    return `ERROR: delegation failed \u2014 ${JSON.stringify(promptResp.error)}`;
   }
-  const output = extractText(promptResp.data);
-  const gates = [createPromiseComplianceGate(output)];
-  await runGates(gates);
-  return output;
+  return `ERROR: delegation failed after ${maxAttempts} attempts \u2014 exhausted all retries`;
+}
+function sleep(ms) {
+  return new Promise((resolve3) => setTimeout(resolve3, ms));
 }
 async function delegateAsync(client, params) {
   let childId;
@@ -12929,6 +13031,16 @@ async function delegateAsync(client, params) {
   return childId;
 }
 async function getSubagentResult(client, sessionID, _directory) {
+  const refInfo = lookupTaskRef(sessionID);
+  if (refInfo?.createdAt) {
+    const elapsed = Date.now() - refInfo.createdAt;
+    if (elapsed > SUBAGENT_TIMEOUT_MS) {
+      return {
+        status: "error",
+        error: `TIMEOUT \u2014 subagent running for ${Math.round(elapsed / 1000)}s without completion`
+      };
+    }
+  }
   try {
     const sessionResp = await client.session.get({
       path: { id: sessionID }
@@ -12956,9 +13068,12 @@ async function getSubagentResult(client, sessionID, _directory) {
     }
     const lastMsg = assistantMessages[assistantMessages.length - 1];
     const output = extractText(lastMsg);
-    const gates = [createPromiseComplianceGate(output)];
+    const tier = detectModelTier();
+    const maxChars = getMaxResultChars(tier);
+    const truncated = truncateResult(output, maxChars);
+    const gates = [createPromiseComplianceGate(truncated)];
     await runGates(gates);
-    return { status: "completed", output };
+    return { status: "completed", output: truncated };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     error45("getSubagentResult threw", err);
@@ -12977,6 +13092,10 @@ function loadTaskRefsFromDisk(projectDir) {
     const filePath = path4.join(projectDir, ".agnes", TASK_REFS_FILE);
     const raw = fs4.readFileSync(filePath, "utf8");
     const entries = JSON.parse(raw);
+    for (const e of Object.values(entries)) {
+      if (!e.createdAt)
+        e.createdAt = 0;
+    }
     return new Map(Object.entries(entries));
   } catch {
     return new Map;
@@ -13002,9 +13121,26 @@ function initTaskRefStore(projectDir) {
   _taskRefsDirty = false;
 }
 function recordTaskRef(taskRef, info) {
-  _taskRefs.set(taskRef, info);
+  cleanupOrphanedSessions();
+  _taskRefs.set(taskRef, { ...info, createdAt: info.createdAt ?? Date.now() });
   _taskRefsDirty = true;
   flushTaskRefs();
+}
+function cleanupOrphanedSessions() {
+  const now = Date.now();
+  let cleaned = 0;
+  for (const [key, info] of _taskRefs) {
+    if (info.createdAt && now - info.createdAt > SESSION_TTL_MS) {
+      _taskRefs.delete(key);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) {
+    _taskRefsDirty = true;
+    flushTaskRefs();
+    warn(`Cleaned up ${cleaned} orphaned subagent session(s)`);
+  }
+  return cleaned;
 }
 function lookupTaskRef(taskRef) {
   return _taskRefs.get(taskRef);
@@ -13019,45 +13155,6 @@ function clearTaskRefs() {
       fs4.rmSync(filePath, { force: true });
     } catch {}
   }
-}
-
-// src/runtime.ts
-var _detectedTier = null;
-function setModelId(modelID) {
-  const env = process.env.AGNES_MODEL_TIER?.toLowerCase();
-  if (env === "small" || env === "medium" || env === "large")
-    return;
-  const id = modelID.toLowerCase();
-  const paramMatch = id.match(/(\d{1,3})b/);
-  if (paramMatch) {
-    const params = parseInt(paramMatch[1], 10);
-    if (params <= 13) {
-      _detectedTier = "small";
-      return;
-    }
-    if (params <= 60) {
-      _detectedTier = "medium";
-      return;
-    }
-    _detectedTier = "large";
-    return;
-  }
-  if (/\b(mini|nano|tiny)\b/.test(id)) {
-    _detectedTier = "small";
-    return;
-  }
-  if (/\b(flash|haiku|spark|lite)\b/.test(id)) {
-    _detectedTier = "medium";
-    return;
-  }
-  _detectedTier = "large";
-}
-var _yoloMode = false;
-function setYoloMode(v) {
-  _yoloMode = v;
-}
-function isYoloMode() {
-  return _yoloMode;
 }
 
 // src/plugin.ts
@@ -13191,7 +13288,7 @@ $ARGUMENTS`
         switch (event.type) {
           case "session.created":
             if (event.sessionID && !_bootstrapInjected) {
-              const bootstrap = getBootstrapContent();
+              const bootstrap = getBootstrapContent(undefined, detectModelTier());
               if (bootstrap) {
                 await input.client.session.prompt({
                   path: { id: event.sessionID },
@@ -13215,7 +13312,7 @@ $ARGUMENTS`
     },
     "experimental.session.compacting": async (_input, output) => {
       try {
-        const bootstrap = getBootstrapContent();
+        const bootstrap = getBootstrapContent(undefined, detectModelTier());
         if (bootstrap) {
           output.context = output.context ?? [];
           output.context.push(`
@@ -13254,7 +13351,8 @@ ${bootstrap}
       const yolo = yoloFlags.some((flag) => userText.includes(flag));
       setYoloMode(yolo);
       try {
-        const bootstrap = getBootstrapContent(detectProject(worktreePath));
+        const tier = detectModelTier();
+        const bootstrap = getBootstrapContent(detectProject(worktreePath), tier);
         if (!bootstrap)
           return;
         let fullBootstrap = bootstrap;
