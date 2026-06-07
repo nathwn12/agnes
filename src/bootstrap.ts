@@ -47,7 +47,7 @@ type BootstrapCacheEntry = {
 
 let _bootstrapCache: BootstrapCacheEntry | undefined = undefined;
 
-export function getStaticBootstrapContent(): string | null {
+function getStaticBootstrapContent(): string | null {
   const soulPath = path.join(packageRoot, 'SOUL.md');
   const version = getPackageVersion();
   try {
@@ -83,8 +83,15 @@ Use \`agnes_delegate\` and \`agnes_get_result\` for subagent work. Built-in \`de
 
 Available agents: @general (read/write/research), @explore (read-only). These are OpenCode's built-in subagents.
 
+**Mode Detection**
+Scan the user's message below these instructions for mode flags:
+- \`--yolo\`, \`--auto\`, \`--yes\`, \`yolo mode\`, \`/yolo\` → ACTIVATE YOLO MODE (full autonomous, skip question gates, max parallelization)
+- No flags → QUESTION-GATE MODE (default: pause at decisions, present options with recommendation)
+
+ONCE SET, mode persists for the session. Re-evaluate on each user message for mode toggles.
+
 **Commands**
-Use slash commands for structured workflows: /plan, /build-fix, /code-review, /tdd, /verify, /checkpoint, /learn, /security, /e2e, /update-docs, /refactor-clean, etc.
+Use slash commands for structured workflows: /plan, /build-fix, /code-review, /tdd, /verify, /checkpoint, /learn, /security, /e2e, /yolo, /update-docs, /refactor-clean, etc.
 
 **Rules**
 - Decompose work by file boundary before delegating.
@@ -124,11 +131,4 @@ ${planSummary}
 </AGNES_PLAN_STATE>`;
 }
 
-export function getBootstrapPackageInfo(): { version: string; root: string; skillsDir: string; cacheRoot: string } {
-  return {
-    version: getPackageVersion(),
-    root: packageRoot,
-    skillsDir: '',
-    cacheRoot: opencodePackageCache,
-  };
-}
+

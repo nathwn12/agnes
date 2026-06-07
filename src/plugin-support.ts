@@ -7,12 +7,6 @@ export interface ProjectProfile {
   packageManager: string;
 }
 
-export interface PackageInfoLike {
-  version: string;
-  root: string;
-  skillsDir: string;
-}
-
 export function readFileSafe(filePath: string): string {
   try { return fs.readFileSync(filePath, "utf8"); } catch { return ""; }
 }
@@ -47,41 +41,4 @@ export function detectProject(cwd: string): ProjectProfile {
   return { projectName, languages, packageManager };
 }
 
-export function buildProjectProfileSection(profile: ProjectProfile): string {
-  const lines: string[] = ["### Project Profile (auto-detected)"];
-  if (profile.languages.length > 0) lines.push(`- Languages: ${profile.languages.join(", ")}`);
-  lines.push(`- Package manager: ${profile.packageManager}`, "");
-  return lines.join("\n");
-}
 
-export function buildCompactionContext(input: {
-  pkg: PackageInfoLike;
-  projectProfile: ProjectProfile | null;
-  editedFiles: Iterable<string>;
-}): string[] {
-  const out: string[] = [];
-  out.push("# AGNES Context (preserve across compaction)");
-  out.push("", `## AGNES v${input.pkg.version}`);
-  out.push(`- Package root: ${input.pkg.root}`);
-  out.push("- Primary role: orchestrate subagents, synthesize results, verify before claiming");
-  out.push("- Read-only tools are technically safe in main context, but default to delegating discovery and research");
-  out.push("- Mutation always delegates to subagents");
-  out.push("- Soul: Think Before Coding, Simplicity First, Surgical Changes, Goal-Driven Execution");
-  out.push("- Route by task type: planning, review, build-fix, TDD, docs, language-specific");
-  out.push("- Answer directly when no tools are needed", "");
-
-  if (input.projectProfile) {
-    out.push("## Project Profile");
-    out.push(`- Languages: ${input.projectProfile.languages.join(", ") || "none detected"}`);
-    out.push(`- Package manager: ${input.projectProfile.packageManager}`, "");
-  }
-
-  const edited = [...input.editedFiles];
-  if (edited.length > 0) {
-    out.push("## Recently Edited Files");
-    for (const f of edited) out.push(`- ${f}`);
-    out.push("");
-  }
-
-  return out;
-}

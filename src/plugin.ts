@@ -1,19 +1,16 @@
 import type { Plugin } from '@opencode-ai/plugin';
 import { tool } from '@opencode-ai/plugin';
 import { randomUUID } from 'node:crypto';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import {
   getBootstrapContent,
-  getBootstrapPackageInfo,
 } from './bootstrap.js';
 import {
   discoverCommands,
 } from './discovery.js';
 import { serializeAgnesMessage } from './protocol.js';
-import {
-  buildCompactionContext,
-  detectProject,
-} from './plugin-support.js';
-import type { ProjectProfile } from './plugin-support.js';
+
 import * as logger from './logger.js';
 import {
   delegateBlocking,
@@ -22,6 +19,7 @@ import {
   recordTaskRef,
   lookupTaskRef,
 } from './delegate.js';
+import { setYoloMode } from './runtime.js';
 
 let _plannerMode: 'auto' | 'builtin' | 'full' = 'auto';
 const _injectedSessions = new Set<string>();
@@ -30,7 +28,6 @@ export const AgnesPlugin: Plugin = async (input) => {
   const { directory, worktree } = input;
   const worktreePath = worktree || directory;
   const editedFiles = new Set<string>();
-  let projectProfile: ProjectProfile | null = null;
 
   return {
     config: async (config: Record<string, unknown>) => {
@@ -45,6 +42,16 @@ export const AgnesPlugin: Plugin = async (input) => {
           ...plannerConfig,
           mode: _plannerMode,
         } as Record<string, unknown>;
+
+        const skillsPath = path.join(worktreePath, '.opencode', 'skills');
+        if (fs.existsSync(skillsPath)) {
+          configObj.skills = configObj.skills || {};
+          const skillsObj = configObj.skills as Record<string, unknown>;
+          skillsObj.paths = (skillsObj.paths as string[]) || [];
+          if (!(skillsObj.paths as string[]).includes(skillsPath)) {
+            (skillsObj.paths as string[]).push(skillsPath);
+          }
+        }
 
         const cmdCfgObj = (configObj.command || {}) as Record<string, unknown>;
         for (const cmd of discoverCommands(worktreePath)) {
@@ -61,13 +68,7 @@ export const AgnesPlugin: Plugin = async (input) => {
       }
     },
 
-    'session.created': async (_event: any) => {
-      try {
-        projectProfile = detectProject(worktreePath);
-      } catch (err) {
-        logger.warn('Failed to detect project profile', err);
-      }
-    },
+
 
     tool: {
       agnes_delegate: tool({
@@ -161,7 +162,6 @@ export const AgnesPlugin: Plugin = async (input) => {
     'session.deleted': async (_event: any) => {
       try {
         editedFiles.clear();
-        projectProfile = null;
         _injectedSessions.clear();
       } catch (err) {
         logger.warn('Failed to clean up session state', err);
@@ -181,6 +181,13 @@ export const AgnesPlugin: Plugin = async (input) => {
       if (injectionSessionID && _injectedSessions.has(injectionSessionID)) return;
       if (injectionSessionID) _injectedSessions.add(injectionSessionID);
 
+      const userText = firstUser.parts
+        .filter((p: any) => p.type === 'text' && typeof p.text === 'string')
+        .map((p: any) => p.text.toLowerCase())
+        .join(' ');
+      const yoloFlags = ['--yolo', '--auto', '/yolo', '/auto', 'yolo mode', '--yes'];
+      setYoloMode(yoloFlags.some((flag) => userText.includes(flag)));
+
       try {
         const bootstrap = getBootstrapContent();
         if (!bootstrap) return;
@@ -199,17 +206,6 @@ export const AgnesPlugin: Plugin = async (input) => {
         });
       } catch (err) {
         logger.warn('Failed to build bootstrap', err);
-      }
-    },
-
-    'experimental.session.compacting': async (_input: any, output: any) => {
-      try {
-        const pkg = getBootstrapPackageInfo();
-        for (const line of buildCompactionContext({ pkg, projectProfile, editedFiles })) {
-          output.context.push(line);
-        }
-      } catch (err) {
-        logger.warn('Failed to build compaction context', err);
       }
     },
 

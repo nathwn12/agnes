@@ -14,12 +14,12 @@ export const GateEvidenceSchema = z.object({
   timestamp: z.string().datetime(),
   durationMs: z.number(),
 });
-export type GateEvidence = z.infer<typeof GateEvidenceSchema>;
+
 
 export const RetryClassificationSchema = z.enum([
   'retryable', 'needs_context', 'blocked', 'terminal', 'verification_failed'
 ]);
-export type RetryClassification = z.infer<typeof RetryClassificationSchema>;
+
 
 export const ExecutionArtifactSchema = z.object({
   attempt: z.number().int().nonnegative(),
@@ -82,7 +82,7 @@ export const CompletionStatusSchema = z.enum([
   "DONE", "DONE_WITH_CONCERNS", "NEEDS_CONTEXT", "BLOCKED"
 ]);
 
-export const BaseMessageSchema = z.object({
+const BaseMessageSchema = z.object({
   type: MessageTypeSchema,
   id: z.string().uuid(),
   timestamp: z.string().datetime(),

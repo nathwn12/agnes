@@ -28,7 +28,7 @@ function parseTaskLines(lines: string[]): PlanTask[] {
   });
 }
 
-export function sortPlansByDate(plans: PlanIndexEntry[]): PlanIndexEntry[] {
+function sortPlansByDate(plans: PlanIndexEntry[]): PlanIndexEntry[] {
   return [...plans].sort((a, b) => {
     const aTime = new Date(a.updatedAt).getTime();
     const bTime = new Date(b.updatedAt).getTime();

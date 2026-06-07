@@ -3,7 +3,10 @@ import {
   getLatestActivePlan,
   readPlanIndex,
 } from './state.js';
-import type { PlanIndexEntry, PlanIndex, ActivePlan } from './state.js';
+import type { PlanIndex, ActivePlan } from './state.js';
+
+export function setYoloMode(_enabled: boolean): void {
+}
 
 export function getPlanState(workspaceRoot?: string | null): {
   hasActivePlan: boolean;
@@ -39,10 +42,4 @@ export function getPlanGate(workspaceRoot?: string | null): string | null {
   return null;
 }
 
-export function getPlanGateFromIndex(_index: PlanIndex): string | null {
-  return null;
-}
 
-export function buildExecutionContext(_entry: PlanIndexEntry): string {
-  return 'Output <!-- <agnes:message>{"type":"completion","id":"<uuid>","timestamp":"<iso>","status":"DONE","summary":"...","schema":"agnes/message-v1"}</agnes:message> --> when the task is genuinely complete.';
-}

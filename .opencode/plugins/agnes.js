@@ -19279,6 +19279,8 @@ function tool(input) {
 tool.schema = exports_external;
 // src/plugin.ts
 import { randomUUID as randomUUID2 } from "crypto";
+import * as fs5 from "fs";
+import * as path4 from "path";
 
 // src/bootstrap.ts
 import * as fs2 from "fs";
@@ -34224,8 +34226,15 @@ Use \`agnes_delegate\` and \`agnes_get_result\` for subagent work. Built-in \`de
 
 Available agents: @general (read/write/research), @explore (read-only). These are OpenCode's built-in subagents.
 
+**Mode Detection**
+Scan the user's message below these instructions for mode flags:
+- \`--yolo\`, \`--auto\`, \`--yes\`, \`yolo mode\`, \`/yolo\` \u2192 ACTIVATE YOLO MODE (full autonomous, skip question gates, max parallelization)
+- No flags \u2192 QUESTION-GATE MODE (default: pause at decisions, present options with recommendation)
+
+ONCE SET, mode persists for the session. Re-evaluate on each user message for mode toggles.
+
 **Commands**
-Use slash commands for structured workflows: /plan, /build-fix, /code-review, /tdd, /verify, /checkpoint, /learn, /security, /e2e, /update-docs, /refactor-clean, etc.
+Use slash commands for structured workflows: /plan, /build-fix, /code-review, /tdd, /verify, /checkpoint, /learn, /security, /e2e, /yolo, /update-docs, /refactor-clean, etc.
 
 **Rules**
 - Decompose work by file boundary before delegating.
@@ -34261,79 +34270,24 @@ function getBootstrapContent(planner, projectRoot, index) {
 ${planSummary}
 </AGNES_PLAN_STATE>`;
 }
-function getBootstrapPackageInfo() {
-  return {
-    version: getPackageVersion(),
-    root: packageRoot,
-    skillsDir: "",
-    cacheRoot: opencodePackageCache
-  };
-}
 
 // src/discovery.ts
-import * as path4 from "path";
+import * as path3 from "path";
 import * as fs4 from "fs";
 import * as os3 from "os";
 import { fileURLToPath as fileURLToPath2 } from "url";
 
 // src/plugin-support.ts
 import * as fs3 from "fs";
-import * as path3 from "path";
+function readFileSafe(filePath) {
+  try {
+    return fs3.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
 function stripYamlFrontmatter(content) {
   return content.replace(/^---[\s\S]*?---\n/, "");
-}
-function detectProject(cwd) {
-  let projectName = path3.basename(cwd);
-  try {
-    const pkg = JSON.parse(fs3.readFileSync(path3.join(cwd, "package.json"), "utf8"));
-    if (pkg.name)
-      projectName = pkg.name;
-  } catch {}
-  const languages = [];
-  if (fs3.existsSync(path3.join(cwd, "tsconfig.json")))
-    languages.push("typescript");
-  if (fs3.existsSync(path3.join(cwd, "go.mod")))
-    languages.push("go");
-  if (fs3.existsSync(path3.join(cwd, "Cargo.toml")))
-    languages.push("rust");
-  if (fs3.existsSync(path3.join(cwd, "pyproject.toml")))
-    languages.push("python");
-  if (fs3.existsSync(path3.join(cwd, "package.json")))
-    languages.push("javascript");
-  const lockfiles = { "bun.lock": "bun", "bun.lockb": "bun", "pnpm-lock.yaml": "pnpm", "yarn.lock": "yarn", "package-lock.json": "npm" };
-  let packageManager = "npm";
-  for (const [lock, name] of Object.entries(lockfiles)) {
-    if (fs3.existsSync(path3.join(cwd, lock))) {
-      packageManager = name;
-      break;
-    }
-  }
-  return { projectName, languages, packageManager };
-}
-function buildCompactionContext(input) {
-  const out = [];
-  out.push("# AGNES Context (preserve across compaction)");
-  out.push("", `## AGNES v${input.pkg.version}`);
-  out.push(`- Package root: ${input.pkg.root}`);
-  out.push("- Primary role: orchestrate subagents, synthesize results, verify before claiming");
-  out.push("- Read-only tools are technically safe in main context, but default to delegating discovery and research");
-  out.push("- Mutation always delegates to subagents");
-  out.push("- Soul: Think Before Coding, Simplicity First, Surgical Changes, Goal-Driven Execution");
-  out.push("- Route by task type: planning, review, build-fix, TDD, docs, language-specific");
-  out.push("- Answer directly when no tools are needed", "");
-  if (input.projectProfile) {
-    out.push("## Project Profile");
-    out.push(`- Languages: ${input.projectProfile.languages.join(", ") || "none detected"}`);
-    out.push(`- Package manager: ${input.projectProfile.packageManager}`, "");
-  }
-  const edited = [...input.editedFiles];
-  if (edited.length > 0) {
-    out.push("## Recently Edited Files");
-    for (const f of edited)
-      out.push(`- ${f}`);
-    out.push("");
-  }
-  return out;
 }
 
 // src/discovery-policy.ts
@@ -34360,16 +34314,9 @@ function parseCommandFrontmatter(content) {
 }
 
 // src/discovery.ts
-var __dirname3 = path4.dirname(fileURLToPath2(import.meta.url));
-var pluginRoot = findPackageRoot(__dirname3) ?? path4.resolve(__dirname3, "..", "..");
-var BUNDLED_COMMANDS_DIR = path4.join(pluginRoot, ".opencode", "commands");
-function readFileSafe(filePath) {
-  try {
-    return fs4.readFileSync(filePath, "utf8");
-  } catch {
-    return "";
-  }
-}
+var __dirname3 = path3.dirname(fileURLToPath2(import.meta.url));
+var pluginRoot = findPackageRoot(__dirname3) ?? path3.resolve(__dirname3, "..", "..");
+var BUNDLED_COMMANDS_DIR = path3.join(pluginRoot, ".opencode", "commands");
 function homeDir() {
   return process.env.USERPROFILE || os3.homedir();
 }
@@ -34381,7 +34328,7 @@ function scanCommandDir(dir, source) {
       if (!entry.isFile() || !entry.name.endsWith(".md"))
         continue;
       const name = entry.name.slice(0, -3);
-      const content = readFileSafe(path4.join(dir, entry.name));
+      const content = readFileSafe(path3.join(dir, entry.name));
       if (!content)
         continue;
       const fm = parseCommandFrontmatter(content);
@@ -34399,14 +34346,14 @@ function scanCommandDir(dir, source) {
   return results;
 }
 function globalDir(sub) {
-  return path4.join(homeDir(), ".config", "opencode", sub);
+  return path3.join(homeDir(), ".config", "opencode", sub);
 }
 function workspaceDir(worktree, sub) {
-  return path4.join(worktree, ".opencode", sub);
+  return path3.join(worktree, ".opencode", sub);
 }
 var cachedCommands = new Map;
 function cacheKey(worktreePath) {
-  return path4.resolve(worktreePath);
+  return path3.resolve(worktreePath);
 }
 function discoverCommands(worktreePath) {
   const key = cacheKey(worktreePath);
@@ -34540,6 +34487,9 @@ function lookupTaskRef(taskRef) {
   return taskRefs.get(taskRef);
 }
 
+// src/runtime.ts
+function setYoloMode(_enabled) {}
+
 // src/plugin.ts
 var _plannerMode = "auto";
 var _injectedSessions = new Set;
@@ -34547,7 +34497,6 @@ var AgnesPlugin = async (input) => {
   const { directory, worktree } = input;
   const worktreePath = worktree || directory;
   const editedFiles = new Set;
-  let projectProfile = null;
   return {
     config: async (config3) => {
       try {
@@ -34558,6 +34507,15 @@ var AgnesPlugin = async (input) => {
           ...plannerConfig,
           mode: _plannerMode
         };
+        const skillsPath = path4.join(worktreePath, ".opencode", "skills");
+        if (fs5.existsSync(skillsPath)) {
+          configObj.skills = configObj.skills || {};
+          const skillsObj = configObj.skills;
+          skillsObj.paths = skillsObj.paths || [];
+          if (!skillsObj.paths.includes(skillsPath)) {
+            skillsObj.paths.push(skillsPath);
+          }
+        }
         const cmdCfgObj = configObj.command || {};
         for (const cmd of discoverCommands(worktreePath)) {
           if (!cmdCfgObj[cmd.name]) {
@@ -34572,13 +34530,6 @@ $ARGUMENTS`
         configObj.command = cmdCfgObj;
       } catch (err) {
         error95("Failed to apply plugin config", err);
-      }
-    },
-    "session.created": async (_event) => {
-      try {
-        projectProfile = detectProject(worktreePath);
-      } catch (err) {
-        warn("Failed to detect project profile", err);
       }
     },
     tool: {
@@ -34668,7 +34619,6 @@ $ARGUMENTS`
     "session.deleted": async (_event) => {
       try {
         editedFiles.clear();
-        projectProfile = null;
         _injectedSessions.clear();
       } catch (err) {
         warn("Failed to clean up session state", err);
@@ -34689,6 +34639,9 @@ $ARGUMENTS`
         return;
       if (injectionSessionID)
         _injectedSessions.add(injectionSessionID);
+      const userText = firstUser.parts.filter((p) => p.type === "text" && typeof p.text === "string").map((p) => p.text.toLowerCase()).join(" ");
+      const yoloFlags = ["--yolo", "--auto", "/yolo", "/auto", "yolo mode", "--yes"];
+      setYoloMode(yoloFlags.some((flag) => userText.includes(flag)));
       try {
         const bootstrap = getBootstrapContent();
         if (!bootstrap)
@@ -34712,16 +34665,6 @@ ${serializeAgnesMessage({ type: "result", taskId: "task-000", id: randomUUID2(),
         });
       } catch (err) {
         warn("Failed to build bootstrap", err);
-      }
-    },
-    "experimental.session.compacting": async (_input, output) => {
-      try {
-        const pkg = getBootstrapPackageInfo();
-        for (const line of buildCompactionContext({ pkg, projectProfile, editedFiles })) {
-          output.context.push(line);
-        }
-      } catch (err) {
-        warn("Failed to build compaction context", err);
       }
     }
   };

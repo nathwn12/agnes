@@ -1,4 +1,3 @@
-import type { GateEvidence } from './schema.js';
 import { parseAgnesMessage } from './protocol.js';
 
 type GateStatus = 'PASS' | 'FAIL' | 'SKIP';
@@ -115,21 +114,6 @@ export function createPromiseComplianceGate(output: string): Gate {
     },
   };
 }
-export function gateResultToEvidence(result: GateResult): GateEvidence {
-  return {
-    gateId: result.gateId,
-    status: result.status,
-    evidence: {
-      errors: result.evidence.errors,
-      command: result.evidence.command,
-      exitCode: result.evidence.exitCode,
-      output: result.evidence.output,
-    },
-    timestamp: result.timestamp,
-    durationMs: result.durationMs,
-  };
-}
-
 /** True if all results have PASS or SKIP status, false otherwise. */
 export function allGatesPassed(results: GateResult[]): boolean {
   return results.every(r => r.status === 'PASS' || r.status === 'SKIP');

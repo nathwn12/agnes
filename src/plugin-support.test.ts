@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { buildCompactionContext, detectProject } from "./plugin-support";
+import { detectProject } from "./plugin-support";
 
 describe("plugin-support", () => {
   it("detects project profile from files", () => {
@@ -18,16 +18,5 @@ describe("plugin-support", () => {
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
-  });
-
-  it("builds compaction context with edited files", () => {
-    const lines = buildCompactionContext({
-      pkg: { version: "1.2.3", root: "/tmp/agnes", skillsDir: "/tmp/agnes/.opencode/skills" },
-      projectProfile: { projectName: "demo", languages: ["typescript"], packageManager: "bun" },
-      editedFiles: new Set(["src/a.ts", "src/b.ts"]),
-    });
-
-    expect(lines.join("\n")).toContain("src/a.ts");
-    expect(lines.join("\n")).toContain("Languages: typescript");
   });
 });

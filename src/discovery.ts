@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import { fileURLToPath } from "node:url";
 import { findPackageRoot } from "./bootstrap.js";
-import { stripYamlFrontmatter } from "./plugin-support.js";
+import { readFileSafe, stripYamlFrontmatter } from "./plugin-support.js";
 import { parseCommandFrontmatter } from "./discovery-policy.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -15,10 +15,6 @@ export interface CommandDiscovery {
   desc: string;
   template: string;
   source: "agnes" | "global" | "workspace";
-}
-
-function readFileSafe(filePath: string): string {
-  try { return fs.readFileSync(filePath, "utf8"); } catch { return ""; }
 }
 
 function homeDir(): string {

@@ -2,24 +2,6 @@
 
 AGNES is an OpenCode plugin that provides delegation utilities and structured slash commands.
 
-## Commands (13)
-
-| Command | What |
-|---------|------|
-| `/plan` | Implementation plan with risk assessment |
-| `/build-fix` | Fix build/TypeScript errors with minimal changes |
-| `/code-review` | Review code for quality, security, maintainability |
-| `/tdd` | TDD workflow (RED → GREEN → REFACTOR) |
-| `/security` | Security vulnerability review |
-| `/verify` | Run verification loop (typecheck + lint + test + build) |
-| `/e2e` | Generate and run Playwright E2E tests |
-| `/checkpoint` | Save verification state and progress |
-| `/learn` | Extract patterns and learnings from session |
-| `/test-coverage` | Analyze test coverage |
-| `/update-docs` | Update documentation |
-| `/update-codemaps` | Update codebase maps |
-| `/refactor-clean` | Remove dead code |
-
 ## Project Commands
 
 | Command | What |
@@ -38,26 +20,27 @@ CI: `bun install -> bun run lint -> bun run typecheck -> bun test -> bun run bun
 
 | Path | Role |
 |------|------|
-| src/plugin.ts | OpenCode entry point. Registers hooks, injects bootstrap, exposes `agnes_delegate`/`agnes_get_result` tools, registers commands. |
-| src/bootstrap.ts | Injects SOUL.md as system prompt. Cached by content hash. |
+| src/plugin.ts | OpenCode entry point. Registers hooks, injects bootstrap, exposes `agnes_delegate`/`agnes_get_result` tools, registers commands and skills path. |
+| src/bootstrap.ts | Injects SOUL.md + mode detection instruction as system prompt. Cached by content hash. |
 | src/delegate.ts | Programmatic subagent delegation via OpenCode client API. Creates child sessions, sends prompts, polls for results. |
-| src/discovery.ts | Scans 3 layers for commands (.md files with YAML frontmatter). |
+| src/runtime.ts | Session tracking, mode state (question-gate/YOLO), attempt counting, struggle detection, planner routing. |
 | src/state.ts | Plan index CRUD — .agnes/ state management. |
-| src/runtime.ts | Session tracking, attempt counting, struggle detection, planner routing. |
 | src/protocol.ts | `<agnes:message>` JSON protocol parsing. |
 | src/schema.ts | Zod schemas for Plan, Bootstrap Block, Message. |
 | src/validation.ts | Allowlist-based message validation. |
+| src/discovery.ts | Scans 3 layers for commands (.md files with YAML frontmatter). |
 | src/discovery-policy.ts | YAML frontmatter parsing. |
-| src/plugin-support.ts | Project profile detection, compaction context. |
-| src/compaction.ts | Token-count evaluation and compaction thresholds. |
+| src/plugin-support.ts | Project profile detection. |
 | src/logger.ts | Stderr logger with [agnes] prefix. |
 
 ## Key Details
 
 - **Agents**: Only `general` (read/write/research) and `explore` (read-only). These are OpenCode's built-in subagents. No custom agents.
-- **Commands**: All workflows are slash commands in `.opencode/commands/*.md`.
 - **Delegation**: Use `agnes_delegate`/`agnes_get_result` custom tools (built-in `delegate_task`/`get_task_result` are deprecated).
-- **Bootstrap**: Injected via `experimental.chat.messages.transform` from SOUL.md.
+- **Bootstrap**: Injected via `experimental.chat.messages.transform` from SOUL.md. Includes mode detection instruction.
+- **Auto-delegation**: Enforced via SOUL.md bootstrap — always decompose by file boundary and parallelize.
+- **Skills**: 6 skills in `.opencode/skills/`, auto-discovered by OpenCode via plugin config hook.
+- **Commands**: All workflows are slash commands in `.opencode/commands/*.md` (14 commands).
 - **State dir**: .agnes/ at project root. Auto-prunes done/abandoned plans after 7 days.
 - **Build**: Single-file bundle via `bun build src/plugin.ts --target bun`.
 

@@ -60,7 +60,7 @@ describe("discoverCommands", () => {
   it("handles missing workspace directory gracefully", () => {
     clearDiscoveryCache();
     const cmds = discoverCommands(path.join(tmpDir, "nonexistent"));
-    expect(cmds.length).toBe(13);
+    expect(cmds.length).toBe(14);
   });
 
   it("skips non-.md files in command directory", () => {
