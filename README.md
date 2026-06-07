@@ -1,10 +1,10 @@
 <h1 align="center">🤖 AGNES — Swarm Orchestrator for OpenCode</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.30.0-blue" alt="version">
-  <img src="https://img.shields.io/badge/skills-22-orange" alt="22 skills">
+  <img src="https://img.shields.io/badge/version-0.31.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/skills-9-orange" alt="9 skills">
   <img src="https://img.shields.io/badge/build-passing-brightgreen" alt="build">
-  <img src="https://img.shields.io/badge/tests-423-brightgreen" alt="tests">
+  <img src="https://img.shields.io/badge/tests-94-brightgreen" alt="tests">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
 </p>
