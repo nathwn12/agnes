@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as logger from './logger.js';
+import type { ProjectProfile } from './plugin-support.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -49,7 +50,7 @@ type BootstrapCacheEntry = {
 
 let _bootstrapCache: BootstrapCacheEntry | undefined = undefined;
 
-function getStaticBootstrapContent(): string | null {
+function getStaticBootstrapContent(project?: ProjectProfile): string | null {
   const soulPath = path.join(packageRoot, 'SOUL.md');
   const version = getPackageVersion();
   try {
@@ -59,7 +60,7 @@ function getStaticBootstrapContent(): string | null {
 
     const fullContent = fs.readFileSync(soulPath, 'utf8');
 
-    const staticContent = buildBootstrapFromSoul(fullContent, version);
+    const staticContent = buildBootstrapFromSoul(fullContent, version, project);
     _bootstrapCache = { content: staticContent, key: statKey };
     return staticContent;
   } catch (err) {
@@ -68,14 +69,19 @@ function getStaticBootstrapContent(): string | null {
   }
 }
 
-function buildBootstrapFromSoul(fullContent: string, version: string): string {
+function buildBootstrapFromSoul(fullContent: string, version: string, project?: ProjectProfile): string {
+  const projectBlock = project ? `\n**Project**
+- Name: ${project.projectName}
+- Languages: ${project.languages.join(', ') || 'unknown'}
+- Package manager: ${project.packageManager}\n` : '';
+
   return `<EXTREMELY_IMPORTANT>
 You are AGNES v${version}.
 
 **Runtime Identity**
 - AGNES package root: \`${packageRoot}\`
 - OpenCode package cache: \`${opencodePackageCache}\`
-- If the user asks to clear AGNES cache, tell them to delete the package cache dir and restart OpenCode.
+- If the user asks to clear AGNES cache, tell them to delete the package cache dir and restart OpenCode.${projectBlock}
 
 **Delegation Protocol**
 Use \`agnes_delegate\` and \`agnes_get_result\` for subagent work. Built-in \`delegate_task\`/\`get_task_result\` are DEPRECATED.
@@ -120,6 +126,6 @@ Delegate work. Verify results. Answer directly.
 </EXTREMELY_IMPORTANT>`;
 }
 
-export function getBootstrapContent(): string | null {
-  return getStaticBootstrapContent();
+export function getBootstrapContent(project?: ProjectProfile): string | null {
+  return getStaticBootstrapContent(project);
 }

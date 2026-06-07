@@ -9,7 +9,7 @@ import {
 import {
   discoverCommands,
 } from './discovery.js';
-import { serializeAgnesMessage } from './protocol.js';
+import { buildResultMessage } from './protocol.js';
 
 import * as logger from './logger.js';
 import {
@@ -19,8 +19,10 @@ import {
   recordTaskRef,
   lookupTaskRef,
   initTaskRefStore,
+  clearTaskRefs,
 } from './delegate.js';
-import { setYoloMode } from './runtime.js';
+import { setYoloMode, isYoloMode } from './runtime.js';
+import { detectProject } from './plugin-support.js';
 
 let _bootstrapInjected = false;
 
@@ -171,10 +173,6 @@ export const AgnesPlugin: Plugin = async (input) => {
           case 'file.edited':
             if (event.path) editedFiles.add(event.path);
             break;
-          case 'session.deleted':
-            editedFiles.clear();
-            resetBootstrapInjected();
-            break;
         }
       } catch (err) {
         logger.warn('Failed to handle event ' + event.type, err);
@@ -197,6 +195,7 @@ export const AgnesPlugin: Plugin = async (input) => {
       try {
         editedFiles.clear();
         resetBootstrapInjected();
+        clearTaskRefs();
       } catch (err) {
         logger.warn('Failed to clean up session state', err);
       }
@@ -217,15 +216,20 @@ export const AgnesPlugin: Plugin = async (input) => {
         .map((p: any) => p.text.toLowerCase())
         .join(' ');
       const yoloFlags = ['--yolo', '--auto', '/yolo', '/auto', 'yolo mode', '--yes'];
-      setYoloMode(yoloFlags.some((flag) => userText.includes(flag)));
+      const yolo = yoloFlags.some((flag) => userText.includes(flag));
+      setYoloMode(yolo);
 
       try {
-        const bootstrap = getBootstrapContent();
+        const bootstrap = getBootstrapContent(detectProject(worktreePath));
         if (!bootstrap) return;
 
         let fullBootstrap = bootstrap;
 
-        fullBootstrap += `\n\n## Completion Protocol\nWhen all tasks are complete, place this HTML comment at the very end of your response (invisible to users, parsed by AGNES):\n${serializeAgnesMessage({type:'completion',id:randomUUID(),timestamp:new Date().toISOString(),status:'DONE',summary:'all tasks completed successfully'})}\nFor partial results:\n${serializeAgnesMessage({type:'result',taskId:'task-000',id:randomUUID(),timestamp:new Date().toISOString(),status:'DONE',content:'...',artifact:{}})}\n`;
+        if (isYoloMode()) {
+          fullBootstrap += `\n\n**⚠ YOLO MODE ACTIVATED** — Autonomous execution. Skip question gates. Max parallelization. No confirmation pauses.`;
+        }
+
+        fullBootstrap += `\n\n## Completion Protocol\nWhen all tasks are complete, place this HTML comment at the very end of your response (invisible to users, parsed by AGNES):\n${buildResultMessage({taskId:'task-000',status:'DONE',content:'...',artifact:{}})}\n`;
 
         const messageID = (firstUser.parts[0] as { messageID?: string }).messageID ?? '';
         const sessionID = (firstUser.parts[0] as { sessionID?: string }).sessionID ?? '';

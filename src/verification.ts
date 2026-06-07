@@ -72,13 +72,6 @@ export function formatGateReport(results: GateResult[]): string {
   return lines.join('\n');
 }
 
-export function registerGate(
-  gates: Gate[],
-  gate: Gate,
-): Gate[] {
-  return [...gates, gate];
-}
-
 function extractCanonicalAgnesMessageEnvelope(text: string): string | null {
   const match = text.match(/<!--\s*<agnes:message>[\s\S]*?<\/agnes:message>\s*-->/);
   return match?.[0] ?? null;

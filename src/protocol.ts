@@ -9,7 +9,6 @@ import {
 } from './schema.js';
 
 type MessageType = 'task' | 'result' | 'error' | 'status' | 'completion';
-// Must stay in sync with CompletionStatusSchema in schema.ts
 export type CompletionStatus = 'DONE' | 'DONE_WITH_CONCERNS' | 'NEEDS_CONTEXT' | 'BLOCKED';
 
 interface AgnesMessage {
@@ -196,10 +195,7 @@ export function parseAgnesMessage(text: string): AnyAgnesMessage | null {
     }
   }
 
-  if (isValidAgnesMessage(obj)) {
-    return obj;
-  }
-  return null;
+  return obj as unknown as AnyAgnesMessage;
 }
 
 export function isValidAgnesMessage(obj: unknown): obj is AnyAgnesMessage {
@@ -239,10 +235,6 @@ export function serializeAgnesMessage(msg: object): string {
   };
   const json = JSON.stringify(enhanced);
   return `<!-- <agnes:message>${json}</agnes:message> -->`;
-}
-
-export function generateMessageId(): string {
-  return randomUUID();
 }
 
 export function buildResultMessage(params: {

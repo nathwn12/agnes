@@ -4,7 +4,6 @@ import {
   runGates,
   formatGateReport,
   allGatesPassed,
-  registerGate,
   createPromiseComplianceGate,
 } from './verification.js';
 import type { Gate, GateResult } from './verification.js';
@@ -214,19 +213,4 @@ describe('createPromiseComplianceGate', () => {
 
 
 
-describe('registerGate', () => {
-  test('adds a gate to the list', () => {
-    const gateA: Gate = {
-      id: 'gate-a', name: 'Gate A', description: '', isBlocking: false,
-      run: async () => makeResult({ gateId: 'gate-a', status: 'PASS' }),
-    };
-    const gateB: Gate = {
-      id: 'gate-b', name: 'Gate B', description: '', isBlocking: false,
-      run: async () => makeResult({ gateId: 'gate-b', status: 'PASS' }),
-    };
-    const gates: Gate[] = [gateA];
-    const updated = registerGate(gates, gateB);
-    expect(updated).toHaveLength(2);
-    expect(updated[1].id).toBe('gate-b');
-  });
-});
+

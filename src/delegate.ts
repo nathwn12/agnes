@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as logger from './logger.js';
+import { runGates, createPromiseComplianceGate, formatGateReport, allGatesPassed } from './verification.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type MinimalClient = any;
@@ -83,7 +84,13 @@ export async function delegateBlocking(
     return `ERROR: delegation failed — ${JSON.stringify(promptResp.error)}`;
   }
 
-  return extractText(promptResp.data);
+  const output = extractText(promptResp.data);
+  const gates = [createPromiseComplianceGate(output)];
+  const gateResults = await runGates(gates);
+  if (!allGatesPassed(gateResults)) {
+    return `WARNING: Subagent output failed verification gates.\n${formatGateReport(gateResults)}\n\n--- Raw output ---\n${output}`;
+  }
+  return output;
 }
 
 export async function delegateAsync(
@@ -153,6 +160,11 @@ export async function getSubagentResult(
     const lastMsg = assistantMessages[assistantMessages.length - 1];
     const output = extractText(lastMsg);
 
+    const gates = [createPromiseComplianceGate(output)];
+    const gateResults = await runGates(gates);
+    if (!allGatesPassed(gateResults)) {
+      return { status: 'completed', output: `WARNING: Subagent output failed verification gates.\n${formatGateReport(gateResults)}\n\n--- Raw output ---\n${output}` };
+    }
     return { status: 'completed', output };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

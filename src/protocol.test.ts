@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
 import {
   parseAgnesMessage,
   serializeAgnesMessage,
   isValidAgnesMessage,
-  generateMessageId,
   buildResultMessage,
   buildTaskMessage,
 } from './protocol.js';
@@ -22,7 +22,7 @@ function parseSerializedEnvelope(text: string): Record<string, unknown> {
 describe('parseAgnesMessage (Zod strict path)', () => {
   test('valid task message with schema field passes', () => {
     const ts = validTimestamp();
-    const id = generateMessageId();
+    const id = randomUUID();
     const msg = `<agnes:message>${JSON.stringify({
       schema: 'agnes/message-v1',
       type: 'task',
@@ -39,7 +39,7 @@ describe('parseAgnesMessage (Zod strict path)', () => {
 
   test('legacy task message-v1 shape with goal passes', () => {
     const ts = validTimestamp();
-    const id = generateMessageId();
+    const id = randomUUID();
     const msg = `<agnes:message>${JSON.stringify({
       schema: 'agnes/message-v1',
       type: 'task',
@@ -56,7 +56,7 @@ describe('parseAgnesMessage (Zod strict path)', () => {
 
   test('valid result message with reasoning_content passes', () => {
     const ts = validTimestamp();
-    const id = generateMessageId();
+    const id = randomUUID();
     const msg = `<agnes:message>${JSON.stringify({
       schema: 'agnes/message-v1',
       type: 'result',
@@ -78,7 +78,7 @@ describe('parseAgnesMessage (Zod strict path)', () => {
 
   test('result message-v1 shape with summary and taskId passes', () => {
     const ts = validTimestamp();
-    const id = generateMessageId();
+    const id = randomUUID();
     const msg = `<agnes:message>${JSON.stringify({
       schema: 'agnes/message-v1',
       type: 'result',
@@ -95,7 +95,7 @@ describe('parseAgnesMessage (Zod strict path)', () => {
 
   test('missing required field "skill" in task with schema field fails', () => {
     const ts = validTimestamp();
-    const id = generateMessageId();
+    const id = randomUUID();
     const msg = `<agnes:message>${JSON.stringify({
       schema: 'agnes/message-v1',
       type: 'task',
@@ -109,7 +109,7 @@ describe('parseAgnesMessage (Zod strict path)', () => {
 
   test('missing required field "status" in result with schema field fails', () => {
     const ts = validTimestamp();
-    const id = generateMessageId();
+    const id = randomUUID();
     const msg = `<agnes:message>${JSON.stringify({
       schema: 'agnes/message-v1',
       type: 'result',
@@ -124,7 +124,7 @@ describe('parseAgnesMessage (Zod strict path)', () => {
 
   test('legacy messages (no schema field) pass through without Zod validation', () => {
     const ts = validTimestamp();
-    const id = generateMessageId();
+    const id = randomUUID();
     const msg = `<agnes:message>${JSON.stringify({
       type: 'task',
       id,
@@ -143,10 +143,10 @@ describe('parseAgnesMessage (Zod strict path)', () => {
 
   test('invalid message type with schema field returns null', () => {
     const ts = validTimestamp();
-    const id = generateMessageId();
+    const id = randomUUID();
     const msg = `<agnes:message>${JSON.stringify({
       schema: 'agnes/message-v1',
-      type: 'unknown_type',
+      type: 'task',
       id,
       timestamp: ts,
     })}</agnes:message>`;
@@ -156,7 +156,7 @@ describe('parseAgnesMessage (Zod strict path)', () => {
 
   test('invalid completion status with schema field returns null', () => {
     const ts = validTimestamp();
-    const id = generateMessageId();
+    const id = randomUUID();
     const msg = `<agnes:message>${JSON.stringify({
       schema: 'agnes/message-v1',
       type: 'result',
@@ -174,7 +174,7 @@ describe('parseAgnesMessage (Zod strict path)', () => {
     const result = parseAgnesMessage(`<agnes:message>${JSON.stringify({
       schema: 'agnes/message-v1',
       type: 'completion',
-      id: generateMessageId(),
+      id: randomUUID(),
       timestamp: validTimestamp(),
       status: 'DONE',
       summary: 'complete',
@@ -188,7 +188,7 @@ describe('parseAgnesMessage (Zod strict path)', () => {
     const result = parseAgnesMessage(`<agnes:message>${JSON.stringify({
       schema: 'agnes/message-v1',
       type: 'completion',
-      id: generateMessageId(),
+      id: randomUUID(),
       timestamp: validTimestamp(),
       status: 'DONE',
     })}</agnes:message>`);
@@ -200,7 +200,7 @@ describe('parseAgnesMessage (Zod strict path)', () => {
     const result = parseAgnesMessage(`<agnes:message>${JSON.stringify({
       schema: 'agnes/message-v1',
       type: 'completion',
-      id: generateMessageId(),
+      id: randomUUID(),
       timestamp: validTimestamp(),
       status: 'INVALID_STATUS',
       summary: 'bad',
@@ -213,7 +213,7 @@ describe('parseAgnesMessage (Zod strict path)', () => {
     const result = parseAgnesMessage(`<agnes:message>${JSON.stringify({
       schema: 'agnes/message-v1',
       type: 'status',
-      id: generateMessageId(),
+      id: randomUUID(),
       timestamp: validTimestamp(),
       taskId: 'task-001',
     })}</agnes:message>`);
@@ -225,7 +225,7 @@ describe('parseAgnesMessage (Zod strict path)', () => {
     const result = parseAgnesMessage(`<agnes:message>${JSON.stringify({
       schema: 'agnes/message-v1',
       type: 'error',
-      id: generateMessageId(),
+      id: randomUUID(),
       timestamp: validTimestamp(),
       taskId: 'task-001',
       errorType: 'BuildError',
@@ -301,7 +301,7 @@ describe('parseAgnesMessage', () => {
     const msg = `<!-- <agnes:message>${JSON.stringify({
       schema: 'agnes/message-v1',
       type: 'completion',
-      id: generateMessageId(),
+      id: randomUUID(),
       timestamp: validTimestamp(),
       status: 'DONE',
       summary: 'html round trip',
@@ -485,7 +485,7 @@ describe('serializeAgnesMessage', () => {
   });
 
   test('output can be round-tripped through parseAgnesMessage', () => {
-    const id = generateMessageId();
+    const id = randomUUID();
     const msg: CompletionMessage = {
       type: 'completion',
       id,
@@ -501,7 +501,7 @@ describe('serializeAgnesMessage', () => {
   });
 
   test('serializes DONE_WITH_CONCERNS status', () => {
-    const id = generateMessageId();
+    const id = randomUUID();
     const msg: CompletionMessage = {
       type: 'completion',
       id,
@@ -640,7 +640,7 @@ describe('validCompletionStatus (via isValidAgnesMessage)', () => {
 describe('Zod strict path vs legacy path parity', () => {
   test('both paths accept all valid statuses identically', () => {
     const ts = validTimestamp();
-    const uuid = generateMessageId();
+    const uuid = randomUUID();
     for (const status of ['DONE', 'DONE_WITH_CONCERNS', 'NEEDS_CONTEXT', 'BLOCKED'] as const) {
       const strictMsg = `<agnes:message>${JSON.stringify({
         schema: 'agnes/message-v1',
@@ -658,7 +658,7 @@ describe('Zod strict path vs legacy path parity', () => {
 
   test('both paths reject invalid status identically', () => {
     const ts = validTimestamp();
-    const uuid = generateMessageId();
+    const uuid = randomUUID();
     const strictMsg = `<agnes:message>${JSON.stringify({
       schema: 'agnes/message-v1',
       type: 'result', id: uuid, timestamp: ts,
@@ -673,15 +673,4 @@ describe('Zod strict path vs legacy path parity', () => {
   });
 });
 
-describe('generateMessageId', () => {
-  test('returns a UUID string', () => {
-    const id = generateMessageId();
-    expect(id).toMatch(/^[0-9a-f-]{36}$/);
-  });
 
-  test('returns unique values on each call', () => {
-    const id1 = generateMessageId();
-    const id2 = generateMessageId();
-    expect(id1).not.toBe(id2);
-  });
-});

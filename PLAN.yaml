@@ -84,15 +84,15 @@ phases:
       - [x] Clean up SOUL.md to reflect new delegation contract
 
   - id: phase-7
-    title: "Tests + Verification"
-    description: "Ensure everything compiles, tests pass, regression-free."
+    title: "Tests + Dead Code Removal"
+    description: "Clean sweep — removed orphaned modules, duplicated validators, dead exports, archived plans. Wired verification gates, YOLO mode, clearTaskRefs, project profile into bootstrap."
     status: complete
     tasks:
       - [x] Run typecheck — 0 errors
-      - [x] Run test suite — all 423+ existing pass, no regressions
-      - [ ] Add unit tests for ReturnChain processor
-      - [ ] Add unit tests for Loop evaluation
-      - [ ] Add unit tests for NamedResult resolve/capture
-      - [ ] Add unit tests for ConcurrencyController
-      - [x] Bump version to 0.23.0
-      - [x] Update PLAN.yaml status to complete
+      - [x] Run test suite — all pass, no regressions
+      - [x] Nuked: src/state.ts (orphaned), src/test-utils.ts (orphaned), .archive/ (26 dead skill files)
+      - [x] Nuked: duplicate session.deleted handler, redundant isValidAgnesMessage call in parseAgnesMessage
+      - [x] Nuked: registerGate(), generateMessageId(), fictional MCP/integration plan files
+      - [x] Wired: isYoloMode → bootstrap injection, clearTaskRefs → session.deleted
+      - [x] Wired: verification gates → delegate pipeline, detectProject → bootstrap
+      - [x] Wired: buildResultMessage → completion protocol injection

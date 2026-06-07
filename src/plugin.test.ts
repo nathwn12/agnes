@@ -113,7 +113,7 @@ describe('experimental.chat.messages.transform hook', () => {
     expect(injected).toContain('## Completion Protocol');
     expect(injected).not.toContain('<!-- <!--');
     expect(injected).not.toContain('--> -->');
-    expect(injected).toContain('<!-- <agnes:message>{"type":"completion"');
+    expect(injected).toContain('<!-- <agnes:message>{"type":"result"');
     expect(injected).toContain('</agnes:message> -->');
   });
 

@@ -21,16 +21,15 @@ CI: `bun install -> bun run lint -> bun run typecheck -> bun test -> bun run bun
 | Path | Role |
 |------|------|
 | src/plugin.ts | OpenCode entry point. Registers hooks, injects bootstrap, exposes `agnes_delegate`/`agnes_get_result` tools, registers commands and skills path. |
-| src/bootstrap.ts | Injects SOUL.md + mode detection instruction as system prompt. Cached by content hash. |
-| src/delegate.ts | Programmatic subagent delegation via OpenCode client API. Creates child sessions, sends prompts, polls for results. |
-| src/runtime.ts | Session tracking, mode state (question-gate/YOLO), attempt counting, struggle detection, planner routing. |
-| src/state.ts | Plan index CRUD — .agnes/ state management. |
-| src/protocol.ts | `<agnes:message>` JSON protocol parsing. |
-| src/schema.ts | Zod schemas for Plan, Bootstrap Block, Message. |
-| src/validation.ts | Allowlist-based message validation. |
+| src/bootstrap.ts | Injects SOUL.md + project profile + mode detection as system prompt. Cached by content hash. |
+| src/delegate.ts | Programmatic subagent delegation with verification gates. Creates child sessions, sends prompts, polls for results. |
+| src/runtime.ts | Session mode state (question-gate/YOLO). |
+| src/protocol.ts | `<agnes:message>` JSON protocol parsing/serialization. |
+| src/schema.ts | Zod schemas for all message types. |
+| src/verification.ts | Gate pipeline — runGates, promise compliance checks on subagent output. |
 | src/discovery.ts | Scans 3 layers for commands (.md files with YAML frontmatter). |
 | src/discovery-policy.ts | YAML frontmatter parsing. |
-| src/plugin-support.ts | Project profile detection. |
+| src/plugin-support.ts | Project profile detection (lang, package manager). |
 | src/logger.ts | Stderr logger with [agnes] prefix. |
 
 ## Key Details
@@ -49,7 +48,7 @@ CI: `bun install -> bun run lint -> bun run typecheck -> bun test -> bun run bun
 - **Runtime deps**: yaml + zod. Pin @opencode-ai/plugin to ^1.15.x.
 - **Strict TS**: strict: true, ES2022, NodeNext module resolution, noUnusedLocals/Parameters.
 - **Lint**: ESLint 10 + @typescript-eslint.
-- **Tests**: *.test.ts next to source, excluded from tsconfig. Shared utils in src/test-utils.ts.
+- **Tests**: *.test.ts next to source, excluded from tsconfig.
 
 ## Generated Files (do not hand-edit)
 

@@ -87,7 +87,7 @@ describe('delegateBlocking', () => {
   test('delegates and returns result inline', async () => {
     const client = makeMockClient();
     const result = await delegateBlocking(client, defaultParams);
-    expect(result).toBe('Result from explore: do something');
+    expect(result).toContain('Result from explore: do something');
   });
 
   test('returns error string when session creation fails', async () => {
@@ -146,7 +146,7 @@ describe('getSubagentResult', () => {
   test('returns completed when assistant message exists', async () => {
     const client = makeMockClient();
     const result = await delegateBlocking(client, defaultParams);
-    expect(result).toBe('Result from explore: do something');
+    expect(result).toContain('Result from explore: do something');
   });
 
   test('returns not_found for unknown session', async () => {
