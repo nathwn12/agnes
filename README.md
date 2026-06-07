@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-0.33.0-blue" alt="version">
-  <img src="https://img.shields.io/badge/skills-10-orange" alt="10 skills">
+  <img src="https://img.shields.io/badge/skills-9-orange" alt="9 skills">
   <img src="https://img.shields.io/badge/build-passing-brightgreen" alt="build">
   <img src="https://img.shields.io/badge/tests-94-brightgreen" alt="tests">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
@@ -120,7 +120,7 @@ AGNES exposes two custom tools (`agnes_delegate` / `agnes_get_result`) — the b
 
 **14 slash commands:** `/plan`, `/build-fix`, `/code-review`, `/tdd`, `/verify`, `/checkpoint`, `/learn`, `/security`, `/e2e`, `/update-docs`, `/refactor-clean`, `/test-coverage`, `/update-codemaps`, `/yolo`
 
-**10 bundled skills:** auto-delegate, auto-verify, brainstorming, code-review, question-gate, quick-investigate, subagent-driven-development, writing-plans, yolo-mode
+**9 bundled skills:** auto-delegate, auto-verify, brainstorming, code-review, question-gate, quick-investigate, subagent-driven-development, writing-plans, yolo-mode
 
 ---
 

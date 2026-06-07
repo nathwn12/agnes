@@ -40,7 +40,7 @@ CI: `bun install -> bun run lint -> bun run typecheck -> bun test -> bun run bun
 - **Bootstrap**: Injected via `experimental.chat.messages.transform` from SOUL.md. Includes chunking rules, mode detection, and completion protocol.
 - **Chunking (mandatory)**: Exploration is always chunked by folder or file group (min 5 files). Cross-cutting grep searches use one subagent. Edits are one-per-subagent, sequenced across import boundaries.
 - **Retry + Timeout**: `delegateBlocking` retries 3× with exponential backoff (1s, 3s, 9s). `getSubagentResult` returns TIMEOUT after 120s. Orphan sessions auto-clean after 10min.
-- **Skills**: 10 skills in `.opencode/skills/`, auto-discovered by OpenCode via plugin config hook.
+- **Skills**: 9 skills in `.opencode/skills/`, auto-discovered by OpenCode via plugin config hook.
 - **Commands**: All workflows are slash commands in `.opencode/commands/*.md` (14 commands).
 - **State dir**: `.agnes/` at project root. Persists task refs for async subagent tracking across restarts.
 - **Build**: Single-file bundle via `bun build src/plugin.ts --target bun`.

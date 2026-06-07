@@ -28,7 +28,7 @@ interface TaskRefInfo {
   directory: string;
   agent: string;
   description: string;
-  createdAt: number;
+  createdAt?: number;
 }
 
 function extractText(response: unknown): string {
@@ -111,6 +111,7 @@ export async function delegateBlocking(
       return `ERROR: delegation failed after ${maxAttempts} attempts — ${msg}`;
     }
   }
+  return `ERROR: delegation failed after ${maxAttempts} attempts — exhausted all retries`;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -274,7 +275,7 @@ export function cleanupOrphanedSessions(): number {
   if (cleaned > 0) {
     _taskRefsDirty = true;
     flushTaskRefs();
-    logger.info(`Cleaned up ${cleaned} orphaned subagent session(s)`);
+    logger.warn(`Cleaned up ${cleaned} orphaned subagent session(s)`);
   }
   return cleaned;
 }
