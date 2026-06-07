@@ -10,7 +10,8 @@ export function detectModelTier(): ModelTier {
 }
 
 export function setModelId(modelID: string): void {
-  // Env var always wins
+  if (_detectedTier) return;
+
   const env = process.env.AGNES_MODEL_TIER?.toLowerCase();
   if (env === 'small' || env === 'medium' || env === 'large') return;
 
@@ -67,4 +68,54 @@ export function setYoloMode(v: boolean): void {
 
 export function isYoloMode(): boolean {
   return _yoloMode;
+}
+
+export class Semaphore {
+  private _current = 0;
+  private _queue: (() => void)[] = [];
+
+  constructor(private _max: number) {}
+
+  async acquire(): Promise<void> {
+    if (this._current < this._max) {
+      this._current++;
+      return;
+    }
+    return new Promise<void>(resolve => {
+      this._queue.push(() => {
+        this._current++;
+        resolve();
+      });
+    });
+  }
+
+  release(): void {
+    const next = this._queue.shift();
+    if (next) {
+      next();
+    } else {
+      this._current--;
+    }
+  }
+
+  get active(): number {
+    return this._current;
+  }
+
+  get queued(): number {
+    return this._queue.length;
+  }
+}
+
+let _semaphore: Semaphore | null = null;
+
+export function getSemaphore(): Semaphore {
+  if (!_semaphore) {
+    _semaphore = new Semaphore(getMaxConcurrency(detectModelTier()));
+  }
+  return _semaphore;
+}
+
+export function resetSemaphore(): void {
+  _semaphore = null;
 }

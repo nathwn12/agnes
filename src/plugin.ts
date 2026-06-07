@@ -187,10 +187,14 @@ export const AgnesPlugin: Plugin = async (input) => {
 
     'experimental.session.compacting': async (_input: unknown, output: { context?: string[]; prompt?: string }) => {
       try {
+        output.context = output.context ?? [];
         const bootstrap = getBootstrapContent(undefined, detectModelTier());
         if (bootstrap) {
-          output.context = output.context ?? [];
           output.context.push(`\n\n${bootstrap}\n\n`);
+        }
+        if (editedFiles.size > 0) {
+          const files = [...editedFiles].map(f => `- ${f}`).join('\n');
+          output.context.push(`\nEdited files this session:\n${files}\n`);
         }
       } catch (err) {
         logger.warn('Failed to inject bootstrap into compaction context', err);

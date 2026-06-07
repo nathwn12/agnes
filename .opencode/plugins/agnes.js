@@ -12409,10 +12409,11 @@ function buildBootstrapContent(version2, tier, project) {
   }
   const soulPath = path.join(packageRoot, "SOUL.md");
   let soulContent;
+  let cacheKey = "";
   try {
     const stat = fs.statSync(soulPath);
-    const statKey = `${version2}:${stat.size}:${stat.mtimeMs}:${tier}`;
-    if (_bootstrapCache?.key === statKey)
+    cacheKey = `${version2}:${stat.size}:${stat.mtimeMs}:${tier}`;
+    if (_bootstrapCache?.key === cacheKey)
       return _bootstrapCache.content;
     soulContent = fs.readFileSync(soulPath, "utf8");
   } catch (err) {
@@ -12430,7 +12431,7 @@ ${soulContent}
 
 ## COMPLETE
 When done, end response with: \xA7AM{"t":"result","i":"task-000","s":"DONE","c":"...","a":{}}`;
-  _bootstrapCache = { content, key: `${version2}:${soulContent.length}:${Date.now()}` };
+  _bootstrapCache = { content, key: cacheKey };
   return content;
 }
 function buildMediumBootstrap(version2) {
@@ -12880,6 +12881,8 @@ function detectModelTier() {
   return "medium";
 }
 function setModelId(modelID) {
+  if (_detectedTier)
+    return;
   const env = process.env.AGNES_MODEL_TIER?.toLowerCase();
   if (env === "small" || env === "medium" || env === "large")
     return;
@@ -12912,6 +12915,16 @@ function setModelId(modelID) {
   }
   _detectedTier = "large";
 }
+function getMaxConcurrency(tier) {
+  switch (tier) {
+    case "small":
+      return 3;
+    case "medium":
+      return 5;
+    case "large":
+      return 10;
+  }
+}
 function getMaxResultChars(tier) {
   switch (tier) {
     case "small":
@@ -12934,6 +12947,48 @@ function setYoloMode(v) {
 }
 function isYoloMode() {
   return _yoloMode;
+}
+
+class Semaphore {
+  _max;
+  _current = 0;
+  _queue = [];
+  constructor(_max) {
+    this._max = _max;
+  }
+  async acquire() {
+    if (this._current < this._max) {
+      this._current++;
+      return;
+    }
+    return new Promise((resolve3) => {
+      this._queue.push(() => {
+        this._current++;
+        resolve3();
+      });
+    });
+  }
+  release() {
+    const next = this._queue.shift();
+    if (next) {
+      next();
+    } else {
+      this._current--;
+    }
+  }
+  get active() {
+    return this._current;
+  }
+  get queued() {
+    return this._queue.length;
+  }
+}
+var _semaphore = null;
+function getSemaphore() {
+  if (!_semaphore) {
+    _semaphore = new Semaphore(getMaxConcurrency(detectModelTier()));
+  }
+  return _semaphore;
 }
 
 // src/delegate.ts
@@ -12964,71 +13019,83 @@ async function createChildSession(client, params) {
   return createResp.data.id;
 }
 async function delegateBlocking(client, params) {
-  let childId;
+  const sem = getSemaphore();
+  await sem.acquire();
   try {
-    childId = await createChildSession(client, params);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return `ERROR: failed to create child session \u2014 ${msg}`;
-  }
-  const maxAttempts = 3;
-  for (let attempt = 1;attempt <= maxAttempts; attempt++) {
+    let childId;
     try {
-      const promptResp = await client.session.prompt({
-        path: { id: childId },
-        body: {
-          agent: params.agent,
-          parts: [{ type: "text", text: params.prompt }]
+      childId = await createChildSession(client, params);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return `ERROR: failed to create child session \u2014 ${msg}`;
+    }
+    const maxAttempts = 3;
+    for (let attempt = 1;attempt <= maxAttempts; attempt++) {
+      try {
+        const promptResp = await client.session.prompt({
+          path: { id: childId },
+          body: {
+            agent: params.agent,
+            parts: [{ type: "text", text: params.prompt }]
+          }
+        });
+        if (promptResp.error) {
+          if (attempt < maxAttempts) {
+            await sleep(Math.pow(3, attempt - 1) * 1000);
+            continue;
+          }
+          return `ERROR: delegation failed after ${maxAttempts} attempts \u2014 ${JSON.stringify(promptResp.error)}`;
         }
-      });
-      if (promptResp.error) {
+        const output = extractText(promptResp.data);
+        const tier = detectModelTier();
+        const maxChars = getMaxResultChars(tier);
+        const truncated = truncateResult(output, maxChars);
+        const gates = [createPromiseComplianceGate(truncated)];
+        await runGates(gates);
+        return truncated;
+      } catch (err) {
         if (attempt < maxAttempts) {
           await sleep(Math.pow(3, attempt - 1) * 1000);
           continue;
         }
-        return `ERROR: delegation failed after ${maxAttempts} attempts \u2014 ${JSON.stringify(promptResp.error)}`;
+        const msg = err instanceof Error ? err.message : String(err);
+        return `ERROR: delegation failed after ${maxAttempts} attempts \u2014 ${msg}`;
       }
-      const output = extractText(promptResp.data);
-      const tier = detectModelTier();
-      const maxChars = getMaxResultChars(tier);
-      const truncated = truncateResult(output, maxChars);
-      const gates = [createPromiseComplianceGate(truncated)];
-      await runGates(gates);
-      return truncated;
-    } catch (err) {
-      if (attempt < maxAttempts) {
-        await sleep(Math.pow(3, attempt - 1) * 1000);
-        continue;
-      }
-      const msg = err instanceof Error ? err.message : String(err);
-      return `ERROR: delegation failed after ${maxAttempts} attempts \u2014 ${msg}`;
     }
+    return `ERROR: delegation failed after ${maxAttempts} attempts \u2014 exhausted all retries`;
+  } finally {
+    sem.release();
   }
-  return `ERROR: delegation failed after ${maxAttempts} attempts \u2014 exhausted all retries`;
 }
 function sleep(ms) {
   return new Promise((resolve3) => setTimeout(resolve3, ms));
 }
 async function delegateAsync(client, params) {
-  let childId;
+  const sem = getSemaphore();
+  await sem.acquire();
   try {
-    childId = await createChildSession(client, params);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return `ERROR: failed to create child session \u2014 ${msg}`;
-  }
-  const resp = await client.session.prompt({
-    path: { id: childId },
-    body: {
-      agent: params.agent,
-      parts: [{ type: "text", text: params.prompt }],
-      noReply: true
+    let childId;
+    try {
+      childId = await createChildSession(client, params);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return `ERROR: failed to create child session \u2014 ${msg}`;
     }
-  });
-  if (resp?.error) {
-    return `ERROR: async delegation failed \u2014 ${JSON.stringify(resp.error)}`;
+    const resp = await client.session.prompt({
+      path: { id: childId },
+      body: {
+        agent: params.agent,
+        parts: [{ type: "text", text: params.prompt }],
+        noReply: true
+      }
+    });
+    if (resp?.error) {
+      return `ERROR: async delegation failed \u2014 ${JSON.stringify(resp.error)}`;
+    }
+    return childId;
+  } finally {
+    sem.release();
   }
-  return childId;
 }
 async function getSubagentResult(client, sessionID, _directory) {
   const refInfo = lookupTaskRef(sessionID);
@@ -13101,6 +13168,7 @@ function loadTaskRefsFromDisk(projectDir) {
     return new Map;
   }
 }
+var _flushTimer = null;
 function flushTaskRefs() {
   if (!_taskRefsDirty)
     return;
@@ -13115,6 +13183,14 @@ function flushTaskRefs() {
     warn("Failed to persist task refs", err);
   }
 }
+function debouncedFlush() {
+  if (_flushTimer)
+    clearTimeout(_flushTimer);
+  _flushTimer = setTimeout(() => {
+    _flushTimer = null;
+    flushTaskRefs();
+  }, 500);
+}
 function initTaskRefStore(projectDir) {
   _taskRefsPersistDir = projectDir;
   _taskRefs = loadTaskRefsFromDisk(projectDir);
@@ -13124,7 +13200,7 @@ function recordTaskRef(taskRef, info) {
   cleanupOrphanedSessions();
   _taskRefs.set(taskRef, { ...info, createdAt: info.createdAt ?? Date.now() });
   _taskRefsDirty = true;
-  flushTaskRefs();
+  debouncedFlush();
 }
 function cleanupOrphanedSessions() {
   const now = Date.now();
@@ -13137,7 +13213,7 @@ function cleanupOrphanedSessions() {
   }
   if (cleaned > 0) {
     _taskRefsDirty = true;
-    flushTaskRefs();
+    debouncedFlush();
     warn(`Cleaned up ${cleaned} orphaned subagent session(s)`);
   }
   return cleaned;
@@ -13312,13 +13388,21 @@ $ARGUMENTS`
     },
     "experimental.session.compacting": async (_input, output) => {
       try {
+        output.context = output.context ?? [];
         const bootstrap = getBootstrapContent(undefined, detectModelTier());
         if (bootstrap) {
-          output.context = output.context ?? [];
           output.context.push(`
 
 ${bootstrap}
 
+`);
+        }
+        if (editedFiles.size > 0) {
+          const files = [...editedFiles].map((f) => `- ${f}`).join(`
+`);
+          output.context.push(`
+Edited files this session:
+${files}
 `);
         }
       } catch (err) {

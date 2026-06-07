@@ -55,10 +55,11 @@ function buildBootstrapContent(version: string, tier: ModelTier, project?: Proje
 
   const soulPath = path.join(packageRoot, 'SOUL.md');
   let soulContent: string;
+  let cacheKey = '';
   try {
     const stat = fs.statSync(soulPath);
-    const statKey = `${version}:${stat.size}:${stat.mtimeMs}:${tier}`;
-    if (_bootstrapCache?.key === statKey) return _bootstrapCache.content!;
+    cacheKey = `${version}:${stat.size}:${stat.mtimeMs}:${tier}`;
+    if (_bootstrapCache?.key === cacheKey) return _bootstrapCache.content!;
     soulContent = fs.readFileSync(soulPath, 'utf8');
   } catch (err) {
     logger.warn(`Failed to load SOUL.md from ${soulPath}`, err);
@@ -80,7 +81,7 @@ ${soulContent}
 ## COMPLETE
 When done, end response with: §AM{"t":"result","i":"task-000","s":"DONE","c":"...","a":{}}`;
 
-  _bootstrapCache = { content, key: `${version}:${soulContent.length}:${Date.now()}` };
+  _bootstrapCache = { content, key: cacheKey };
   return content;
 }
 

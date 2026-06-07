@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as logger from './logger.js';
 import { runGates, createPromiseComplianceGate } from './verification.js';
-import { detectModelTier, getMaxResultChars, truncateResult } from './runtime.js';
+import { detectModelTier, getMaxResultChars, truncateResult, getSemaphore } from './runtime.js';
 
 const SUBAGENT_TIMEOUT_MS = 120_000; // 2 min per subagent
 const SESSION_TTL_MS = 10 * 60 * 1000; // 10 min orphan cleanup
@@ -68,50 +68,56 @@ export async function delegateBlocking(
   client: MinimalClient,
   params: DelegateParams,
 ): Promise<string> {
-  let childId: string;
+  const sem = getSemaphore();
+  await sem.acquire();
   try {
-    childId = await createChildSession(client, params);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return `ERROR: failed to create child session — ${msg}`;
-  }
-
-  const maxAttempts = 3;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let childId: string;
     try {
-      const promptResp = await client.session.prompt({
-        path: { id: childId },
-        body: {
-          agent: params.agent,
-          parts: [{ type: 'text', text: params.prompt }],
-        },
-      });
+      childId = await createChildSession(client, params);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return `ERROR: failed to create child session — ${msg}`;
+    }
 
-      if (promptResp.error) {
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const promptResp = await client.session.prompt({
+          path: { id: childId },
+          body: {
+            agent: params.agent,
+            parts: [{ type: 'text', text: params.prompt }],
+          },
+        });
+
+        if (promptResp.error) {
+          if (attempt < maxAttempts) {
+            await sleep(Math.pow(3, attempt - 1) * 1000);
+            continue;
+          }
+          return `ERROR: delegation failed after ${maxAttempts} attempts — ${JSON.stringify(promptResp.error)}`;
+        }
+
+        const output = extractText(promptResp.data);
+        const tier = detectModelTier();
+        const maxChars = getMaxResultChars(tier);
+        const truncated = truncateResult(output, maxChars);
+        const gates = [createPromiseComplianceGate(truncated)];
+        await runGates(gates);
+        return truncated;
+      } catch (err) {
         if (attempt < maxAttempts) {
           await sleep(Math.pow(3, attempt - 1) * 1000);
           continue;
         }
-        return `ERROR: delegation failed after ${maxAttempts} attempts — ${JSON.stringify(promptResp.error)}`;
+        const msg = err instanceof Error ? err.message : String(err);
+        return `ERROR: delegation failed after ${maxAttempts} attempts — ${msg}`;
       }
-
-      const output = extractText(promptResp.data);
-      const tier = detectModelTier();
-      const maxChars = getMaxResultChars(tier);
-      const truncated = truncateResult(output, maxChars);
-      const gates = [createPromiseComplianceGate(truncated)];
-      await runGates(gates);
-      return truncated;
-    } catch (err) {
-      if (attempt < maxAttempts) {
-        await sleep(Math.pow(3, attempt - 1) * 1000);
-        continue;
-      }
-      const msg = err instanceof Error ? err.message : String(err);
-      return `ERROR: delegation failed after ${maxAttempts} attempts — ${msg}`;
     }
+    return `ERROR: delegation failed after ${maxAttempts} attempts — exhausted all retries`;
+  } finally {
+    sem.release();
   }
-  return `ERROR: delegation failed after ${maxAttempts} attempts — exhausted all retries`;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -122,28 +128,34 @@ export async function delegateAsync(
   client: MinimalClient,
   params: DelegateParams,
 ): Promise<string> {
-  let childId: string;
+  const sem = getSemaphore();
+  await sem.acquire();
   try {
-    childId = await createChildSession(client, params);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return `ERROR: failed to create child session — ${msg}`;
+    let childId: string;
+    try {
+      childId = await createChildSession(client, params);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return `ERROR: failed to create child session — ${msg}`;
+    }
+
+    const resp = await client.session.prompt({
+      path: { id: childId },
+      body: {
+        agent: params.agent,
+        parts: [{ type: 'text', text: params.prompt }],
+        noReply: true,
+      },
+    });
+
+    if (resp?.error) {
+      return `ERROR: async delegation failed — ${JSON.stringify(resp.error)}`;
+    }
+
+    return childId;
+  } finally {
+    sem.release();
   }
-
-  const resp = await client.session.prompt({
-    path: { id: childId },
-    body: {
-      agent: params.agent,
-      parts: [{ type: 'text', text: params.prompt }],
-      noReply: true,
-    },
-  });
-
-  if (resp?.error) {
-    return `ERROR: async delegation failed — ${JSON.stringify(resp.error)}`;
-  }
-
-  return childId;
 }
 
 export async function getSubagentResult(
@@ -237,6 +249,8 @@ function loadTaskRefsFromDisk(projectDir: string): Map<string, TaskRefInfo> {
   } catch { return new Map(); }
 }
 
+let _flushTimer: ReturnType<typeof setTimeout> | null = null;
+
 function flushTaskRefs(): void {
   if (!_taskRefsDirty) return;
   _taskRefsDirty = false;
@@ -250,6 +264,14 @@ function flushTaskRefs(): void {
   }
 }
 
+function debouncedFlush(): void {
+  if (_flushTimer) clearTimeout(_flushTimer);
+  _flushTimer = setTimeout(() => {
+    _flushTimer = null;
+    flushTaskRefs();
+  }, 500);
+}
+
 export function initTaskRefStore(projectDir: string): void {
   _taskRefsPersistDir = projectDir;
   _taskRefs = loadTaskRefsFromDisk(projectDir);
@@ -260,7 +282,7 @@ export function recordTaskRef(taskRef: string, info: TaskRefInfo): void {
   cleanupOrphanedSessions();
   _taskRefs.set(taskRef, { ...info, createdAt: info.createdAt ?? Date.now() });
   _taskRefsDirty = true;
-  flushTaskRefs();
+  debouncedFlush();
 }
 
 export function cleanupOrphanedSessions(): number {
@@ -274,7 +296,7 @@ export function cleanupOrphanedSessions(): number {
   }
   if (cleaned > 0) {
     _taskRefsDirty = true;
-    flushTaskRefs();
+    debouncedFlush();
     logger.warn(`Cleaned up ${cleaned} orphaned subagent session(s)`);
   }
   return cleaned;
