@@ -21,7 +21,7 @@ import {
   initTaskRefStore,
   clearTaskRefs,
 } from './delegate.js';
-import { setYoloMode, isYoloMode } from './runtime.js';
+import { setYoloMode, isYoloMode, setModelId } from './runtime.js';
 import { detectProject } from './plugin-support.js';
 
 let _bootstrapInjected = false;
@@ -142,6 +142,12 @@ export const AgnesPlugin: Plugin = async (input) => {
         }
       } catch (err) {
         logger.warn('tool.definition hook failed', err);
+      }
+    },
+
+    'chat.message': async (input: { model?: { modelID: string } }) => {
+      if (input.model?.modelID) {
+        setModelId(input.model.modelID);
       }
     },
 

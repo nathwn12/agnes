@@ -13022,6 +13022,21 @@ function clearTaskRefs() {
 }
 
 // src/runtime.ts
+var _detectedTier = null;
+var SMALL_PATTERN = /\b\d{1,2}b\b/i;
+var MEDIUM_PATTERN = /\b(1[4-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])b\b/i;
+function setModelId(modelID) {
+  const env = process.env.AGNES_MODEL_TIER?.toLowerCase();
+  if (env === "small" || env === "medium" || env === "large")
+    return;
+  if (SMALL_PATTERN.test(modelID)) {
+    _detectedTier = "small";
+  } else if (MEDIUM_PATTERN.test(modelID)) {
+    _detectedTier = "medium";
+  } else {
+    _detectedTier = "large";
+  }
+}
 var _yoloMode = false;
 function setYoloMode(v) {
   _yoloMode = v;
@@ -13143,6 +13158,11 @@ $ARGUMENTS`
         }
       } catch (err) {
         warn("tool.definition hook failed", err);
+      }
+    },
+    "chat.message": async (input2) => {
+      if (input2.model?.modelID) {
+        setModelId(input2.model.modelID);
       }
     },
     "tool.execute.after": async (input2, _output) => {
