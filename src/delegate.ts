@@ -139,18 +139,17 @@ export async function delegateAsync(
       return `ERROR: failed to create child session — ${msg}`;
     }
 
-    const resp = await client.session.prompt({
+    // Fire prompt WITHOUT noReply so the model actually processes it.
+    // Don't await — return the session ID immediately for polling.
+    client.session.prompt({
       path: { id: childId },
       body: {
         agent: params.agent,
         parts: [{ type: 'text', text: params.prompt }],
-        noReply: true,
       },
+    }).catch((err: unknown) => {
+      logger.error('Async subagent failed', err);
     });
-
-    if (resp?.error) {
-      return `ERROR: async delegation failed — ${JSON.stringify(resp.error)}`;
-    }
 
     return childId;
   } finally {

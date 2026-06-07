@@ -13102,17 +13102,15 @@ async function delegateAsync(client, params) {
       const msg = err instanceof Error ? err.message : String(err);
       return `ERROR: failed to create child session \u2014 ${msg}`;
     }
-    const resp = await client.session.prompt({
+    client.session.prompt({
       path: { id: childId },
       body: {
         agent: params.agent,
-        parts: [{ type: "text", text: params.prompt }],
-        noReply: true
+        parts: [{ type: "text", text: params.prompt }]
       }
+    }).catch((err) => {
+      error45("Async subagent failed", err);
     });
-    if (resp?.error) {
-      return `ERROR: async delegation failed \u2014 ${JSON.stringify(resp.error)}`;
-    }
     return childId;
   } finally {
     sem.release();

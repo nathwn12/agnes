@@ -24,6 +24,7 @@ function makeMockClient(overrides?: Record<string, unknown>) {
       create: async (_opts: { body?: { title?: string } }) => {
         const id = overrides?.createError ? undefined : `ses_child_${Date.now()}`;
         const error = overrides?.createError ? { status: 400, message: 'create failed' } : null;
+        if (id) store.set(id, { messages: [] });
         return { data: id ? { id } : undefined, error };
       },
       get: async (opts: { path: { id: string } }) => {
@@ -48,9 +49,6 @@ function makeMockClient(overrides?: Record<string, unknown>) {
           return { data: undefined, error: { status: 500, message: 'prompt failed' } };
         }
         if (opts.body.noReply) {
-          if (overrides?.promptNoReplyError) {
-            return { error: { status: 500, message: 'noReply prompt failed' } };
-          }
           store.set(opts.path.id, {
             messages: [
               { info: { role: 'user' }, parts: [{ type: 'text', text: opts.body.parts[0].text }] },
@@ -58,22 +56,30 @@ function makeMockClient(overrides?: Record<string, unknown>) {
           });
           return { error: null };
         }
-        const response = {
+        // Store user message synchronously; schedule assistant (simulates real server)
+        const userMsg = { info: { role: 'user' }, parts: [{ type: 'text', text: opts.body.parts[0].text }] as Array<{ type: string; text?: string }> };
+        const existing = store.get(opts.path.id);
+        if (existing) {
+          existing.messages.push(userMsg);
+        } else {
+          store.set(opts.path.id, { messages: [userMsg] });
+        }
+        setTimeout(() => {
+          const session = store.get(opts.path.id);
+          if (session) {
+            session.messages.push({
+              info: { role: 'assistant' },
+              parts: [{ type: 'text', text: `Result from ${opts.body.agent}: ${opts.body.parts[0].text}` }],
+            });
+          }
+        }, 10);
+        return {
           data: {
             info: { role: 'assistant' },
-            parts: [
-              { type: 'text', text: `Result from ${opts.body.agent}: ${opts.body.parts[0].text}` },
-            ],
+            parts: [{ type: 'text', text: `Result from ${opts.body.agent}: ${opts.body.parts[0].text}` }],
           },
           error: null,
         };
-        store.set(opts.path.id, {
-          messages: [
-            { info: { role: 'user' }, parts: [{ type: 'text', text: opts.body.parts[0].text }] },
-            { info: { role: 'assistant' }, parts: [{ type: 'text', text: `Result from ${opts.body.agent}: ${opts.body.parts[0].text}` }] },
-          ],
-        });
-        return response;
       },
     },
   };
@@ -123,11 +129,12 @@ describe('delegateAsync', () => {
     expect(result).toContain('create failed');
   });
 
-  test('returns error string when noReply prompt fails', async () => {
-    const client = makeMockClient({ promptNoReplyError: true });
-    const result = await delegateAsync(client, defaultParams);
-    expect(result).toContain('ERROR');
-    expect(result).toContain('async delegation failed');
+  test('fires prompt without noReply so model actually processes', async () => {
+    const client = makeMockClient({ promptError: true });
+    // promptError only applies to non-noReply calls — async fires without noReply
+    // Since it's fire-and-forget, error is swallowed (logged) and session ID returned
+    const ref = await delegateAsync(client, defaultParams);
+    expect(ref).toMatch(/^ses_child_/);
   });
 });
 
@@ -136,14 +143,24 @@ describe('getSubagentResult', () => {
     clearTaskRefs();
   });
 
-  test('returns pending when no messages yet', async () => {
+  test('returns pending when assistant has not responded yet', async () => {
     const client = makeMockClient();
     const ref = await delegateAsync(client, defaultParams);
+    // Mock schedules assistant message with setTimeout(10), so immediate poll = pending
     const resultA = await getSubagentResult(client, ref, defaultParams.directory);
     expect(resultA.status).toBe('pending');
   });
 
-  test('returns completed when assistant message exists', async () => {
+  test('returns completed once assistant message appears', async () => {
+    const client = makeMockClient();
+    const ref = await delegateAsync(client, defaultParams);
+    await new Promise(r => setTimeout(r, 20));
+    const result = await getSubagentResult(client, ref, defaultParams.directory);
+    expect(result.status).toBe('completed');
+    expect(result.output).toContain('Result from explore:');
+  });
+
+  test('returns completed via blocking delegate', async () => {
     const client = makeMockClient();
     const result = await delegateBlocking(client, defaultParams);
     expect(result).toContain('Result from explore: do something');
@@ -202,7 +219,7 @@ describe('integration: async delegate then get result', () => {
     clearTaskRefs();
   });
 
-  test('full async lifecycle', async () => {
+  test('full async lifecycle: pending → completed', async () => {
     const client = makeMockClient();
     const ref = await delegateAsync(client, defaultParams);
     expect(ref).toMatch(/^ses_child_/);
@@ -217,8 +234,7 @@ describe('integration: async delegate then get result', () => {
     const pending = await getSubagentResult(client, ref, defaultParams.directory);
     expect(pending.status).toBe('pending');
 
-    const blockingResult = await delegateBlocking(client, defaultParams);
-    expect(blockingResult).toContain('Result from explore');
+    await new Promise(r => setTimeout(r, 20));
 
     const completed = await getSubagentResult(client, ref, defaultParams.directory);
     expect(completed.status).toBe('completed');
