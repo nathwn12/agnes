@@ -2,8 +2,6 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildPlanSummary } from './state.js';
-import type { PlanIndex, PlannerRoutingContext } from './state.js';
 import * as logger from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -122,17 +120,6 @@ Delegate work. Verify results. Answer directly.
 </EXTREMELY_IMPORTANT>`;
 }
 
-export function getBootstrapContent(planner?: PlannerRoutingContext, projectRoot?: string, index?: PlanIndex | null): string | null {
-  const staticContent = getStaticBootstrapContent();
-  if (!staticContent) return null;
-
-  const planSummary = buildPlanSummary(projectRoot ?? process.cwd(), planner, index);
-
-  return `${staticContent}
-
-<AGNES_PLAN_STATE>
-${planSummary}
-</AGNES_PLAN_STATE>`;
+export function getBootstrapContent(): string | null {
+  return getStaticBootstrapContent();
 }
-
-

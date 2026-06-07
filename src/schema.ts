@@ -1,77 +1,5 @@
 import { z } from 'zod';
 
-// ── Execution contract schemas ─────────────────────────────────────────────────
-
-export const GateEvidenceSchema = z.object({
-  gateId: z.string(),
-  status: z.enum(['PASS', 'FAIL', 'SKIP']),
-  evidence: z.object({
-    command: z.string().optional(),
-    exitCode: z.number().optional(),
-    output: z.string().optional(),
-    errors: z.array(z.string()),
-  }),
-  timestamp: z.string().datetime(),
-  durationMs: z.number(),
-});
-
-
-export const RetryClassificationSchema = z.enum([
-  'retryable', 'needs_context', 'blocked', 'terminal', 'verification_failed'
-]);
-
-
-export const ExecutionArtifactSchema = z.object({
-  attempt: z.number().int().nonnegative(),
-  gateEvidence: z.array(GateEvidenceSchema).default([]),
-  retryClass: RetryClassificationSchema.optional(),
-  flowSignal: z.object({
-    jumpTo: z.enum(['retry', 'skip', 'blocked', 'next_wave', 'end']).nullable(),
-    reason: z.string().optional(),
-  }).optional(),
-  completed: z.boolean(),
-  summary: z.string().default(''),
-  timestamp: z.string().datetime(),
-});
-export type ExecutionArtifact = z.infer<typeof ExecutionArtifactSchema>;
-
-// ── Plan schemas ──────────────────────────────────────────────────────────────
-
-export const PlanStatusSchema = z.enum([
-  "pending", "draft", "reviewed", "ready", "approved", "in_progress", "done", "blocked", "abandoned"
-]);
-
-export const PlanTaskSchema = z.object({
-  id: z.string().regex(/^task-\d{3}$/),
-  summary: z.string().min(1).max(200),
-  status: PlanStatusSchema.default("pending"),
-  files: z.array(z.string()).default([]),
-  effort: z.string().regex(/^\d+m$/).optional(),
-  depends_on: z.array(z.string()).default([]),
-});
-export type PlanTask = z.infer<typeof PlanTaskSchema>;
-
-export const PlanSchema = z.object({
-  schema: z.literal("agnes/plan-v1"),
-  id: z.string().regex(/^plan-\d{3}$/),
-  version: z.number().int().positive().default(1),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  status: PlanStatusSchema.default("draft"),
-  parent: z.string().nullable().default(null),
-  goal: z.string().min(1).max(500),
-  check: z.string().min(1).max(500),
-  summary: z.string().min(1).max(200),
-  tasks: z.array(PlanTaskSchema).default([]),
-  notes: z.array(z.string()).default([]),
-  plannerMode: z.enum(['builtin', 'full']).optional(),
-  plannerSource: z.enum(['auto', 'user', 'gate']).optional(),
-  executionArtifacts: z.array(ExecutionArtifactSchema).default([]).optional(),
-});
-export type Plan = z.infer<typeof PlanSchema>;
-
-// ── Bootstrap block schemas ───────────────────────────────────────────────────
-
 // ── Message schemas ───────────────────────────────────────────────────────────
 
 const MessageTypeSchema = z.enum([
@@ -140,5 +68,3 @@ export const CompletionMessageSchema = BaseMessageSchema.extend({
   status: CompletionStatusSchema,
   summary: z.string().min(1),
 });
-
-

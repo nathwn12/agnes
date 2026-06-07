@@ -22,9 +22,6 @@
     "test": "bun test",
     "release": "bun run scripts/release.ts --go",
     "release:dry": "bun run scripts/release.ts",
-    "state-stats": "bun run scripts/state-stats.ts",
-    "init-agnes": "bun run scripts/init-agnes.ts",
-    "init-agnes:with-plan": "bun run scripts/init-agnes.ts --with-plan"
   },
   "devDependencies": {
     "@opencode-ai/plugin": "^1.15.5",
@@ -35,7 +32,6 @@
     "typescript": "^5.7"
   },
   "dependencies": {
-    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   }
 }

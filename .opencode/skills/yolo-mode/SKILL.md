@@ -12,10 +12,10 @@ Triggered by: `--yolo`, `--auto`, `yolo mode`, `/yolo`, `/auto`.
 
 ### 1. Maximum Parallelization
 - Decompose to finest granularity (individual functions if practical)
-- Dispatch 3+ subagents simultaneously
+- Dispatch ALL independent work simultaneously — up to 10 subagents at once
 - Use background=true for all independent work
 - Chain sequential dependencies without pausing
-- Cap at 10 concurrent subagents
+- Cap at 10 concurrent subagents — always reach the ceiling
 
 ### 2. Skip All Gates
 - No option presentation
