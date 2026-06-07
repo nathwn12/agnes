@@ -11,7 +11,7 @@ describe('AgnesPlugin structure', () => {
     expect(typeof (plugin as any)['experimental.chat.messages.transform']).toBe('function');
   });
 
-  test('config hook sets planner mode from config', async () => {
+  test('config hook preserves unsupported planner config without injecting defaults', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
     const plugin = await AgnesPlugin({ directory: process.cwd() });
     const config: Record<string, unknown> = {
@@ -22,12 +22,12 @@ describe('AgnesPlugin structure', () => {
     expect((config.planner as Record<string, unknown>).mode).toBe('builtin');
   });
 
-  test('config hook defaults planner mode to auto when not set', async () => {
+  test('config hook does not add unsupported planner config', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
     const plugin = await AgnesPlugin({ directory: process.cwd() });
     const config: Record<string, unknown> = {};
     await plugin.config!(config);
-    expect((config.planner as Record<string, unknown>).mode).toBe('auto');
+    expect(config.planner).toBeUndefined();
   });
 
   test('config hook registers commands', async () => {
@@ -68,8 +68,9 @@ describe('AgnesPlugin structure', () => {
 
 describe('experimental.chat.messages.transform hook', () => {
   beforeEach(async () => {
-    const { __resetBootstrapInjected } = await import('./plugin.js');
-    __resetBootstrapInjected();
+    const { AgnesPlugin } = await import('./plugin.js');
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
+    await (plugin as any).event({ event: { type: 'session.deleted' } });
   });
 
   test('skips when no messages', async () => {

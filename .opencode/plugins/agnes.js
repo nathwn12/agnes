@@ -34534,7 +34534,6 @@ function setYoloMode(enabled) {
 }
 
 // src/plugin.ts
-var _plannerMode = "auto";
 var _bootstrapInjected = false;
 var AgnesPlugin = async (input) => {
   const { directory, worktree } = input;
@@ -34545,12 +34544,6 @@ var AgnesPlugin = async (input) => {
     config: async (config3) => {
       try {
         const configObj = config3;
-        const plannerConfig = configObj.planner ?? {};
-        _plannerMode = typeof plannerConfig.mode === "string" && ["auto", "builtin", "full"].includes(plannerConfig.mode) ? plannerConfig.mode : "auto";
-        configObj.planner = {
-          ...plannerConfig,
-          mode: _plannerMode
-        };
         const skillsPath = path5.join(worktreePath, ".opencode", "skills");
         if (fs6.existsSync(skillsPath)) {
           configObj.skills = configObj.skills || {};
@@ -34685,7 +34678,7 @@ $ARGUMENTS`
             break;
           case "session.deleted":
             editedFiles.clear();
-            _bootstrapInjected = false;
+            resetBootstrapInjected();
             break;
         }
       } catch (err) {
@@ -34710,7 +34703,7 @@ ${bootstrap}
     "session.deleted": async () => {
       try {
         editedFiles.clear();
-        _bootstrapInjected = false;
+        resetBootstrapInjected();
       } catch (err) {
         warn("Failed to clean up session state", err);
       }
@@ -34759,10 +34752,9 @@ ${serializeAgnesMessage({ type: "result", taskId: "task-000", id: randomUUID2(),
     }
   };
 };
-function __resetBootstrapInjected() {
+function resetBootstrapInjected() {
   _bootstrapInjected = false;
 }
 export {
-  __resetBootstrapInjected,
   AgnesPlugin
 };

@@ -22,7 +22,6 @@ import {
 } from './delegate.js';
 import { setYoloMode } from './runtime.js';
 
-let _plannerMode: 'auto' | 'builtin' | 'full' = 'auto';
 let _bootstrapInjected = false;
 
 export const AgnesPlugin: Plugin = async (input) => {
@@ -36,15 +35,6 @@ export const AgnesPlugin: Plugin = async (input) => {
     config: async (config: Record<string, unknown>) => {
       try {
         const configObj = config as Record<string, unknown>;
-
-        const plannerConfig = (configObj.planner as Record<string, unknown> | undefined) ?? {};
-        _plannerMode = typeof plannerConfig.mode === 'string' && ['auto', 'builtin', 'full'].includes(plannerConfig.mode)
-          ? plannerConfig.mode as 'auto' | 'builtin' | 'full'
-          : 'auto';
-        configObj.planner = {
-          ...plannerConfig,
-          mode: _plannerMode,
-        } as Record<string, unknown>;
 
         const skillsPath = path.join(worktreePath, '.opencode', 'skills');
         if (fs.existsSync(skillsPath)) {
@@ -183,7 +173,7 @@ export const AgnesPlugin: Plugin = async (input) => {
             break;
           case 'session.deleted':
             editedFiles.clear();
-            _bootstrapInjected = false;
+            resetBootstrapInjected();
             break;
         }
       } catch (err) {
@@ -206,7 +196,7 @@ export const AgnesPlugin: Plugin = async (input) => {
     'session.deleted': async () => {
       try {
         editedFiles.clear();
-        _bootstrapInjected = false;
+        resetBootstrapInjected();
       } catch (err) {
         logger.warn('Failed to clean up session state', err);
       }
@@ -256,7 +246,6 @@ export const AgnesPlugin: Plugin = async (input) => {
   };
 };
 
-/** @internal exposed for tests */
-export function __resetBootstrapInjected(): void {
+function resetBootstrapInjected(): void {
   _bootstrapInjected = false;
 }
