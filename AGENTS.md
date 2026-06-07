@@ -21,12 +21,12 @@ CI: `bun install -> bun run lint -> bun run typecheck -> bun test -> bun run bun
 | Path | Role |
 |------|------|
 | src/plugin.ts | OpenCode entry point. Registers hooks, injects bootstrap, exposes `agnes_delegate`/`agnes_get_result` tools, registers commands and skills path. |
-| src/bootstrap.ts | Injects SOUL.md + project profile + mode detection as system prompt. Cached by content hash. |
-| src/delegate.ts | Programmatic subagent delegation with verification gates. Creates child sessions, sends prompts, polls for results. |
-| src/runtime.ts | Session mode state (question-gate/YOLO). |
+| src/bootstrap.ts | Injects SOUL.md + project profile + mode detection as system prompt. Cached by content hash. Tier-aware: full SOUL.md for large, trimmed for medium, minimal for small. |
+| src/delegate.ts | Programmatic subagent delegation with retry (3×, exponential backoff), 120s timeout check, persistent task ref store, and 10min orphan cleanup. |
+| src/runtime.ts | Model-tier detection (small/medium/large from model ID), concurrency limits, result truncation, YOLO mode toggle. |
 | src/protocol.ts | `<agnes:message>` JSON protocol parsing/serialization. |
 | src/schema.ts | Zod schemas for all message types. |
-| src/verification.ts | Gate pipeline — runGates, promise compliance checks on subagent output. |
+| src/verification.ts | Gate pipeline — non-blocking promise-compliance checks on subagent output. |
 | src/discovery.ts | Scans 3 layers for commands (.md files with YAML frontmatter). |
 | src/discovery-policy.ts | YAML frontmatter parsing. |
 | src/plugin-support.ts | Project profile detection (lang, package manager). |
@@ -34,21 +34,24 @@ CI: `bun install -> bun run lint -> bun run typecheck -> bun test -> bun run bun
 
 ## Key Details
 
+- **Zero runtime dependencies.** `package.json` has no runtime deps. yaml + zod are bundled inline by `bun build`.
 - **Agents**: Only `general` (read/write/research) and `explore` (read-only). These are OpenCode's built-in subagents. No custom agents.
 - **Delegation**: Use `agnes_delegate`/`agnes_get_result` custom tools (built-in `delegate_task`/`get_task_result` are deprecated).
-- **Bootstrap**: Injected via `experimental.chat.messages.transform` from SOUL.md. Includes mode detection instruction.
-- **Auto-delegation**: Enforced via SOUL.md bootstrap — always decompose by file boundary and parallelize.
-- **Skills**: 6 skills in `.opencode/skills/`, auto-discovered by OpenCode via plugin config hook.
+- **Bootstrap**: Injected via `experimental.chat.messages.transform` from SOUL.md. Includes chunking rules, mode detection, and completion protocol.
+- **Chunking (mandatory)**: Exploration is always chunked by folder or file group (min 5 files). Cross-cutting grep searches use one subagent. Edits are one-per-subagent, sequenced across import boundaries.
+- **Retry + Timeout**: `delegateBlocking` retries 3× with exponential backoff (1s, 3s, 9s). `getSubagentResult` returns TIMEOUT after 120s. Orphan sessions auto-clean after 10min.
+- **Skills**: 10 skills in `.opencode/skills/`, auto-discovered by OpenCode via plugin config hook.
 - **Commands**: All workflows are slash commands in `.opencode/commands/*.md` (14 commands).
-- **State dir**: .agnes/ at project root. Auto-prunes done/abandoned plans after 7 days.
+- **State dir**: `.agnes/` at project root. Persists task refs for async subagent tracking across restarts.
 - **Build**: Single-file bundle via `bun build src/plugin.ts --target bun`.
 
 ## Code Conventions
 
-- **Runtime deps**: yaml + zod. Pin @opencode-ai/plugin to ^1.15.x.
+- **Runtime deps**: 0. Pin @opencode-ai/plugin to ^1.15.x (dev only).
 - **Strict TS**: strict: true, ES2022, NodeNext module resolution, noUnusedLocals/Parameters.
 - **Lint**: ESLint 10 + @typescript-eslint.
 - **Tests**: *.test.ts next to source, excluded from tsconfig.
+- **SOUL.md**: Chunking section is source of truth for orchestrator behavior. Keep in sync with bootstrap strings.
 
 ## Generated Files (do not hand-edit)
 

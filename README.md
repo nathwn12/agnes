@@ -1,8 +1,8 @@
 <h1 align="center">🤖 AGNES — Swarm Orchestrator for OpenCode</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.31.0-blue" alt="version">
-  <img src="https://img.shields.io/badge/skills-9-orange" alt="9 skills">
+  <img src="https://img.shields.io/badge/version-0.32.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/skills-10-orange" alt="10 skills">
   <img src="https://img.shields.io/badge/build-passing-brightgreen" alt="build">
   <img src="https://img.shields.io/badge/tests-94-brightgreen" alt="tests">
   <img src="https://img.shields.io/badge/OpenCode-plugin-purple" alt="OpenCode plugin">
@@ -18,8 +18,8 @@
   <a href="#-quick-start">Quick Start</a> ·
   <a href="#-how-it-works">How It Works</a> ·
   <a href="#-features">Features</a> ·
-  <a href="#-routing">Routing</a> ·
-  <a href="#-skills">Skills</a> ·
+  <a href="#-delegation">Delegation</a> ·
+  <a href="#-commands--skills">Commands & Skills</a> ·
   <a href="#-architecture">Architecture</a> ·
   <a href="#-contributing">Contributing</a>
 </p>
@@ -44,44 +44,43 @@ Restart OpenCode. That's it.
 ## 🚀 Quick Start
 
 ```bash
-# Ask AGNES to init a project
-"initialize this project"
-
-# Or run the setup command
-bun run init-agnes
-
-# Then just start asking — AGNES routes to the right specialist automatically
+# Ask AGNES to explore a module
 "explore the auth module for security issues"
-"add user registration with email verification"
-"review the last PR"
+
+# Run a build fix cycle
+"/build-fix fix the type errors in src/api.ts"
+
+# Run TDD on a feature
+"/tdd implement user registration"
 ```
 
 ---
 
 ## ⚙️ How It Works
 
-AGNES is a **plugin** that installs directly into OpenCode's tool system. It injects a bootstrap prompt into every conversation, then routes your request through a gated pipeline:
-
-| Phase | What Happens |
-|-------|-------------|
-| **CLARIFY** | Vague request? Sharpens it into a spec. |
-| **RESEARCH** | Unknown codebase? Deep-dive analysis. |
-| **PLAN** | Spec approved? Breaks it into parallel work items. |
-| **BUILD** | Delegates implementation to subagents — one file, one agent. |
-| **VERIFY** | Runs gates: lint, typecheck, tests, spec compliance. |
-| **SHIP** | If clean: merge, document, retro. |
-
-Every phase has a **blocking gate** — hard evidence must pass before the next phase starts. No skipping, no "trust me, it works."
+AGNES is a **plugin** that installs directly into OpenCode's tool system. It injects a bootstrap prompt into every conversation, then routes your request through disciplined subagent delegation:
 
 ```
-User: "add user registration"
-  └─ CLARIFY → spec captured
-      └─ RESEARCH → existing auth patterns found
-          └─ PLAN → 3 files identified, parallelized
-              └─ BUILD → subagent-1: auth.ts, subagent-2: routes.ts, subagent-3: tests/
-                  └─ VERIFY → all gates pass ✓
-                      └─ SHIP → merged
+User: "explore the codebase for outdated API patterns"
+  └─ AGNES decomposes into chunks
+      ├─ explore subagent: src/api/routes.ts
+      ├─ explore subagent: src/api/middleware.ts    (parallel)
+      └─ explore subagent: src/api/validators.ts   (parallel)
+  └─ Synthesizes results into a single report
 ```
+
+### Chunking (MANDATORY)
+
+- Exploration is always chunked by folder or file group (minimum 5 files per chunk)
+- All chunks fire in parallel (respects model-tier max concurrency)
+- Cross-cutting searches (grep across the whole tree) use one subagent
+- File edits are one-per-subagent, sequenced across import boundaries
+
+### Retry & Timeout
+
+- Transient failures retry with exponential backoff (1s, 3s, 9s)
+- Subagents that stall past 120s return TIMEOUT — retry once with narrower scope, then flag
+- Orphaned subagent sessions auto-clean after 10 minutes
 
 ---
 
@@ -89,57 +88,39 @@ User: "add user registration"
 
 | Feature | Benefit |
 |---------|---------|
-| **Parallel by default** | Independent tasks run concurrently. One file, one subagent. Zero shared state. |
-| **Promise-driven protocol** | Subagents communicate via typed `<agnes:message>` envelopes. No fragile parsing. |
-| **Gate pipeline** | Every phase validates before proceeding. Blocking gates stop bad states fast. |
-| **Struggle detection** | Tracks no-progress iterations, short iterations, repeated errors. Escalates after 3. |
-| **Retry budgets** | Per-class retry budgets (`retryable`, `needs_context`, `blocked`, `terminal`). Smart backoff. |
-| **Plan state machine** | `draft → approved → in_progress → done`. Locked transitions prevent illegal states. |
-| **Compaction policy** | Monitors token usage, nudges at soft limit, alerts at hard limit. Code-density-aware estimation. |
-| **SessionStore** | All task state is instance-isolated. Testable, no global leaks. |
+| **Zero runtime deps** | No npm install tax. Plugin pulls nothing at consumer end. |
+| **Parallel by default** | Independent tasks run concurrently. One file, one subagent. |
+| **Auto-chunking** | Exploration splits by folder/file-count. Edits respect import deps. |
+| **Model-tier adaptive** | Auto-detects model (small/medium/large) — adjusts concurrency and result size. |
+| **Feather mode** | Ultra-lightweight mode for small models (9B-35B). No SOUL.md overhead. |
+| **Model-aware bootstrap** | Full SOUL.md for large models, trimmed for medium, minimal for small. |
+| **YOLO mode** | Skip question gates. Max parallelization. Safety-only interrupts. |
+| **14 slash commands** | `/plan`, `/tdd`, `/verify`, `/code-review`, `/yolo`, and more. |
+| **Typed protocol** | `<agnes:message>` envelopes with Zod-level validation. |
+| **Persistent task refs** | Tracks async subagents across restarts via `.agnes/task-refs.json`. |
+| **Gate pipeline** | Promise-compliance gates on subagent output. Non-blocking logging. |
 
 ---
 
-## 🧭 Routing
+## 🧭 Delegation
 
 ```
-Read/search/lookup     → @explore (read-only, no bash)
-Modify/create/run/delete → @general (write + bash)
-Plan/architect        → @plan (read-only)
-Verify/test          → @general (bash, no write)
-Destructive/irreversible → Ask user first (Ask Once Gate)
+Tool                    Agent        Use
+agnes_delegate(bg=false) general     Blocking: write code, research, run bash
+agnes_delegate(bg=true)  general     Async: returns task ref, poll with get_result
+agnes_delegate(bg=false) explore     Read-only: search, grep, read files (chunked)
+agnes_get_result(ref)    —           Poll an async subagent for its result
 ```
 
-AGNES delegates via OpenCode's native `task` tool with `subagent_type` — no custom delegation tools needed.
+AGNES exposes two custom tools (`agnes_delegate` / `agnes_get_result`) — the built-in `delegate_task` / `get_task_result` are deprecated.
 
 ---
 
-## 📦 Bundled Skills (22)
+## 📦 Commands & Skills
 
-| Skill | Trigger |
-|-------|---------|
-| `architect` | Architecture decisions, tech stack |
-| `brainstorming` | Early ideation, open-ended exploration |
-| `brand-designer` | Visual identity, logo concepts |
-| `clarify` | Vague requirements, ambiguity |
-| `debugger` | Runtime errors, crashes |
-| `documenter` | API docs, README updates |
-| `grill-me` | Stress-test plans, find blind spots |
-| `init` | Project initialization |
-| `instinct` | Gut-check, quick judgment |
-| `multi-reviewer` | Cross-perspective code review |
-| `planner` | Breaking down into work items |
-| `prd` | Product requirement documents |
-| `process-feedback` | Retrospectives, improvement |
-| `prototype` | Quick throwaway experiments |
-| `retro` | Post-ship learnings capture |
-| `reviewer` | Code review, spec compliance |
-| `shipper` | Merge, deploy coordination |
-| `tdd` | Test-first implementation |
-| `tester` | Test writing, coverage |
-| `triage` | Issue classification, prioritization |
-| `verifier` | Gate execution, validation |
-| `write-skill` | New skill scaffolding |
+**14 slash commands:** `/plan`, `/build-fix`, `/code-review`, `/tdd`, `/verify`, `/checkpoint`, `/learn`, `/security`, `/e2e`, `/update-docs`, `/refactor-clean`, `/test-coverage`, `/update-codemaps`, `/yolo`
+
+**10 bundled skills:** auto-delegate, auto-verify, brainstorming, code-review, question-gate, quick-investigate, subagent-driven-development, writing-plans, yolo-mode
 
 ---
 
@@ -151,30 +132,32 @@ opencode session
   └─ AGNES plugin (plugin.ts)
        │
        ├─ Bootstrap prompt (bootstrap.ts)
-       │    └─ SOUL.md + plan state + agent routing
+       │    └─ SOUL.md + model-tier instructions (cached by content hash)
        │
-       ├─ State layer (state.ts)
-       │    └─ Plan index (JSON) + plan files (YAML)
-       │         └─ Write-locked, atomic, validated
+       ├─ Delegation (delegate.ts)
+       │    ├─ delegateBlocking — sync subagent call with retry (×3, backoff)
+       │    ├─ delegateAsync — fire-and-forget, returns session ref
+       │    ├─ getSubagentResult — poll with 120s timeout check
+       │    ├─ recordTaskRef/lookupTaskRef — persistent ref store
+       │    └─ cleanupOrphanedSessions — 10min TTL sweep
        │
        ├─ Runtime (runtime.ts)
-       │    ├─ Intent classification (clarify/plan/implement/debug/review/test)
-       │    ├─ Complexity classification (trivial/complex)
-       │    ├─ Planner routing (builtin/full/auto)
-       │    └─ Plan gate checking
+       │    ├─ Model-tier detection (small/medium/large from model ID)
+       │    ├─ Concurrency limits (3/5/10 per tier)
+       │    ├─ Result truncation (2K/4K/8K chars per tier)
+       │    └─ YOLO mode toggle
        │
-        ├─ Delegation via native `task` tool with `subagent_type`
-        │
        ├─ Gates (verification.ts)
-       │    ├─ Promise Compliance Gate
-       │    ├─ Plan Exists Gate
-       │    └─ Custom gates per pipeline phase
+       │    └─ Promise Compliance Gate (non-blocking, logs only)
        │
-       ├─ Protocol (protocol.ts)
-       │    └─ Typed <agnes:message> envelopes (Zod-validated)
+       ├─ Protocol (protocol.ts + schema.ts)
+       │    └─ Typed <agnes:message> envelopes (task/result/error/status/completion)
        │
-       └─ Compaction (compaction.ts)
-            └─ Token estimation with code-density heuristics
+       ├─ Discovery (discovery.ts + discovery-policy.ts)
+       │    └─ Scans 3 layers for commands (.md with YAML frontmatter)
+       │
+       └─ Plugin support (plugin-support.ts)
+            └─ Project profile detection (lang, package manager)
 ```
 
 ---
@@ -182,8 +165,8 @@ opencode session
 ## 🧪 Testing
 
 ```bash
-bun test        # 423 tests, 0 failures
-bun run build   # Bundle to .opencode/plugins/agnes.js
+bun test        # 94 tests, 0 failures
+bun run bundle  # Build to .opencode/plugins/agnes.js
 ```
 
 ---

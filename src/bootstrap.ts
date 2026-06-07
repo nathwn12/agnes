@@ -85,11 +85,11 @@ When done, end response with: §AM{"t":"result","i":"task-000","s":"DONE","c":".
 }
 
 function buildMediumBootstrap(version: string): string {
-  return `[AGNES v${version}] Orchestrator plugin. Use agnes_delegate/agnes_get_result for subagent work. SOUL.md available but trimmed — fewer parallel subagents, tighter context.`;
+  return `[AGNES v${version}] Orchestrator plugin. Use agnes_delegate/agnes_get_result for subagent work. Always chunk exploration — never one big subagent. Split by folder or 10-15 files per subagent. SOUL.md available but trimmed — fewer parallel subagents, tighter context.`;
 }
 
 function buildMinimalBootstrap(version: string): string {
-  return `[AGNES v${version}] Orchestrator plugin. Use agnes_delegate/agnes_get_result for subagent work. Agents: general, explore.`;
+  return `[AGNES v${version}] Orchestrator plugin. Use agnes_delegate/agnes_get_result for subagent work. Agents: general, explore. Chunk exploration by folder — never one big subagent.`;
 }
 
 export function getBootstrapContent(project?: ProjectProfile, tier?: ModelTier): string | null {
