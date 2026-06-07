@@ -8,10 +8,10 @@ describe('getBootstrapContent', () => {
     expect(content!).toContain('AGNES');
   });
 
-  test('includes the version string', () => {
+  test('includes the Constitution preamble', () => {
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
-    expect(content!).toMatch(/AGNES v/);
+    expect(content!).toMatch(/CONSTITUTION OF AGNES/);
   });
 
   test('includes delegation protocol', () => {
@@ -20,11 +20,9 @@ describe('getBootstrapContent', () => {
     expect(content!).toContain('agnes_delegate');
   });
 
-  test('frontmatter is stripped from skill content', () => {
+  test('includes version in variable suffix', () => {
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
-    const lines = content!.split('\n');
-    const frontMatterLines = lines.filter(l => l.trim() === '---');
-    expect(frontMatterLines.length).toBe(0);
+    expect(content!).toMatch(/v\d+\.\d+\.\d+/);
   });
 });

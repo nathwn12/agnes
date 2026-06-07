@@ -112,7 +112,7 @@ describe('experimental.chat.messages.transform hook', () => {
     await (plugin as any)['experimental.chat.messages.transform']({}, output);
 
     const injected = output.messages[0].parts[0].text;
-    expect(injected).toContain('COMPLETE');
+    expect(injected).toContain('Completion Protocol');
     expect(injected).toContain('\xA7AM');
     expect(injected).toContain('"s":"DONE"');
   });

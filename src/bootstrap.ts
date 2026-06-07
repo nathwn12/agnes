@@ -7,6 +7,16 @@ import type { ModelTier } from './runtime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+const CONSTITUTION_PREAMBLE = `CONSTITUTION OF AGNES
+
+I. Identity — orchestrator, not implementer. Delegate work to subagents. Never implement in orchestrator.
+II. Authority — user msg > tool output > constitution > regulations > project files > skills > training > prior turns > handoffs.
+III. Truth — every claim needs evidence. Verification outranks confidence. Tool output beats assumptions. Never declare done without verification.
+IV. Thinking — /think off (simple), /think high (default for coding), /think max (architecture).
+V. Delegation — chunk by file boundary. Parallel independent chunks. agnes_delegate blocking, agnes_get_result async. 3 retries, 120s timeout.
+VI. Modes — Question-Gate (default, gates on 3+files/arch/deps). YOLO (--yolo, skip gates, safety-only).
+VII. Completion — end with marker when all tasks done.`;
+
 export function findPackageRoot(fromDir: string): string | null {
   let current = fromDir;
   for (let i = 0; i < 10; i++) {
@@ -45,7 +55,6 @@ type BootstrapCacheEntry = {
 let _bootstrapCache: BootstrapCacheEntry | undefined = undefined;
 
 function buildBootstrapContent(version: string, tier: ModelTier, project?: ProjectProfile): string {
-  // Small models get minimal bootstrap — medium get trimmed — large get full SOUL.md
   if (tier === 'small') {
     return buildMinimalBootstrap(version);
   }
@@ -67,30 +76,39 @@ function buildBootstrapContent(version: string, tier: ModelTier, project?: Proje
   }
 
   const projectLine = project
-    ? ` Project: ${project.projectName} (${project.languages.join(', ') || '?'}) pkg:${project.packageManager}`
+    ? `Project: ${project.projectName} (${project.languages.join(', ') || '?'}) pkg:${project.packageManager}`
     : '';
 
-  const content = `[AGNES v${version}]${projectLine}
+  // Static preamble (cache-friendly) + variable suffix after separator
+  const content = `${CONSTITUTION_PREAMBLE}
 
-DELEGATE: agnes_delegate(agent,desc,prompt,bg=false) blocking | bg=true returns ref. agnes_get_result(ref) poll. agents: general(read/write/research), explore(read-only).
-MODE: default=question-gate (gate on 3+files|arch|newdeps|structural). --yolo/--auto=/yolo flag = YOLO (skip gates, max parallel, safety-only interrupts).
-SLASH: /plan /build-fix /code-review /tdd /verify /checkpoint /learn /security /e2e /update-docs /refactor-clean /test-coverage /yolo
+---
 
 ${soulContent}
 
-## COMPLETE
-When done, end response with: §AM{"t":"result","i":"task-000","s":"DONE","c":"...","a":{}}`;
+---
+
+v${version} | ${projectLine}
+Commands: /plan /build-fix /code-review /tdd /verify /checkpoint /learn /security /e2e /update-docs /refactor-clean /test-coverage /yolo`;
 
   _bootstrapCache = { content, key: cacheKey };
   return content;
 }
 
 function buildMediumBootstrap(version: string): string {
-  return `[AGNES v${version}] Orchestrator plugin. Use agnes_delegate/agnes_get_result for subagent work. Always chunk exploration — never one big subagent. Split by folder or 10-15 files per subagent. SOUL.md available but trimmed — fewer parallel subagents, tighter context.`;
+  const projectLine = `AGNES orchestrator v${version}.`;
+  return `${CONSTITUTION_PREAMBLE}
+
+---
+
+${projectLine}
+Medium tier — tighter context, fewer parallel subagents, trimmed operational rules.
+Delegate via agnes_delegate/agnes_get_result. Chunk exploration by folder. Never one big subagent.
+Commands: /plan /build-fix /code-review /tdd /verify /checkpoint /yolo`;
 }
 
 function buildMinimalBootstrap(version: string): string {
-  return `[AGNES v${version}] Orchestrator plugin. Use agnes_delegate/agnes_get_result for subagent work. Agents: general, explore. Chunk exploration by folder — never one big subagent.`;
+  return `AGNES v${version} — orchestrator plugin. Delegate work to subagents via agnes_delegate/agnes_get_result. Agents: general, explore. Chunk exploration by folder. Never one big subagent. 3 retries, 120s timeout.`;
 }
 
 export function getBootstrapContent(project?: ProjectProfile, tier?: ModelTier): string | null {

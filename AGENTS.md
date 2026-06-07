@@ -1,6 +1,6 @@
-# AGNES
+# AGNES — DeepSeek-Optimized Orchestrator
 
-AGNES is an OpenCode plugin that provides delegation utilities and structured slash commands.
+AGNES is an OpenCode plugin with a Constitution-style system prompt optimized for DeepSeek prefix caching. Core identity: orchestrator, not implementer.
 
 ## Project Commands
 
@@ -21,9 +21,9 @@ CI: `bun install -> bun run lint -> bun run typecheck -> bun test -> bun run bun
 | Path | Role |
 |------|------|
 | src/plugin.ts | OpenCode entry point. Registers hooks, injects bootstrap, exposes `agnes_delegate`/`agnes_get_result` tools, registers commands and skills path. |
-| src/bootstrap.ts | Injects SOUL.md + project profile + mode detection as system prompt. Cached by content hash. Tier-aware: full SOUL.md for large, trimmed for medium, minimal for small. |
+| src/bootstrap.ts | Injects Constitution-preamble (cache-stable prefix) + SOUL.md + variable suffix. Tier-aware. |
 | src/delegate.ts | Programmatic subagent delegation with retry (3×, exponential backoff), 120s timeout check, persistent task ref store, and 10min orphan cleanup. |
-| src/runtime.ts | Model-tier detection (small/medium/large from model ID), concurrency limits, result truncation, YOLO mode toggle. |
+| src/runtime.ts | Model-tier detection (DeepSeek always large tier), thinking effort tracking, concurrency limits, result truncation, YOLO mode toggle. |
 | src/protocol.ts | `<agnes:message>` JSON protocol parsing/serialization. |
 | src/schema.ts | Zod schemas for all message types. |
 | src/verification.ts | Gate pipeline — non-blocking promise-compliance checks on subagent output. |
@@ -35,9 +35,11 @@ CI: `bun install -> bun run lint -> bun run typecheck -> bun test -> bun run bun
 ## Key Details
 
 - **Zero runtime dependencies.** `package.json` has no runtime deps. yaml + zod are bundled inline by `bun build`.
+- **DeepSeek-optimized**: Constitution preamble is cache-stable (identical first ~750 chars) for DeepSeek prefix cache hits. All DeepSeek models get `large` tier (1M context, full SOUL.md).
+- **Thinking Protocol**: `/think off` (direct), `/think high` (editing), `/think max` (architecture). Default: high for execution, off for routing.
 - **Agents**: Only `general` (read/write/research) and `explore` (read-only). These are OpenCode's built-in subagents. No custom agents.
 - **Delegation**: Use `agnes_delegate`/`agnes_get_result` custom tools (built-in `delegate_task`/`get_task_result` are deprecated).
-- **Bootstrap**: Injected via `experimental.chat.messages.transform` from SOUL.md. Includes chunking rules, mode detection, and completion protocol.
+- **Bootstrap**: Injected via `experimental.chat.messages.transform` from SOUL.md. Includes Constitution, chunking rules, mode detection, and completion protocol.
 - **Chunking (mandatory)**: Exploration is always chunked by folder or file group (min 5 files). Cross-cutting grep searches use one subagent. Edits are one-per-subagent, sequenced across import boundaries.
 - **Retry + Timeout**: `delegateBlocking` retries 3× with exponential backoff (1s, 3s, 9s). `getSubagentResult` returns TIMEOUT after 120s. Orphan sessions auto-clean after 10min.
 - **Skills**: 9 skills in `.opencode/skills/`, auto-discovered by OpenCode via plugin config hook.
@@ -60,7 +62,7 @@ After pushing a version bump:
 - **Strict TS**: strict: true, ES2022, NodeNext module resolution, noUnusedLocals/Parameters.
 - **Lint**: ESLint 10 + @typescript-eslint.
 - **Tests**: *.test.ts next to source, excluded from tsconfig.
-- **SOUL.md**: Chunking section is source of truth for orchestrator behavior. Keep in sync with bootstrap strings.
+- **SOUL.md**: Constitution articles are the static prefix; Regulations section is the editable operational detail. Keep in sync with bootstrap strings.
 
 ## Generated Files (do not hand-edit)
 

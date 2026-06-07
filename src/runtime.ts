@@ -1,12 +1,15 @@
 export type ModelTier = 'small' | 'medium' | 'large';
 
+export type ThinkingEffort = 'off' | 'high' | 'max';
+
 let _detectedTier: ModelTier | null = null;
+let _thinkingEffort: ThinkingEffort = 'high';
 
 export function detectModelTier(): ModelTier {
   if (_detectedTier) return _detectedTier;
   const env = process.env.AGNES_MODEL_TIER?.toLowerCase();
   if (env === 'small' || env === 'medium' || env === 'large') return env;
-  return 'medium';
+  return 'large';
 }
 
 export function setModelId(modelID: string): void {
@@ -17,10 +20,13 @@ export function setModelId(modelID: string): void {
 
   const id = modelID.toLowerCase();
 
+  // DeepSeek models always get large tier (1M context, frontier capability)
+  if (/deepseek/.test(id)) { _detectedTier = 'large'; return; }
+
   // Strategy 0: provider prefix — Go and Zen are always frontier/large
   if (/^opencode(-go)?\//.test(id)) { _detectedTier = 'large'; return; }
 
-  // Strategy 1: direct param count in model ID (e.g. llama-3.2-3b, qwen-2.5-coder-14b, deepseek-v2-236b)
+  // Strategy 1: direct param count in model ID
   const paramMatch = id.match(/(\d{1,3})b/);
   if (paramMatch) {
     const params = parseInt(paramMatch[1], 10);
@@ -29,14 +35,22 @@ export function setModelId(modelID: string): void {
     _detectedTier = 'large'; return;
   }
 
-  // Strategy 2: keyword-based for models without explicit param count
-  // Small-tier keywords: mini, nano, tiny, small
+  // Strategy 2: keyword-based
   if (/\b(mini|nano|tiny)\b/.test(id)) { _detectedTier = 'small'; return; }
-  // Medium-tier keywords: flash, haiku, spark, lite (fast/lightweight variants)
+  // Flash/lite/haiku for non-DeepSeek models → medium
   if (/\b(flash|haiku|spark|lite)\b/.test(id)) { _detectedTier = 'medium'; return; }
 
-  // Default: large — applies to any unrecognized model IDs
   _detectedTier = 'large';
+}
+
+export function setThinkingEffort(effort: string): void {
+  if (effort === 'off' || effort === 'high' || effort === 'max') {
+    _thinkingEffort = effort;
+  }
+}
+
+export function getThinkingEffort(): ThinkingEffort {
+  return _thinkingEffort;
 }
 
 export function getMaxConcurrency(tier: ModelTier): number {
@@ -117,5 +131,12 @@ export function getSemaphore(): Semaphore {
 }
 
 export function resetSemaphore(): void {
+  _semaphore = null;
+}
+
+export function resetRuntimeState(): void {
+  _detectedTier = null;
+  _thinkingEffort = 'high';
+  _yoloMode = false;
   _semaphore = null;
 }
