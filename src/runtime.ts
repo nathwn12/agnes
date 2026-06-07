@@ -16,6 +16,9 @@ export function setModelId(modelID: string): void {
 
   const id = modelID.toLowerCase();
 
+  // Strategy 0: provider prefix — Go and Zen are always frontier/large
+  if (/^opencode(-go)?\//.test(id)) { _detectedTier = 'large'; return; }
+
   // Strategy 1: direct param count in model ID (e.g. llama-3.2-3b, qwen-2.5-coder-14b, deepseek-v2-236b)
   const paramMatch = id.match(/(\d{1,3})b/);
   if (paramMatch) {
@@ -31,8 +34,7 @@ export function setModelId(modelID: string): void {
   // Medium-tier keywords: flash, haiku, spark, lite (fast/lightweight variants)
   if (/\b(flash|haiku|spark|lite)\b/.test(id)) { _detectedTier = 'medium'; return; }
 
-  // Default: large — applies to OpenCode Zen/Go frontier models (GPT 5.x, Claude Opus/Sonnet,
-  // Gemini Pro, Qwen Max, DeepSeek V4, etc.) and any unrecognized model IDs
+  // Default: large — applies to any unrecognized model IDs
   _detectedTier = 'large';
 }
 

@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as logger from './logger.js';
 import { runGates, createPromiseComplianceGate } from './verification.js';
+import { detectModelTier, getMaxResultChars, truncateResult } from './runtime.js';
 
 export type MinimalClient = any;
 
@@ -84,10 +85,13 @@ export async function delegateBlocking(
   }
 
   const output = extractText(promptResp.data);
+  const tier = detectModelTier();
+  const maxChars = getMaxResultChars(tier);
+  const truncated = truncateResult(output, maxChars);
   // Run gates for logging; never block the output
-  const gates = [createPromiseComplianceGate(output)];
+  const gates = [createPromiseComplianceGate(truncated)];
   await runGates(gates);
-  return output;
+  return truncated;
 }
 
 export async function delegateAsync(
@@ -156,12 +160,15 @@ export async function getSubagentResult(
 
     const lastMsg = assistantMessages[assistantMessages.length - 1];
     const output = extractText(lastMsg);
+    const tier = detectModelTier();
+    const maxChars = getMaxResultChars(tier);
+    const truncated = truncateResult(output, maxChars);
 
     // Non-blocking gate check — log failures, return output regardless
-    const gates = [createPromiseComplianceGate(output)];
+    const gates = [createPromiseComplianceGate(truncated)];
     await runGates(gates);
 
-    return { status: 'completed', output };
+    return { status: 'completed', output: truncated };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('getSubagentResult threw', err);

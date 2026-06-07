@@ -21,7 +21,7 @@ import {
   initTaskRefStore,
   clearTaskRefs,
 } from './delegate.js';
-import { setYoloMode, isYoloMode, setModelId } from './runtime.js';
+import { setYoloMode, isYoloMode, setModelId, detectModelTier } from './runtime.js';
 import { detectProject } from './plugin-support.js';
 
 let _bootstrapInjected = false;
@@ -163,7 +163,7 @@ export const AgnesPlugin: Plugin = async (input) => {
         switch (event.type) {
           case 'session.created':
             if (event.sessionID && !_bootstrapInjected) {
-              const bootstrap = getBootstrapContent();
+              const bootstrap = getBootstrapContent(undefined, detectModelTier());
               if (bootstrap) {
                 await input.client.session.prompt({
                   path: { id: event.sessionID },
@@ -187,7 +187,7 @@ export const AgnesPlugin: Plugin = async (input) => {
 
     'experimental.session.compacting': async (_input: unknown, output: { context?: string[]; prompt?: string }) => {
       try {
-        const bootstrap = getBootstrapContent();
+        const bootstrap = getBootstrapContent(undefined, detectModelTier());
         if (bootstrap) {
           output.context = output.context ?? [];
           output.context.push(`\n\n${bootstrap}\n\n`);
@@ -226,7 +226,8 @@ export const AgnesPlugin: Plugin = async (input) => {
       setYoloMode(yolo);
 
       try {
-        const bootstrap = getBootstrapContent(detectProject(worktreePath));
+        const tier = detectModelTier();
+        const bootstrap = getBootstrapContent(detectProject(worktreePath), tier);
         if (!bootstrap) return;
 
         let fullBootstrap = bootstrap;

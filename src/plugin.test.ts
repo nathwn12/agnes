@@ -96,6 +96,8 @@ describe('experimental.chat.messages.transform hook', () => {
   });
 
   test('injects compact completion protocol without nesting', async () => {
+    const { setModelId } = await import('./runtime.js');
+    setModelId('opencode-go/gpt-5-large');
     const { AgnesPlugin } = await import('./plugin.js');
     const plugin = await AgnesPlugin({ directory: process.cwd() });
     const output = {

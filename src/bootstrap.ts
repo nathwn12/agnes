@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as logger from './logger.js';
 import type { ProjectProfile } from './plugin-support.js';
+import type { ModelTier } from './runtime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -43,12 +44,20 @@ type BootstrapCacheEntry = {
 
 let _bootstrapCache: BootstrapCacheEntry | undefined = undefined;
 
-function buildBootstrapContent(version: string, project?: ProjectProfile): string {
+function buildBootstrapContent(version: string, tier: ModelTier, project?: ProjectProfile): string {
+  // Small models get minimal bootstrap — medium get trimmed — large get full SOUL.md
+  if (tier === 'small') {
+    return buildMinimalBootstrap(version);
+  }
+  if (tier === 'medium') {
+    return buildMediumBootstrap(version);
+  }
+
   const soulPath = path.join(packageRoot, 'SOUL.md');
   let soulContent: string;
   try {
     const stat = fs.statSync(soulPath);
-    const statKey = `${version}:${stat.size}:${stat.mtimeMs}`;
+    const statKey = `${version}:${stat.size}:${stat.mtimeMs}:${tier}`;
     if (_bootstrapCache?.key === statKey) return _bootstrapCache.content!;
     soulContent = fs.readFileSync(soulPath, 'utf8');
   } catch (err) {
@@ -75,11 +84,16 @@ When done, end response with: §AM{"t":"result","i":"task-000","s":"DONE","c":".
   return content;
 }
 
+function buildMediumBootstrap(version: string): string {
+  return `[AGNES v${version}] Orchestrator plugin. Use agnes_delegate/agnes_get_result for subagent work. SOUL.md available but trimmed — fewer parallel subagents, tighter context.`;
+}
+
 function buildMinimalBootstrap(version: string): string {
   return `[AGNES v${version}] Orchestrator plugin. Use agnes_delegate/agnes_get_result for subagent work. Agents: general, explore.`;
 }
 
-export function getBootstrapContent(project?: ProjectProfile): string | null {
+export function getBootstrapContent(project?: ProjectProfile, tier?: ModelTier): string | null {
   const version = getPackageVersion();
-  return buildBootstrapContent(version, project);
+  const modelTier: ModelTier = tier ?? 'large';
+  return buildBootstrapContent(version, modelTier, project);
 }
