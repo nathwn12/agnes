@@ -2,9 +2,6 @@ export type ModelTier = 'small' | 'medium' | 'large';
 
 let _detectedTier: ModelTier | null = null;
 
-const SMALL_PATTERN = /\b\d{1,2}b\b/i; // matches 3b, 7b, 12b, etc.
-const MEDIUM_PATTERN = /\b(1[4-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])b\b/i; // 14b-59b
-
 export function detectModelTier(): ModelTier {
   if (_detectedTier) return _detectedTier;
   const env = process.env.AGNES_MODEL_TIER?.toLowerCase();
@@ -13,16 +10,30 @@ export function detectModelTier(): ModelTier {
 }
 
 export function setModelId(modelID: string): void {
+  // Env var always wins
   const env = process.env.AGNES_MODEL_TIER?.toLowerCase();
   if (env === 'small' || env === 'medium' || env === 'large') return;
 
-  if (SMALL_PATTERN.test(modelID)) {
-    _detectedTier = 'small';
-  } else if (MEDIUM_PATTERN.test(modelID)) {
-    _detectedTier = 'medium';
-  } else {
-    _detectedTier = 'large';
+  const id = modelID.toLowerCase();
+
+  // Strategy 1: direct param count in model ID (e.g. llama-3.2-3b, qwen-2.5-coder-14b, deepseek-v2-236b)
+  const paramMatch = id.match(/(\d{1,3})b/);
+  if (paramMatch) {
+    const params = parseInt(paramMatch[1], 10);
+    if (params <= 13) { _detectedTier = 'small'; return; }
+    if (params <= 60) { _detectedTier = 'medium'; return; }
+    _detectedTier = 'large'; return;
   }
+
+  // Strategy 2: keyword-based for models without explicit param count
+  // Small-tier keywords: mini, nano, tiny, small
+  if (/\b(mini|nano|tiny)\b/.test(id)) { _detectedTier = 'small'; return; }
+  // Medium-tier keywords: flash, haiku, spark, lite (fast/lightweight variants)
+  if (/\b(flash|haiku|spark|lite)\b/.test(id)) { _detectedTier = 'medium'; return; }
+
+  // Default: large — applies to OpenCode Zen/Go frontier models (GPT 5.x, Claude Opus/Sonnet,
+  // Gemini Pro, Qwen Max, DeepSeek V4, etc.) and any unrecognized model IDs
+  _detectedTier = 'large';
 }
 
 export function getMaxConcurrency(tier: ModelTier): number {

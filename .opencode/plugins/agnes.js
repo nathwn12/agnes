@@ -13023,19 +13023,34 @@ function clearTaskRefs() {
 
 // src/runtime.ts
 var _detectedTier = null;
-var SMALL_PATTERN = /\b\d{1,2}b\b/i;
-var MEDIUM_PATTERN = /\b(1[4-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])b\b/i;
 function setModelId(modelID) {
   const env = process.env.AGNES_MODEL_TIER?.toLowerCase();
   if (env === "small" || env === "medium" || env === "large")
     return;
-  if (SMALL_PATTERN.test(modelID)) {
-    _detectedTier = "small";
-  } else if (MEDIUM_PATTERN.test(modelID)) {
-    _detectedTier = "medium";
-  } else {
+  const id = modelID.toLowerCase();
+  const paramMatch = id.match(/(\d{1,3})b/);
+  if (paramMatch) {
+    const params = parseInt(paramMatch[1], 10);
+    if (params <= 13) {
+      _detectedTier = "small";
+      return;
+    }
+    if (params <= 60) {
+      _detectedTier = "medium";
+      return;
+    }
     _detectedTier = "large";
+    return;
   }
+  if (/\b(mini|nano|tiny)\b/.test(id)) {
+    _detectedTier = "small";
+    return;
+  }
+  if (/\b(flash|haiku|spark|lite)\b/.test(id)) {
+    _detectedTier = "medium";
+    return;
+  }
+  _detectedTier = "large";
 }
 var _yoloMode = false;
 function setYoloMode(v) {
