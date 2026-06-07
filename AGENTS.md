@@ -47,8 +47,8 @@ CI: `bun install -> bun run lint -> bun run typecheck -> bun test -> bun run bun
 
 ## Release Checklist (every version bump)
 
-Before/after pushing a version bump:
-1. `npx opencode plugin build` — rebuild the bundle
+After pushing a version bump:
+1. `bun run bundle` — rebuild `.opencode/plugins/agnes.js`
 2. Nuke both caches so OpenCode picks up the new version:
    - `Remove-Item -Recurse -Force Q:\PROJECTS\PERSONAL\agnes\.agnes`
    - `Remove-Item -Recurse -Force "$env:USERPROFILE\.cache\opencode\packages\agnes@git+https_*"`
