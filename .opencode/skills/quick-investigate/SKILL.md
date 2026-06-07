@@ -1,39 +1,13 @@
 ---
 name: quick-investigate
-description: Find root cause before fixing. Use for any bug, unexpected behavior, or test failure.
+description: Find root cause before fixing. Use for any bug, test failure, or crash.
 ---
 
 # Quick Investigate
 
-## When to Use
-Any bug, test failure, crash, or unexpected behavior.
+1. Root cause (mandatory before fix): read error fully, reproduce, check `git diff`, trace code path.
+2. One hypothesis at a time. Test minimally. Verify before next hypothesis.
+3. Fix + verify: apply fix, run auto-verify.
+4. 3 strikes: STOP fixing. Gate mode → report + ask guidance. YOLO → escalate to broader context.
 
-## Process
-
-### 1. Root Cause (MANDATORY)
-Before any fix:
-- Read the error output fully
-- Reproduce if possible
-- Check recent changes (git diff)
-- Trace back: what input → what code path → what failure?
-- If multi-component: add diagnostic logging at boundaries
-
-### 2. One Hypothesis at a Time
-- Form a single hypothesis
-- Test it minimally
-- Verify before forming next hypothesis
-- If you don't know: say "I don't know yet" and investigate more
-
-### 3. Fix + Verify
-- Apply the fix
-- Run verification (auto-verify)
-- Confirm root cause is resolved (not just symptoms)
-
-### 4. Three Strikes Rule
-If 3+ fix attempts failed:
-- STOP fixing
-- In question-gate: report and ask for guidance
-- In YOLO: escalate to broader context (check architecture, not just the bug)
-
-## Integration
-Parallel investigation: for independent failures, dispatch one subagent per failure domain.
+Parallel: dispatch one subagent per failure domain for independent failures.

@@ -3,47 +3,17 @@ description: Create implementation plan with risk assessment
 subtask: true
 ---
 
-# Plan Command
+# Plan: $ARGUMENTS
 
-Create a detailed implementation plan for: $ARGUMENTS
+1. Restate requirements
+2. Identify risks + blockers + deps
+3. Break into phases with steps
+4. Wait for confirmation before coding
 
-## Your Task
-
-1. **Restate Requirements** - Clarify what needs to be built
-2. **Identify Risks** - Surface potential issues, blockers, and dependencies
-3. **Create Step Plan** - Break down implementation into phases
-4. **Wait for Confirmation** - MUST receive user approval before proceeding
-
-## Output Format
-
-### Requirements Restatement
-[Clear, concise restatement of what will be built]
-
-### Implementation Phases
-[Phase 1: Description]
-- Step 1.1
-- Step 1.2
-...
-
-[Phase 2: Description]
-- Step 2.1
-- Step 2.2
-...
-
-### Dependencies
-[List external dependencies, APIs, services needed]
-
-### Risks
-- HIGH: [Critical risks that could block implementation]
-- MEDIUM: [Moderate risks to address]
-- LOW: [Minor concerns]
-
-### Estimated Complexity
-[HIGH/MEDIUM/LOW with time estimates]
-
-**WAITING FOR CONFIRMATION**: Proceed with this plan? (yes/no/modify)
-
----
-
-**CRITICAL**: Do NOT write any code until the user explicitly confirms with "yes", "proceed", or similar affirmative response.
-
+```
+Requirements: [...]
+Phases: Phase 1: ... step 1.1, step 1.2...
+Risks: HIGH | MEDIUM | LOW
+Complexity: HIGH|MEDIUM|LOW
+WAITING FOR CONFIRMATION
+```

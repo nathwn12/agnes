@@ -1,16 +1,12 @@
 import { parseAgnesMessage } from './protocol.js';
+import * as logger from './logger.js';
 
 type GateStatus = 'PASS' | 'FAIL' | 'SKIP';
 
 export interface GateResult {
   gateId: string;
   status: GateStatus;
-  evidence: {
-    command?: string;
-    exitCode?: number;
-    output?: string;
-    errors: string[];
-  };
+  evidence: { errors: string[] };
   timestamp: string;
   durationMs: number;
 }
@@ -23,9 +19,6 @@ export interface Gate {
   isBlocking: boolean;
 }
 
-/**
- * Execute all gates in order. If a blocking gate FAILs, stop and return results so far.
- */
 export async function runGates(gates: Gate[]): Promise<GateResult[]> {
   const results: GateResult[] = [];
   for (const gate of gates) {
@@ -37,42 +30,31 @@ export async function runGates(gates: Gate[]): Promise<GateResult[]> {
       result = {
         gateId: gate.id,
         status: 'FAIL',
-        evidence: {
-          errors: [err instanceof Error ? err.message : String(err)],
-        },
+        evidence: { errors: [err instanceof Error ? err.message : String(err)] },
         timestamp: new Date().toISOString(),
         durationMs: Date.now() - start,
       };
     }
     results.push(result);
-    if (gate.isBlocking && result.status === 'FAIL') {
-      break;
+    if (result.status === 'FAIL') {
+      // Log gate failure but don't block — small models need fluid flow
+      logger.warn(`Gate "${gate.id}" failed: ${result.evidence.errors.join('; ')}`);
     }
   }
   return results;
 }
 
-/**
- * Format gate results into a human-readable markdown report.
- */
-export function formatGateReport(results: GateResult[]): string {
-  const lines: string[] = ['## Verification Gates Report', ''];
-  for (const r of results) {
-    const icon = r.status === 'PASS' ? '✓' : r.status === 'FAIL' ? '✗' : '⊘';
-    lines.push(`- **${icon} ${r.gateId}** (${r.durationMs}ms)`);
-    if (r.evidence.errors.length > 0) {
-      for (const err of r.evidence.errors) {
-        lines.push(`  - Error: ${err}`);
-      }
-    }
-  }
-  lines.push('');
-  const hasFailure = results.some(r => r.status === 'FAIL');
-  lines.push(`**Overall: ${hasFailure ? 'FAIL ❌' : 'PASS ✓'}**`);
-  return lines.join('\n');
+export function allGatesPassed(results: GateResult[]): boolean {
+  return results.every(r => r.status === 'PASS' || r.status === 'SKIP');
 }
 
 function extractCanonicalAgnesMessageEnvelope(text: string): string | null {
+  // Accept both old format (<!-- <agnes:message>...) and new compact format (§AM{...})
+  if (text.includes('\xA7AM')) {
+    const idx = text.indexOf('\xA7AM');
+    const endIdx = text.indexOf('}', idx);
+    if (endIdx !== -1) return text.slice(idx, endIdx + 1);
+  }
   const match = text.match(/<!--\s*<agnes:message>[\s\S]*?<\/agnes:message>\s*-->/);
   return match?.[0] ?? null;
 }
@@ -81,34 +63,29 @@ function hasCompletionSignal(text: string): boolean {
   const envelope = extractCanonicalAgnesMessageEnvelope(text);
   if (!envelope) return false;
   const parsed = parseAgnesMessage(envelope);
-  if (parsed?.type !== 'completion' && parsed?.type !== 'result') return false;
-  return (parsed as { schema?: string }).schema === 'agnes/message-v1';
+  if (!parsed) return false;
+  return parsed.type === 'completion' || parsed.type === 'result';
 }
 
 export function createPromiseComplianceGate(output: string): Gate {
   return {
     id: 'promise-compliance',
     name: 'Promise Compliance',
-    description: 'Checks that output contains a canonical HTML-commented completion or result <agnes:message>',
-    isBlocking: true,
+    description: 'Checks that output contains a canonical completion or result <agnes:message>',
+    isBlocking: false,
     run: async () => {
       const start = Date.now();
       const errors: string[] = [];
       if (!hasCompletionSignal(output)) {
-        errors.push('Output does not contain a valid canonical HTML-commented completion or result <agnes:message> with schema agnes/message-v1');
+        errors.push('Missing canonical completion/result message envelope');
       }
       return {
         gateId: 'promise-compliance',
         status: errors.length === 0 ? 'PASS' : 'FAIL',
-        evidence: { errors, command: 'check-completion-signal', exitCode: errors.length === 0 ? 0 : 1, output },
+        evidence: { errors },
         timestamp: new Date().toISOString(),
         durationMs: Date.now() - start,
       };
     },
   };
 }
-/** True if all results have PASS or SKIP status, false otherwise. */
-export function allGatesPassed(results: GateResult[]): boolean {
-  return results.every(r => r.status === 'PASS' || r.status === 'SKIP');
-}
-

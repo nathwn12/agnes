@@ -87,7 +87,7 @@ describe('experimental.chat.messages.transform hook', () => {
       messages: [
         {
           info: { role: 'user' },
-          parts: [{ type: 'text', text: 'EXTREMELY_IMPORTANT\nsome content' }],
+          parts: [{ type: 'text', text: '[AGNES v\nsome content' }],
         },
       ],
     };
@@ -95,14 +95,14 @@ describe('experimental.chat.messages.transform hook', () => {
     expect(output.messages[0].parts).toHaveLength(1);
   });
 
-  test('injects canonical completion protocol comments without nesting', async () => {
+  test('injects compact completion protocol without nesting', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
     const plugin = await AgnesPlugin({ directory: process.cwd() });
     const output = {
       messages: [
         {
           info: { role: 'user' },
-          parts: [{ type: 'text', text: 'simple task', sessionID: 'canonical-protocol-test' }],
+          parts: [{ type: 'text', text: 'simple task', sessionID: 'compact-protocol-test' }],
         },
       ],
     };
@@ -110,11 +110,9 @@ describe('experimental.chat.messages.transform hook', () => {
     await (plugin as any)['experimental.chat.messages.transform']({}, output);
 
     const injected = output.messages[0].parts[0].text;
-    expect(injected).toContain('## Completion Protocol');
-    expect(injected).not.toContain('<!-- <!--');
-    expect(injected).not.toContain('--> -->');
-    expect(injected).toContain('<!-- <agnes:message>{"type":"result"');
-    expect(injected).toContain('</agnes:message> -->');
+    expect(injected).toContain('COMPLETE');
+    expect(injected).toContain('\xA7AM');
+    expect(injected).toContain('"s":"DONE"');
   });
 
   test('skips bootstrap injection for subagent-directed messages with agent part', async () => {
@@ -133,7 +131,7 @@ describe('experimental.chat.messages.transform hook', () => {
     };
     await (plugin as any)['experimental.chat.messages.transform']({}, output);
     const textParts = output.messages[0].parts.filter((p: any) => p.type === 'text');
-    const hasBootstrap = textParts.some((p: any) => p.text && p.text.includes('EXTREMELY_IMPORTANT'));
+    const hasBootstrap = textParts.some((p: any) => p.text && p.text.includes('[AGNES v'));
     expect(hasBootstrap).toBe(false);
   });
 });
@@ -151,8 +149,8 @@ describe('tool.definition hook', () => {
     const { getBootstrapContent } = await import('./bootstrap.js');
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
-    expect(content).toContain('@explore');
-    expect(content).toContain('@general');
+    expect(content).toContain('explore');
+    expect(content).toContain('general');
     expect(content).toContain('agnes_delegate');
   });
 });
@@ -162,8 +160,8 @@ describe('bootstrap delegation enforcement', () => {
     
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
-    expect(content!).toContain('@explore');
-    expect(content!).toContain('@general');
+    expect(content!).toContain('explore');
+    expect(content!).toContain('general');
     expect(content!).toContain('agnes_delegate');
   });
 });

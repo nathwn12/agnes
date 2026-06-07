@@ -208,7 +208,7 @@ export const AgnesPlugin: Plugin = async (input) => {
       const firstUser = output.messages.find((m) => m.info?.role === 'user');
       if (!firstUser?.parts?.length) return;
 
-      if (firstUser.parts.some((p) => p.type === 'text' && typeof p.text === 'string' && p.text.includes('EXTREMELY_IMPORTANT'))) return;
+      if (firstUser.parts.some((p) => p.type === 'text' && typeof p.text === 'string' && p.text.includes('[AGNES v'))) return;
       if (firstUser.parts.some((p) => p.type === 'agent')) return;
 
       const userText = firstUser.parts

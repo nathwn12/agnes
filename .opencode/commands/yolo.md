@@ -5,8 +5,6 @@ subtask: true
 
 # YOLO Mode
 
-Activate YOLO mode for this session. Full autonomous execution, maximum parallelization, no question gates.
+Full autonomous. Max parallelization. No question gates. Safety-only interrupts: data loss, irreversible damage, security breaches.
 
-Safety protocol remains active: interrupt only for data loss, irreversible damage, or security breaches.
-
-Usage: `/yolo` or include `--yolo`/`--auto` in your message.
+Usage: `/yolo` or `--yolo`/`--auto` in message.

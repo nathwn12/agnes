@@ -1,9 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as logger from './logger.js';
-import { runGates, createPromiseComplianceGate, formatGateReport, allGatesPassed } from './verification.js';
+import { runGates, createPromiseComplianceGate } from './verification.js';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type MinimalClient = any;
 
 export interface DelegateParams {
@@ -85,11 +84,9 @@ export async function delegateBlocking(
   }
 
   const output = extractText(promptResp.data);
+  // Run gates for logging; never block the output
   const gates = [createPromiseComplianceGate(output)];
-  const gateResults = await runGates(gates);
-  if (!allGatesPassed(gateResults)) {
-    return `WARNING: Subagent output failed verification gates.\n${formatGateReport(gateResults)}\n\n--- Raw output ---\n${output}`;
-  }
+  await runGates(gates);
   return output;
 }
 
@@ -160,11 +157,10 @@ export async function getSubagentResult(
     const lastMsg = assistantMessages[assistantMessages.length - 1];
     const output = extractText(lastMsg);
 
+    // Non-blocking gate check — log failures, return output regardless
     const gates = [createPromiseComplianceGate(output)];
-    const gateResults = await runGates(gates);
-    if (!allGatesPassed(gateResults)) {
-      return { status: 'completed', output: `WARNING: Subagent output failed verification gates.\n${formatGateReport(gateResults)}\n\n--- Raw output ---\n${output}` };
-    }
+    await runGates(gates);
+
     return { status: 'completed', output };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -193,9 +189,7 @@ function loadTaskRefsFromDisk(projectDir: string): Map<string, TaskRefInfo> {
     const raw = fs.readFileSync(filePath, 'utf8');
     const entries = JSON.parse(raw) as Record<string, TaskRefInfo>;
     return new Map(Object.entries(entries));
-  } catch {
-    return new Map();
-  }
+  } catch { return new Map(); }
 }
 
 function flushTaskRefs(): void {
@@ -205,7 +199,7 @@ function flushTaskRefs(): void {
   if (!filePath) return;
   try {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(Object.fromEntries(_taskRefs), null, 2), 'utf8');
+    fs.writeFileSync(filePath, JSON.stringify(Object.fromEntries(_taskRefs)), 'utf8');
   } catch (err) {
     logger.warn('Failed to persist task refs', err);
   }
@@ -217,10 +211,7 @@ export function initTaskRefStore(projectDir: string): void {
   _taskRefsDirty = false;
 }
 
-export function recordTaskRef(
-  taskRef: string,
-  info: TaskRefInfo,
-): void {
+export function recordTaskRef(taskRef: string, info: TaskRefInfo): void {
   _taskRefs.set(taskRef, info);
   _taskRefsDirty = true;
   flushTaskRefs();

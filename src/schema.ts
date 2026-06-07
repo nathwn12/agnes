@@ -1,70 +1,98 @@
-import { z } from 'zod';
+export type MessageType = 'task' | 'result' | 'error' | 'status' | 'completion';
+export type CompletionStatus = 'DONE' | 'DONE_WITH_CONCERNS' | 'NEEDS_CONTEXT' | 'BLOCKED';
 
-// ── Message schemas ───────────────────────────────────────────────────────────
+const VALID_STATUSES: readonly string[] = ['DONE', 'DONE_WITH_CONCERNS', 'NEEDS_CONTEXT', 'BLOCKED'];
+const VALID_TYPES: readonly string[] = ['task', 'result', 'error', 'status', 'completion'];
 
-const MessageTypeSchema = z.enum([
-  "task", "result", "error", "status", "completion"
-]);
+export function isValidCompletionStatus(s: unknown): s is CompletionStatus {
+  return typeof s === 'string' && VALID_STATUSES.includes(s);
+}
 
-export const CompletionStatusSchema = z.enum([
-  "DONE", "DONE_WITH_CONCERNS", "NEEDS_CONTEXT", "BLOCKED"
-]);
+export function isValidMessageType(s: unknown): s is MessageType {
+  return typeof s === 'string' && VALID_TYPES.includes(s);
+}
 
-const BaseMessageSchema = z.object({
-  type: MessageTypeSchema,
-  id: z.string().uuid(),
-  timestamp: z.string().datetime(),
-  schema: z.literal("agnes/message-v1").optional(),
-}).passthrough();
+export interface BaseMessage {
+  type: MessageType;
+  id: string;
+  timestamp: string;
+}
 
-export const TaskMessageSchema = BaseMessageSchema.extend({
-  type: z.literal("task"),
-  skill: z.string().min(1).optional(),
-  payload: z.unknown().optional(),
-  goal: z.string().min(1).optional(),
-  files: z.array(z.string()).optional(),
-  constraints: z.union([z.array(z.string()), z.record(z.string(), z.unknown())]).optional(),
-  config: z.object({
-    tags: z.array(z.string()).optional(),
-    metadata: z.record(z.string(), z.unknown()).optional(),
-    maxDurationMs: z.number().optional(),
-  }).optional(),
-}).refine((msg) => Boolean(msg.skill || msg.goal), {
-  message: 'Task message requires either skill or goal',
-});
+export interface TaskMessage extends BaseMessage {
+  type: 'task';
+  skill?: string;
+  payload?: unknown;
+  goal?: string;
+  files?: string[];
+  constraints?: string[] | Record<string, unknown>;
+  config?: {
+    tags?: string[];
+    metadata?: Record<string, unknown>;
+    maxDurationMs?: number;
+  };
+}
 
-export const ResultMessageSchema = BaseMessageSchema.extend({
-  type: z.literal("result"),
-  taskId: z.string().min(1),
-  status: CompletionStatusSchema,
-  content: z.string().min(1).optional(),
-  summary: z.string().min(1).optional(),
-  artifact: z.unknown().optional(),
-  reasoning_content: z.string().optional(),
-}).refine((msg) => Boolean(msg.content || msg.summary), {
-  message: 'Result message requires either content or summary',
-});
+export interface ResultMessage extends BaseMessage {
+  type: 'result';
+  taskId?: string;
+  status: CompletionStatus;
+  content?: string;
+  summary?: string;
+  artifact?: unknown;
+  reasoning_content?: string;
+}
 
-export const ErrorMessageSchema = BaseMessageSchema.extend({
-  type: z.literal("error"),
-  taskId: z.string().min(1),
-  errorType: z.string().min(1),
-  detail: z.string().min(1),
-  stack: z.string().optional(),
-});
+export interface ErrorMessage extends BaseMessage {
+  type: 'error';
+  taskId: string;
+  errorType: string;
+  detail: string;
+  stack?: string;
+}
 
-export const StatusMessageSchema = BaseMessageSchema.extend({
-  type: z.literal("status"),
-  taskId: z.string().min(1),
-  phase: z.string().min(1),
-  progress: z.object({
-    current: z.number(),
-    total: z.number(),
-  }).optional(),
-});
+export interface StatusMessage extends BaseMessage {
+  type: 'status';
+  taskId: string;
+  phase: string;
+  progress?: { current: number; total: number };
+}
 
-export const CompletionMessageSchema = BaseMessageSchema.extend({
-  type: z.literal("completion"),
-  status: CompletionStatusSchema,
-  summary: z.string().min(1),
-});
+export interface CompletionMessage extends BaseMessage {
+  type: 'completion';
+  status: CompletionStatus;
+  summary: string;
+}
+
+export type AnyAgnesMessage = TaskMessage | ResultMessage | ErrorMessage | StatusMessage | CompletionMessage;
+
+export const SCHEMA_MARKER = 'agnes/v1';
+
+const REQUIRED_FIELDS: Record<string, Record<string, string>> = {
+  task: {},
+  result: { taskId: 'string', status: 'string' },
+  error: { taskId: 'string', errorType: 'string', detail: 'string' },
+  status: { taskId: 'string', phase: 'string' },
+  completion: { status: 'string', summary: 'string' },
+};
+
+export function validateMessage(obj: unknown): AnyAgnesMessage | null {
+  if (!obj || typeof obj !== 'object') return null;
+  const msg = obj as Record<string, unknown>;
+
+  if (typeof msg.type !== 'string' || !isValidMessageType(msg.type)) return null;
+  if (typeof msg.id !== 'string') return null;
+  if (typeof msg.timestamp !== 'string') return null;
+
+  const type = msg.type;
+  const required = REQUIRED_FIELDS[type];
+  if (required) {
+    for (const [field, expectedType] of Object.entries(required)) {
+      if (typeof msg[field] !== expectedType) return null;
+    }
+    if (type === 'task' && typeof msg.skill !== 'string' && typeof msg.goal !== 'string') return null;
+    if (type === 'result' && typeof msg.content !== 'string' && typeof msg.summary !== 'string') return null;
+    if ((type === 'completion' || type === 'result') && !isValidCompletionStatus(msg.status)) return null;
+  }
+
+  return msg as unknown as AnyAgnesMessage;
+}
