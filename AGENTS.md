@@ -45,6 +45,15 @@ CI: `bun install -> bun run lint -> bun run typecheck -> bun test -> bun run bun
 - **State dir**: `.agnes/` at project root. Persists task refs for async subagent tracking across restarts.
 - **Build**: Single-file bundle via `bun build src/plugin.ts --target bun`.
 
+## Release Checklist (every version bump)
+
+Before/after pushing a version bump:
+1. `npx opencode plugin build` — rebuild the bundle
+2. Nuke both caches so OpenCode picks up the new version:
+   - `Remove-Item -Recurse -Force Q:\PROJECTS\PERSONAL\agnes\.agnes`
+   - `Remove-Item -Recurse -Force "$env:USERPROFILE\.cache\opencode\packages\agnes@git+https_*"`
+3. Restart OpenCode
+
 ## Code Conventions
 
 - **Runtime deps**: 0. Pin @opencode-ai/plugin to ^1.15.x (dev only).
