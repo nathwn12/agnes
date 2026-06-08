@@ -11,6 +11,8 @@ Orchestrator plugin: decomposes work, delegates to subagents, synthesizes result
 | `bun run lint` | ESLint on src/ (ESLint 10 + @typescript-eslint) |
 | `bun run typecheck` | `tsc --noEmit` (strict, ES2022, NodeNext) |
 | `bun test` | Run all tests (Bun test runner) |
+| `bun run worktree:sync` | Sync `.worktree/agnes-live` to current HEAD + dirty changes and rebuild bundle |
+| `bun run worktree:watch` | Keep `.worktree/agnes-live` synced as source `HEAD`/status changes |
 | `bun run release` | Publish — tags, pushes, creates GH release. Dry-run without `--go` |
 | `bun run release:dry` | Dry run — shows what release would do |
 
@@ -53,6 +55,16 @@ CI order: `lint → typecheck → test → bundle`
 - Mock client pattern in `delegate.test.ts` wraps `client.session.{create,get,messages,prompt}` with in-memory store + simulated async responses via `setTimeout`.
 - `clearTaskRefs()` called in each `beforeEach` to isolate task-ref state.
 - No integration test prerequisites. No fixtures. No snapshot workflows.
+
+## Isolated Worktree
+
+- Use `bun run worktree:sync` before live OpenCode testing.
+- Use `bun run worktree:watch` when iterating and repeatedly live-testing from `.worktree/agnes-live`.
+- The sync script creates/reuses `.worktree/agnes-live` as a detached Git worktree at current `HEAD`.
+- It hard-resets and cleans only the isolated target, then applies the source repo's combined tracked diff from `HEAD` plus untracked non-ignored files.
+- It rebuilds `.opencode/plugins/agnes.js` inside the target unless called with `-NoBuild`.
+- The watch script runs an initial sync, then polls `HEAD` and `git status --porcelain` every 2 seconds and re-syncs on changes.
+- For strict live isolation, run OpenCode from `.worktree/agnes-live` with `HOME`, `USERPROFILE`, and `OPENCODE_CONFIG_DIR` pointed inside that worktree.
 
 ## Conventions
 

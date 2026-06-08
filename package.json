@@ -20,6 +20,8 @@
     "lint:fix": "eslint src/ --fix",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
+    "worktree:sync": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sync-worktree.ps1",
+    "worktree:watch": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/watch-worktree.ps1",
     "release": "bun run scripts/release.ts --go",
     "release:dry": "bun run scripts/release.ts"
   },

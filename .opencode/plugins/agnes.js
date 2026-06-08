@@ -12336,8 +12336,8 @@ function tool(input) {
 tool.schema = exports_external;
 // src/plugin.ts
 import { randomUUID } from "crypto";
-import * as fs6 from "fs";
-import * as path6 from "path";
+import * as fs7 from "fs";
+import * as path7 from "path";
 
 // src/bootstrap.ts
 import * as fs from "fs";
@@ -12378,7 +12378,7 @@ I. Identity \u2014 orchestrator, not implementer. Delegate work to subagents. Ne
 II. Authority \u2014 user msg > tool output > constitution > regulations > project files > skills > training > prior turns > handoffs.
 III. Truth \u2014 every claim needs evidence. Verification outranks confidence. Tool output beats assumptions. Never declare done without verification.
 IV. Thinking \u2014 /think off (simple), /think high (default for coding), /think max (architecture).
-V. Delegation \u2014 chunk by file boundary. Parallel independent chunks. agnes_delegate blocking, agnes_get_result async. 3 retries, 120s timeout.
+V. Delegation \u2014 chunk by file boundary. Parallel independent chunks. agnes_delegate blocking, agnes_get_result async. Direct implementation tools are auto-rerouted to subagents.
 VI. Modes \u2014 Question-Gate (default, gates on 3+files/arch/deps). YOLO (--yolo, skip gates, safety-only).
 VII. Completion \u2014 end with marker when all tasks done.`;
 function findPackageRoot(fromDir) {
@@ -12461,7 +12461,7 @@ Delegate via agnes_delegate/agnes_get_result. Chunk exploration by folder. Never
 Commands: /plan /build-fix /code-review /tdd /verify /checkpoint /yolo`;
 }
 function buildMinimalBootstrap(version2) {
-  return `AGNES v${version2} \u2014 orchestrator plugin. Delegate work to subagents via agnes_delegate/agnes_get_result. Agents: general, explore. Chunk exploration by folder. Never one big subagent. 3 retries, 120s timeout.`;
+  return `AGNES v${version2} \u2014 orchestrator plugin. Delegate work to subagents via agnes_delegate/agnes_get_result. Direct implementation tools auto-reroute to subagents. Agents: general, explore. Chunk exploration by folder. Never one big subagent. 3 retries, 120s timeout.`;
 }
 function getBootstrapContent(project, tier) {
   const version2 = getPackageVersion();
@@ -12788,74 +12788,12 @@ function buildResultMessage(params) {
 }
 
 // src/delegate.ts
+import * as fs4 from "fs";
+import * as path4 from "path";
+
+// src/auto-delegate.ts
 import * as fs3 from "fs";
 import * as path3 from "path";
-
-// src/verification.ts
-async function runGates(gates) {
-  const results = [];
-  for (const gate of gates) {
-    const start = Date.now();
-    let result;
-    try {
-      result = await gate.run();
-    } catch (err) {
-      result = {
-        gateId: gate.id,
-        status: "FAIL",
-        evidence: { errors: [err instanceof Error ? err.message : String(err)] },
-        timestamp: new Date().toISOString(),
-        durationMs: Date.now() - start
-      };
-    }
-    results.push(result);
-    if (result.status === "FAIL") {
-      warn(`Gate "${gate.id}" failed: ${result.evidence.errors.join("; ")}`);
-    }
-  }
-  return results;
-}
-function extractCanonicalAgnesMessageEnvelope(text) {
-  if (text.includes("\xA7AM")) {
-    const idx = text.indexOf("\xA7AM");
-    const endIdx = text.indexOf("}", idx);
-    if (endIdx !== -1)
-      return text.slice(idx, endIdx + 1);
-  }
-  const match = text.match(/<!--\s*<agnes:message>[\s\S]*?<\/agnes:message>\s*-->/);
-  return match?.[0] ?? null;
-}
-function hasCompletionSignal(text) {
-  const envelope = extractCanonicalAgnesMessageEnvelope(text);
-  if (!envelope)
-    return false;
-  const parsed = parseAgnesMessage(envelope);
-  if (!parsed)
-    return false;
-  return parsed.type === "completion" || parsed.type === "result";
-}
-function createPromiseComplianceGate(output) {
-  return {
-    id: "promise-compliance",
-    name: "Promise Compliance",
-    description: "Checks that output contains a canonical completion or result <agnes:message>",
-    isBlocking: false,
-    run: async () => {
-      const start = Date.now();
-      const errors3 = [];
-      if (!hasCompletionSignal(output)) {
-        errors3.push("Missing canonical completion/result message envelope");
-      }
-      return {
-        gateId: "promise-compliance",
-        status: errors3.length === 0 ? "PASS" : "FAIL",
-        evidence: { errors: errors3 },
-        timestamp: new Date().toISOString(),
-        durationMs: Date.now() - start
-      };
-    }
-  };
-}
 
 // src/runtime.ts
 var _detectedTier = null;
@@ -12982,10 +12920,321 @@ function getSemaphore() {
   return _semaphore;
 }
 
+// src/verification.ts
+async function runGates(gates) {
+  const results = [];
+  for (const gate of gates) {
+    const start = Date.now();
+    let result;
+    try {
+      result = await gate.run();
+    } catch (err) {
+      result = {
+        gateId: gate.id,
+        status: "FAIL",
+        evidence: { errors: [err instanceof Error ? err.message : String(err)] },
+        timestamp: new Date().toISOString(),
+        durationMs: Date.now() - start
+      };
+    }
+    results.push(result);
+    if (result.status === "FAIL") {
+      warn(`Gate "${gate.id}" failed: ${result.evidence.errors.join("; ")}`);
+    }
+  }
+  return results;
+}
+function extractCanonicalAgnesMessageEnvelope(text) {
+  if (text.includes("\xA7AM")) {
+    const idx = text.indexOf("\xA7AM");
+    const endIdx = text.indexOf("}", idx);
+    if (endIdx !== -1)
+      return text.slice(idx, endIdx + 1);
+  }
+  const match = text.match(/<!--\s*<agnes:message>[\s\S]*?<\/agnes:message>\s*-->/);
+  return match?.[0] ?? null;
+}
+function hasCompletionSignal(text) {
+  const envelope = extractCanonicalAgnesMessageEnvelope(text);
+  if (!envelope)
+    return false;
+  const parsed = parseAgnesMessage(envelope);
+  if (!parsed)
+    return false;
+  return parsed.type === "completion" || parsed.type === "result";
+}
+function createPromiseComplianceGate(output) {
+  return {
+    id: "promise-compliance",
+    name: "Promise Compliance",
+    description: "Checks that output contains a canonical completion or result <agnes:message>",
+    isBlocking: false,
+    run: async () => {
+      const start = Date.now();
+      const errors3 = [];
+      if (!hasCompletionSignal(output)) {
+        errors3.push("Missing canonical completion/result message envelope");
+      }
+      return {
+        gateId: "promise-compliance",
+        status: errors3.length === 0 ? "PASS" : "FAIL",
+        evidence: { errors: errors3 },
+        timestamp: new Date().toISOString(),
+        durationMs: Date.now() - start
+      };
+    }
+  };
+}
+
+// src/auto-delegate.ts
+var interceptedCalls = new Map;
+var bypassSessions = new Set;
+var activeSessions = new Set;
+var READONLY_BASH_PATTERNS = [
+  /^\s*(pwd|ls|dir)(\s|$)/i,
+  /^\s*git\s+(status|diff|log|show|branch|remote|rev-parse|merge-base)(\s|$)/i,
+  /^\s*(bun|npm|pnpm|yarn)\s+(test|run\s+(lint|typecheck|test|bundle|build|check))(\s|$)/i
+];
+var MUTATING_BASH_PATTERNS = [
+  />|>>|<<|\|\s*(tee|xargs)\b/i,
+  /\b(sed\s+-i|perl\s+-pi|python\b|node\b|bun\s+run\s+scripts\/|touch|mkdir|rm|mv|cp)\b/i,
+  /\b(npm\s+install|npm\s+i|pnpm\s+add|yarn\s+add|bun\s+add)\b/i,
+  /^\s*git\s+(add|commit|checkout|switch|reset|clean|merge|rebase|push|pull|restore)(\s|$)/i
+];
+function markAutoDelegateBypassSession(sessionID) {
+  bypassSessions.add(sessionID);
+}
+function clearAutoDelegationState() {
+  interceptedCalls.clear();
+  bypassSessions.clear();
+  activeSessions.clear();
+}
+function isImplementationTool(tool3, args = {}) {
+  if (tool3 === "write" || tool3 === "edit" || tool3 === "apply_patch")
+    return true;
+  if (tool3 !== "bash")
+    return false;
+  const command = String(args.command ?? "").trim();
+  if (!command)
+    return false;
+  if (READONLY_BASH_PATTERNS.some((pattern) => pattern.test(command)))
+    return false;
+  return MUTATING_BASH_PATTERNS.some((pattern) => pattern.test(command));
+}
+function buildAutoDelegationSystemPrompt() {
+  return [
+    "## AGNES Auto-Delegation Enforcement",
+    "You are the orchestrator. Implementation belongs in subagent sessions.",
+    "For implementation work, call agnes_delegate or agnes_orchestrate instead of write/edit/apply_patch/bash.",
+    "Direct implementation tool calls are intercepted and rerouted to a general subagent. Delegated child sessions are allowed to edit normally.",
+    "Use read-only tools for investigation and verification tools for checks. Synthesize subagent results for the user."
+  ].join(`
+`);
+}
+function rewriteToolDescription(toolID, current) {
+  if (toolID === "write" || toolID === "edit" || toolID === "apply_patch") {
+    return `${current}
+
+AGNES AUTO-DELEGATION: Do not use this directly for implementation in the orchestrator session. Use agnes_delegate/agnes_orchestrate. If called directly, AGNES intercepts and reroutes the work to a subagent.`;
+  }
+  if (toolID === "bash") {
+    return `${current}
+
+AGNES AUTO-DELEGATION: Read-only and verification commands are allowed. Code-writing or workspace-mutating commands are intercepted and rerouted to a subagent.`;
+  }
+  return current;
+}
+async function handleAutoDelegateBefore(client, worktreePath, input, output) {
+  if (process.env.AGNES_AUTO_DELEGATE === "0")
+    return;
+  if (!client?.session)
+    return;
+  if (bypassSessions.has(input.sessionID))
+    return;
+  if (activeSessions.has(input.sessionID))
+    return;
+  if (!isImplementationTool(input.tool, output.args))
+    return;
+  activeSessions.add(input.sessionID);
+  try {
+    const context = await fetchConversationContext(client, input.sessionID);
+    const prompt = buildDelegationPrompt(input.tool, output.args, context);
+    const result = await runAutoDelegatedTask(client, input.sessionID, prompt);
+    interceptedCalls.set(input.callID, {
+      originalTool: input.tool,
+      originalArgs: { ...output.args },
+      childSessionID: result.childSessionID,
+      result: result.output
+    });
+    const noopArgs = makeNoopArgs(worktreePath, input.tool, input.callID, output.args);
+    for (const key of Object.keys(output.args))
+      delete output.args[key];
+    Object.assign(output.args, noopArgs);
+  } catch (err) {
+    warn("Auto-delegation failed; blocking direct implementation", err);
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`AGNES auto-delegation blocked direct ${input.tool} execution and delegation failed: ${msg}`);
+  } finally {
+    activeSessions.delete(input.sessionID);
+  }
+}
+async function handleAutoDelegateAfter(input, output) {
+  const state = interceptedCalls.get(input.callID);
+  if (!state)
+    return;
+  output.title = `AGNES delegated ${state.originalTool}`;
+  output.output = [
+    `Direct ${state.originalTool} execution was rerouted to subagent ${state.childSessionID}.`,
+    "",
+    state.result
+  ].join(`
+`);
+  output.metadata = {
+    ...output.metadata,
+    agnesAutoDelegated: true,
+    childSessionID: state.childSessionID,
+    originalTool: state.originalTool
+  };
+  interceptedCalls.delete(input.callID);
+}
+function buildDelegationPrompt(tool3, args, conversationContext) {
+  return [
+    "You are an AGNES general subagent. The orchestrator attempted direct implementation; you must perform the real workspace edit instead.",
+    "",
+    "Rules:",
+    "- Implement the user request in the actual workspace files, not in .agnes/tmp.",
+    "- Preserve unrelated changes. Read files before editing when needed.",
+    "- Keep the change minimal and verify when feasible.",
+    "- End with a concise summary of changed files and verification performed.",
+    "",
+    "Recent conversation context:",
+    conversationContext || "(no context available)",
+    "",
+    `Intercepted tool: ${tool3}`,
+    "Intercepted args:",
+    truncateForPrompt(JSON.stringify(args, null, 2), 8000)
+  ].join(`
+`);
+}
+function makeNoopArgs(worktreePath, tool3, callID, args) {
+  const tmpDir = path3.join(worktreePath, ".agnes", "tmp");
+  fs3.mkdirSync(tmpDir, { recursive: true });
+  if (tool3 === "write") {
+    return {
+      ...args,
+      filePath: path3.join(tmpDir, `${callID}.write.txt`),
+      content: `AGNES auto-delegated original write call ${callID}.
+`
+    };
+  }
+  if (tool3 === "edit") {
+    const oldString = typeof args.oldString === "string" ? args.oldString : "AGNES_AUTO_DELEGATED";
+    const filePath = path3.join(tmpDir, `${callID}.edit.txt`);
+    fs3.writeFileSync(filePath, oldString, "utf8");
+    return {
+      ...args,
+      filePath,
+      oldString,
+      newString: typeof args.newString === "string" ? args.newString : oldString
+    };
+  }
+  if (tool3 === "apply_patch") {
+    const filePath = path3.join(tmpDir, `${callID}.patch.txt`);
+    fs3.writeFileSync(filePath, `AGNES_AUTO_DELEGATED
+`, "utf8");
+    return {
+      ...args,
+      patchText: [
+        "*** Begin Patch",
+        `*** Update File: ${filePath.replace(/\\/g, "/")}`,
+        "@@",
+        "-AGNES_AUTO_DELEGATED",
+        "+AGNES_AUTO_DELEGATED_NOOP",
+        "*** End Patch"
+      ].join(`
+`)
+    };
+  }
+  if (tool3 === "bash") {
+    return { ...args, command: 'printf "AGNES auto-delegated command\\n"' };
+  }
+  return args;
+}
+async function runAutoDelegatedTask(client, parentSessionID, prompt) {
+  const sem = getSemaphore();
+  await sem.acquire();
+  try {
+    const createResp = await client.session.create({
+      body: {
+        parentID: parentSessionID,
+        title: "AGNES auto-delegated implementation"
+      }
+    });
+    if (createResp.error) {
+      throw new Error(`Failed to create auto-delegation child session: ${JSON.stringify(createResp.error)}`);
+    }
+    const childSessionID = createResp.data.id;
+    markAutoDelegateBypassSession(childSessionID);
+    const promptResp = await client.session.prompt({
+      path: { id: childSessionID },
+      body: {
+        agent: "general",
+        parts: [{ type: "text", text: prompt }]
+      }
+    });
+    if (promptResp.error) {
+      throw new Error(`Auto-delegation prompt failed: ${JSON.stringify(promptResp.error)}`);
+    }
+    const output = extractText(promptResp.data);
+    const truncated = truncateResult(output, getMaxResultChars(detectModelTier()));
+    await runGates([createPromiseComplianceGate(truncated)]);
+    return { childSessionID, output: truncated };
+  } finally {
+    sem.release();
+  }
+}
+async function fetchConversationContext(client, sessionID) {
+  const resp = await client.session.messages({
+    path: { id: sessionID },
+    query: { limit: 15 }
+  });
+  if (resp.error)
+    return `(failed to fetch conversation context: ${JSON.stringify(resp.error)})`;
+  const messages = Array.isArray(resp.data) ? resp.data : [];
+  const lines = [];
+  for (const message of messages) {
+    const role = message?.info?.role ?? "unknown";
+    const text = extractText(message);
+    if (!text.trim())
+      continue;
+    lines.push(`### ${role}
+${truncateForPrompt(text, 2500)}`);
+  }
+  return truncateForPrompt(lines.join(`
+
+`), 12000);
+}
+function extractText(response) {
+  if (!response || typeof response !== "object")
+    return "";
+  const obj = response;
+  if (Array.isArray(obj.parts)) {
+    return obj.parts.filter((p) => typeof p === "object" && p !== null && p.type === "text").map((p) => p.text ?? "").join(`
+`);
+  }
+  return typeof obj.text === "string" ? obj.text : "";
+}
+function truncateForPrompt(text, maxChars) {
+  if (text.length <= maxChars)
+    return text;
+  return `${text.slice(0, maxChars)}
+[...truncated ${text.length - maxChars} chars]`;
+}
+
 // src/delegate.ts
 var SUBAGENT_TIMEOUT_MS = 120000;
 var SESSION_TTL_MS = 10 * 60 * 1000;
-function extractText(response) {
+function extractText2(response) {
   if (!response || typeof response !== "object")
     return "";
   const obj = response;
@@ -13007,6 +13256,7 @@ async function createChildSession(client, params) {
   if (createResp.error) {
     throw new Error(`Failed to create child session: ${JSON.stringify(createResp.error)}`);
   }
+  markAutoDelegateBypassSession(createResp.data.id);
   return createResp.data.id;
 }
 async function delegateBlocking(client, params) {
@@ -13037,7 +13287,7 @@ async function delegateBlocking(client, params) {
           }
           return `ERROR: delegation failed after ${maxAttempts} attempts \u2014 ${JSON.stringify(promptResp.error)}`;
         }
-        const output = extractText(promptResp.data);
+        const output = extractText2(promptResp.data);
         const tier = detectModelTier();
         const maxChars = getMaxResultChars(tier);
         const truncated = truncateResult(output, maxChars);
@@ -13123,7 +13373,7 @@ async function getSubagentResult(client, sessionID, _directory) {
       return { status: "pending" };
     }
     const lastMsg = assistantMessages[assistantMessages.length - 1];
-    const output = extractText(lastMsg);
+    const output = extractText2(lastMsg);
     const tier = detectModelTier();
     const maxChars = getMaxResultChars(tier);
     const truncated = truncateResult(output, maxChars);
@@ -13141,12 +13391,12 @@ var _taskRefsPersistDir = null;
 var _taskRefs = new Map;
 var _taskRefsDirty = false;
 function getTaskRefsPath() {
-  return _taskRefsPersistDir ? path3.join(_taskRefsPersistDir, ".agnes", TASK_REFS_FILE) : null;
+  return _taskRefsPersistDir ? path4.join(_taskRefsPersistDir, ".agnes", TASK_REFS_FILE) : null;
 }
 function loadTaskRefsFromDisk(projectDir) {
   try {
-    const filePath = path3.join(projectDir, ".agnes", TASK_REFS_FILE);
-    const raw = fs3.readFileSync(filePath, "utf8");
+    const filePath = path4.join(projectDir, ".agnes", TASK_REFS_FILE);
+    const raw = fs4.readFileSync(filePath, "utf8");
     const entries = JSON.parse(raw);
     for (const e of Object.values(entries)) {
       if (!e.createdAt)
@@ -13166,8 +13416,8 @@ function flushTaskRefs() {
   if (!filePath)
     return;
   try {
-    fs3.mkdirSync(path3.dirname(filePath), { recursive: true });
-    fs3.writeFileSync(filePath, JSON.stringify(Object.fromEntries(_taskRefs)), "utf8");
+    fs4.mkdirSync(path4.dirname(filePath), { recursive: true });
+    fs4.writeFileSync(filePath, JSON.stringify(Object.fromEntries(_taskRefs)), "utf8");
   } catch (err) {
     warn("Failed to persist task refs", err);
   }
@@ -13217,36 +13467,36 @@ function clearTaskRefs() {
   const filePath = getTaskRefsPath();
   if (filePath) {
     try {
-      fs3.rmSync(filePath, { force: true });
+      fs4.rmSync(filePath, { force: true });
     } catch {}
   }
 }
 
 // src/plugin-support.ts
-import * as fs4 from "fs";
-import * as path4 from "path";
+import * as fs5 from "fs";
+import * as path5 from "path";
 function detectProject(cwd) {
-  let projectName = path4.basename(cwd);
+  let projectName = path5.basename(cwd);
   try {
-    const pkg = JSON.parse(fs4.readFileSync(path4.join(cwd, "package.json"), "utf8"));
+    const pkg = JSON.parse(fs5.readFileSync(path5.join(cwd, "package.json"), "utf8"));
     if (pkg.name)
       projectName = pkg.name;
   } catch {}
   const languages = [];
-  if (fs4.existsSync(path4.join(cwd, "tsconfig.json")))
+  if (fs5.existsSync(path5.join(cwd, "tsconfig.json")))
     languages.push("typescript");
-  if (fs4.existsSync(path4.join(cwd, "go.mod")))
+  if (fs5.existsSync(path5.join(cwd, "go.mod")))
     languages.push("go");
-  if (fs4.existsSync(path4.join(cwd, "Cargo.toml")))
+  if (fs5.existsSync(path5.join(cwd, "Cargo.toml")))
     languages.push("rust");
-  if (fs4.existsSync(path4.join(cwd, "pyproject.toml")))
+  if (fs5.existsSync(path5.join(cwd, "pyproject.toml")))
     languages.push("python");
-  if (fs4.existsSync(path4.join(cwd, "package.json")))
+  if (fs5.existsSync(path5.join(cwd, "package.json")))
     languages.push("javascript");
   const lockfiles = { "bun.lock": "bun", "bun.lockb": "bun", "pnpm-lock.yaml": "pnpm", "yarn.lock": "yarn", "package-lock.json": "npm" };
   let packageManager = "npm";
   for (const [lock, name] of Object.entries(lockfiles)) {
-    if (fs4.existsSync(path4.join(cwd, lock))) {
+    if (fs5.existsSync(path5.join(cwd, lock))) {
       packageManager = name;
       break;
     }
@@ -13255,15 +13505,15 @@ function detectProject(cwd) {
 }
 
 // src/planner.ts
-import * as fs5 from "fs";
-import * as path5 from "path";
+import * as fs6 from "fs";
+import * as path6 from "path";
 var PLANS_DIR = ".opencode/plans";
 var _idCounter = 0;
 function generatePlanID() {
   return `plan-${Date.now().toString(36)}-${(++_idCounter).toString(36)}`;
 }
 function getPlansDir(worktreePath) {
-  return path5.join(worktreePath, PLANS_DIR);
+  return path6.join(worktreePath, PLANS_DIR);
 }
 function createPlan(goal, maxIterations = 3) {
   return {
@@ -13282,14 +13532,14 @@ function createPlan(goal, maxIterations = 3) {
 }
 function savePlan(plan, worktreePath) {
   const dir = getPlansDir(worktreePath);
-  fs5.mkdirSync(dir, { recursive: true });
-  const filePath = path5.join(dir, `${plan.id}.json`);
-  fs5.writeFileSync(filePath, JSON.stringify(plan, null, 2), "utf8");
+  fs6.mkdirSync(dir, { recursive: true });
+  const filePath = path6.join(dir, `${plan.id}.json`);
+  fs6.writeFileSync(filePath, JSON.stringify(plan, null, 2), "utf8");
 }
 function loadPlan(planID, worktreePath) {
-  const filePath = path5.join(getPlansDir(worktreePath), `${planID}.json`);
+  const filePath = path6.join(getPlansDir(worktreePath), `${planID}.json`);
   try {
-    const raw = fs5.readFileSync(filePath, "utf8");
+    const raw = fs6.readFileSync(filePath, "utf8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -13794,8 +14044,8 @@ var AgnesPlugin = async (input) => {
     config: async (config2) => {
       try {
         const configObj = config2;
-        const skillsPath = path6.join(worktreePath, ".opencode", "skills");
-        if (fs6.existsSync(skillsPath)) {
+        const skillsPath = path7.join(worktreePath, ".opencode", "skills");
+        if (fs7.existsSync(skillsPath)) {
           configObj.skills = configObj.skills || {};
           const skillsObj = configObj.skills;
           skillsObj.paths = skillsObj.paths || [];
@@ -13974,6 +14224,7 @@ $ARGUMENTS`
         if (toolID === "get_task_result") {
           output.description = "DEPRECATED \u2014 Use agnes_get_result instead. This tool may fail to resolve task references.";
         }
+        output.description = rewriteToolDescription(toolID, output.description);
       } catch (err) {
         warn("tool.definition hook failed", err);
       }
@@ -13983,11 +14234,18 @@ $ARGUMENTS`
         setModelId(input2.model.modelID);
       }
     },
-    "tool.execute.after": async (input2, _output) => {
-      const filePath = input2.args?.filePath;
-      if ((input2.tool === "edit" || input2.tool === "write") && filePath) {
+    "tool.execute.before": async (hookInput, output) => {
+      await handleAutoDelegateBefore(input.client, worktreePath, hookInput, output);
+    },
+    "tool.execute.after": async (hookInput, output) => {
+      await handleAutoDelegateAfter({ ...hookInput, args: hookInput.args ?? {} }, output);
+      const filePath = hookInput.args?.filePath;
+      if ((hookInput.tool === "edit" || hookInput.tool === "write") && filePath) {
         editedFiles.add(filePath);
       }
+    },
+    "experimental.chat.system.transform": async (_input, output) => {
+      output.system.push(buildAutoDelegationSystemPrompt());
     },
     event: async ({ event }) => {
       try {
@@ -14042,6 +14300,7 @@ ${files}
     "session.deleted": async () => {
       try {
         editedFiles.clear();
+        clearAutoDelegationState();
         resetBootstrapInjected();
         clearTaskRefs();
       } catch (err) {

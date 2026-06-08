@@ -13,7 +13,7 @@ I. Identity — orchestrator, not implementer. Delegate work to subagents. Never
 II. Authority — user msg > tool output > constitution > regulations > project files > skills > training > prior turns > handoffs.
 III. Truth — every claim needs evidence. Verification outranks confidence. Tool output beats assumptions. Never declare done without verification.
 IV. Thinking — /think off (simple), /think high (default for coding), /think max (architecture).
-V. Delegation — chunk by file boundary. Parallel independent chunks. agnes_delegate blocking, agnes_get_result async. 3 retries, 120s timeout.
+V. Delegation — chunk by file boundary. Parallel independent chunks. agnes_delegate blocking, agnes_get_result async. Direct implementation tools are auto-rerouted to subagents.
 VI. Modes — Question-Gate (default, gates on 3+files/arch/deps). YOLO (--yolo, skip gates, safety-only).
 VII. Completion — end with marker when all tasks done.`;
 
@@ -108,7 +108,7 @@ Commands: /plan /build-fix /code-review /tdd /verify /checkpoint /yolo`;
 }
 
 function buildMinimalBootstrap(version: string): string {
-  return `AGNES v${version} — orchestrator plugin. Delegate work to subagents via agnes_delegate/agnes_get_result. Agents: general, explore. Chunk exploration by folder. Never one big subagent. 3 retries, 120s timeout.`;
+  return `AGNES v${version} — orchestrator plugin. Delegate work to subagents via agnes_delegate/agnes_get_result. Direct implementation tools auto-reroute to subagents. Agents: general, explore. Chunk exploration by folder. Never one big subagent. 3 retries, 120s timeout.`;
 }
 
 export function getBootstrapContent(project?: ProjectProfile, tier?: ModelTier): string | null {

@@ -31,9 +31,11 @@ DeepSeek reasoning controls thinking effort per turn:
 Default: /think high for execution work, /think off for routing and classification.
 
 ## Article V — Delegation & Subagents
-Decompose by file boundary. Parallelize independent chunks. Use agnes_delegate for blocking calls, agnes_get_result for async polling.
+Decompose by file boundary. Parallelize independent chunks. Use agnes_delegate for blocking calls, agnes_get_result for async polling. Direct implementation tools in the orchestrator session are auto-rerouted to subagents.
 
 Agents available: general (read/write/research), explore (read-only).
+
+Delegated child sessions are bypassed from auto-rerouting so they can perform the actual edits. The orchestrator remains an orchestration surface; subagents are the implementation surface.
 
 Chunk exploration by folder — minimum 5 files per chunk. One file per edit subagent — never batch edits. Fire independent chunks in parallel. Sequence dependent edits (edit dependencies first).
 

@@ -7,8 +7,10 @@ describe('AgnesPlugin structure', () => {
     const plugin = await AgnesPlugin({ directory: process.cwd() });
     expect(plugin).toHaveProperty('config');
     expect(plugin).toHaveProperty(['experimental.chat.messages.transform']);
+    expect(plugin).toHaveProperty(['experimental.chat.system.transform']);
     expect(typeof (plugin as any).config).toBe('function');
     expect(typeof (plugin as any)['experimental.chat.messages.transform']).toBe('function');
+    expect(typeof (plugin as any)['experimental.chat.system.transform']).toBe('function');
   });
 
   test('config hook preserves unsupported planner config without injecting defaults', async () => {
@@ -139,12 +141,20 @@ describe('experimental.chat.messages.transform hook', () => {
 });
 
 describe('tool.definition hook', () => {
-  test('tool.definition is a no-op (routing handled by bootstrap)', async () => {
+  test('tool.definition annotates direct edit tools with auto-delegation routing', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
     const plugin = await AgnesPlugin({ directory: process.cwd() });
     const output = { description: 'Edit a file', parameters: {} };
     await (plugin as any)['tool.definition']({ toolID: 'edit' }, output);
-    expect(output.description).toBe('Edit a file');
+    expect(output.description).toContain('AUTO-DELEGATION');
+  });
+
+  test('system transform injects auto-delegation enforcement', async () => {
+    const { AgnesPlugin } = await import('./plugin.js');
+    const plugin = await AgnesPlugin({ directory: process.cwd() });
+    const output = { system: [] as string[] };
+    await (plugin as any)['experimental.chat.system.transform']({}, output);
+    expect(output.system.join('\n')).toContain('Auto-Delegation Enforcement');
   });
 
   test('bootstrap contains delegation and commands', async () => {

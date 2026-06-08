@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as logger from './logger.js';
+import { markAutoDelegateBypassSession } from './auto-delegate.js';
 import { runGates, createPromiseComplianceGate } from './verification.js';
 import { detectModelTier, getMaxResultChars, truncateResult, getSemaphore } from './runtime.js';
 
@@ -61,6 +62,7 @@ async function createChildSession(
     throw new Error(`Failed to create child session: ${JSON.stringify(createResp.error)}`);
   }
 
+  markAutoDelegateBypassSession(createResp.data.id);
   return createResp.data.id;
 }
 

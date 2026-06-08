@@ -27,6 +27,13 @@ import {
   createOrchestration,
   advanceOrchestration,
 } from './orchestrator.js';
+import {
+  buildAutoDelegationSystemPrompt,
+  clearAutoDelegationState,
+  handleAutoDelegateAfter,
+  handleAutoDelegateBefore,
+  rewriteToolDescription,
+} from './auto-delegate.js';
 
 let _bootstrapInjected = false;
 
@@ -243,6 +250,7 @@ export const AgnesPlugin: Plugin = async (input) => {
         if (toolID === 'get_task_result') {
           output.description = 'DEPRECATED — Use agnes_get_result instead. This tool may fail to resolve task references.';
         }
+        output.description = rewriteToolDescription(toolID, output.description);
       } catch (err) {
         logger.warn('tool.definition hook failed', err);
       }
@@ -254,11 +262,27 @@ export const AgnesPlugin: Plugin = async (input) => {
       }
     },
 
-    'tool.execute.after': async (input: { tool: string; args?: Record<string, unknown> }, _output: unknown) => {
-      const filePath = input.args?.filePath as string | undefined;
-      if ((input.tool === 'edit' || input.tool === 'write') && filePath) {
+    'tool.execute.before': async (
+      hookInput: { tool: string; sessionID: string; callID: string },
+      output: { args: Record<string, unknown> },
+    ) => {
+      await handleAutoDelegateBefore(input.client, worktreePath, hookInput, output);
+    },
+
+    'tool.execute.after': async (
+      hookInput: { tool: string; sessionID: string; callID: string; args?: Record<string, unknown> },
+      output: { title: string; output: string; metadata: Record<string, unknown> },
+    ) => {
+      await handleAutoDelegateAfter({ ...hookInput, args: hookInput.args ?? {} }, output);
+
+      const filePath = hookInput.args?.filePath as string | undefined;
+      if ((hookInput.tool === 'edit' || hookInput.tool === 'write') && filePath) {
         editedFiles.add(filePath);
       }
+    },
+
+    'experimental.chat.system.transform': async (_input: unknown, output: { system: string[] }) => {
+      output.system.push(buildAutoDelegationSystemPrompt());
     },
 
     event: async ({ event }: { event: { type: string; sessionID?: string; path?: string } }) => {
@@ -307,6 +331,7 @@ export const AgnesPlugin: Plugin = async (input) => {
     'session.deleted': async () => {
       try {
         editedFiles.clear();
+        clearAutoDelegationState();
         resetBootstrapInjected();
         clearTaskRefs();
       } catch (err) {
