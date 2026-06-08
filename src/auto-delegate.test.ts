@@ -41,7 +41,7 @@ function makeMockClient() {
         calls.prompted++;
         return {
           data: {
-            parts: [{ type: 'text', text: 'Changed src/theme.ts and ran tests.' }],
+            parts: [{ type: 'text', text: 'Changed src/theme.ts and ran tests.\n\n\xA7AM{"t":"completion","i":"task-000","s":"DONE","c":"done","a":{}}' }],
           },
           error: null,
         };
@@ -92,6 +92,7 @@ describe('auto-delegation prompts and descriptions', () => {
 
 describe('auto-delegation hooks', () => {
   beforeEach(() => {
+    process.env.AGNES_SKIP_GATE = '1';
     clearAutoDelegationState();
   });
 

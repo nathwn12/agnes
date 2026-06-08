@@ -1,6 +1,10 @@
-// stderr logger — SILENT by default. Set AGNES_DEBUG=1 to enable.
-const PREFIX = '[agnes]';
+import { getInstanceId } from './runtime.js';
+
 const ENABLED = process.env.AGNES_DEBUG === '1' || process.env.AGNES_DEBUG === 'true';
+
+function prefix(): string {
+  return `[agnes:${getInstanceId()}]`;
+}
 
 function timestamp(): string {
   return new Date().toISOString();
@@ -9,17 +13,17 @@ function timestamp(): string {
 export function info(message: string, err?: unknown): void {
   if (!ENABLED) return;
   const detail = err instanceof Error ? ` — ${err.message}` : err !== undefined ? ` — ${String(err)}` : '';
-  console.error(`${PREFIX} ${timestamp()} INFO ${message}${detail}`);
+  console.error(`${prefix()} ${timestamp()} INFO ${message}${detail}`);
 }
 
 export function warn(message: string, err?: unknown): void {
   if (!ENABLED) return;
   const detail = err instanceof Error ? ` — ${err.message}` : err !== undefined ? ` — ${String(err)}` : '';
-  console.error(`${PREFIX} ${timestamp()} WARN ${message}${detail}`);
+  console.error(`${prefix()} ${timestamp()} WARN ${message}${detail}`);
 }
 
 export function error(message: string, err?: unknown): void {
   if (!ENABLED) return;
   const detail = err instanceof Error ? ` — ${err.message}\n${err.stack}` : err !== undefined ? ` — ${String(err)}` : '';
-  console.error(`${PREFIX} ${timestamp()} ERROR ${message}${detail}`);
+  console.error(`${prefix()} ${timestamp()} ERROR ${message}${detail}`);
 }

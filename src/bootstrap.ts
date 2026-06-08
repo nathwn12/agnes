@@ -4,8 +4,15 @@ import { fileURLToPath } from 'node:url';
 import * as logger from './logger.js';
 import type { ProjectProfile } from './plugin-support.js';
 import type { ModelTier } from './runtime.js';
+import { getVersion, getIdentityLine } from './runtime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const AUTO_DELEGATION_ENFORCEMENT = `## AGNES Auto-Delegation Enforcement
+You are the orchestrator. Implementation belongs in subagent sessions.
+For implementation work, call agnes_delegate or agnes_orchestrate instead of write/edit/apply_patch/bash.
+Direct implementation tool calls are intercepted and rerouted to a general subagent. Delegated child sessions are allowed to edit normally.
+Use read-only tools for investigation and verification tools for checks. Synthesize subagent results for the user.`;
 
 const CONSTITUTION_PREAMBLE = `CONSTITUTION OF AGNES
 
@@ -37,82 +44,123 @@ export function findPackageRoot(fromDir: string): string | null {
 }
 
 const packageRoot = findPackageRoot(path.resolve(__dirname, '..', '..')) ?? findPackageRoot(__dirname) ?? path.resolve(__dirname, '..', '..');
-const packageJsonPath = path.join(packageRoot, 'package.json');
 
-function getPackageVersion(): string {
-  if (!fs.existsSync(packageJsonPath)) return 'unknown';
-  try {
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as { version?: string };
-    return packageJson.version || 'unknown';
-  } catch { return 'unknown'; }
-}
+const COMMANDS_FULL = '/plan /build-fix /code-review /tdd /verify /checkpoint /learn /security /e2e /update-docs /refactor-clean /test-coverage /yolo /update-codemaps';
+const COMMANDS_MEDIUM = '/plan /build-fix /code-review /tdd /verify /checkpoint /yolo /update-codemaps';
+const MEDIUM_LINE = `Medium tier — tighter context, fewer parallel subagents, trimmed operational rules.
+Delegate via agnes_delegate/agnes_get_result. Chunk exploration by folder. Never one big subagent.`;
 
-type BootstrapCacheEntry = {
-  content: string | null;
+// ── Stable tier cache ────────────────────────────────────────────────────────────
+
+type StableCacheEntry = {
+  content: string;
   key: string;
 };
 
-let _bootstrapCache: BootstrapCacheEntry | undefined = undefined;
+let _stableCache: StableCacheEntry | undefined;
 
-function buildBootstrapContent(version: string, tier: ModelTier, project?: ProjectProfile): string {
-  if (tier === 'small') {
-    return buildMinimalBootstrap(version);
-  }
-  if (tier === 'medium') {
-    return buildMediumBootstrap(version);
-  }
-
+export function getStableTier(version?: string): string | null {
+  const ver = version ?? getVersion();
   const soulPath = path.join(packageRoot, 'SOUL.md');
-  let soulContent: string;
-  let cacheKey = '';
   try {
     const stat = fs.statSync(soulPath);
-    cacheKey = `${version}:${stat.size}:${stat.mtimeMs}:${tier}`;
-    if (_bootstrapCache?.key === cacheKey) return _bootstrapCache.content!;
-    soulContent = fs.readFileSync(soulPath, 'utf8');
+    const cacheKey = `${ver}:${stat.size}:${stat.mtimeMs}`;
+    if (_stableCache?.key === cacheKey) return _stableCache.content;
+
+    const soulContent = fs.readFileSync(soulPath, 'utf8');
+    const content = `${CONSTITUTION_PREAMBLE}
+
+${AUTO_DELEGATION_ENFORCEMENT}
+
+---
+
+${soulContent}`;
+
+    _stableCache = { content, key: cacheKey };
+    return content;
   } catch (err) {
     logger.warn(`Failed to load SOUL.md from ${soulPath}`, err);
-    return buildMinimalBootstrap(version);
+    return null;
+  }
+}
+
+// ── Context tier ─────────────────────────────────────────────────────────────────
+
+export function getContextTier(version?: string, project?: ProjectProfile, trimmed?: boolean): string | null {
+  const ver = version ?? getVersion();
+
+  if (trimmed) {
+    return `${getIdentityLine()}
+${MEDIUM_LINE}
+Commands: ${COMMANDS_MEDIUM}`;
   }
 
   const projectLine = project
     ? `Project: ${project.projectName} (${project.languages.join(', ') || '?'}) pkg:${project.packageManager}`
     : '';
 
-  // Static preamble (cache-friendly) + variable suffix after separator
-  const content = `${CONSTITUTION_PREAMBLE}
+  const context = `v${ver} | ${projectLine}
+Commands: ${COMMANDS_FULL}`;
 
----
+  const cacheKey = project
+    ? `${hashStr(project.projectName)}:${hashStr(project.languages.join(','))}`
+    : 'none';
+  void cacheKey;
 
-${soulContent}
-
----
-
-v${version} | ${projectLine}
-Commands: /plan /build-fix /code-review /tdd /verify /checkpoint /learn /security /e2e /update-docs /refactor-clean /test-coverage /yolo`;
-
-  _bootstrapCache = { content, key: cacheKey };
-  return content;
+  return context;
 }
 
-function buildMediumBootstrap(version: string): string {
-  const projectLine = `AGNES orchestrator v${version}.`;
-  return `${CONSTITUTION_PREAMBLE}
+// ── Volatile tier ─────────────────────────────────────────────────────────────────
 
----
-
-${projectLine}
-Medium tier — tighter context, fewer parallel subagents, trimmed operational rules.
-Delegate via agnes_delegate/agnes_get_result. Chunk exploration by folder. Never one big subagent.
-Commands: /plan /build-fix /code-review /tdd /verify /checkpoint /yolo`;
+export function getVolatileTier(memoryBlock?: string, todoBlock?: string): string | null {
+  const parts: string[] = [];
+  if (memoryBlock) parts.push(memoryBlock);
+  if (todoBlock) parts.push(todoBlock);
+  return parts.length > 0 ? parts.join('\n\n') : null;
 }
+
+// ── Tier assembly (backward-compat entry) ────────────────────────────────────────
 
 function buildMinimalBootstrap(version: string): string {
-  return `AGNES v${version} — orchestrator plugin. Delegate work to subagents via agnes_delegate/agnes_get_result. Direct implementation tools auto-reroute to subagents. Agents: general, explore. Chunk exploration by folder. Never one big subagent. 3 retries, 120s timeout.`;
+  return `AGNES v${version} — orchestrator plugin. Delegate work to subagents via agnes_delegate/agnes_get_result. Direct implementation tools auto-reroute to subagents. Agents: general, explore. Chunk exploration by folder. Never one big subagent. 3 retries, 120s timeout.
+
+${AUTO_DELEGATION_ENFORCEMENT}`;
 }
 
 export function getBootstrapContent(project?: ProjectProfile, tier?: ModelTier): string | null {
-  const version = getPackageVersion();
+  const version = getVersion();
   const modelTier: ModelTier = tier ?? 'large';
-  return buildBootstrapContent(version, modelTier, project);
+
+  if (modelTier === 'small') {
+    return buildMinimalBootstrap(version);
+  }
+
+  const parts: string[] = [];
+
+  const stable = getStableTier(version);
+  if (stable) parts.push(stable);
+
+  if (modelTier === 'medium') {
+    const context = getContextTier(version, undefined, true);
+    if (context) parts.push(context);
+  } else {
+    const context = getContextTier(version, project, false);
+    if (context) parts.push(context);
+    const volatile = getVolatileTier();
+    if (volatile) parts.push(volatile);
+  }
+
+  return parts.join('\n\n---\n\n');
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────────
+
+function hashStr(s: string): string {
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) {
+    const char = s.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
 }

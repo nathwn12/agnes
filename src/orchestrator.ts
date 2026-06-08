@@ -5,6 +5,7 @@ import {
   updatePlan,
   loadPlan,
   getFailedTasks,
+  generateTaskID,
 } from './planner.js';
 import { buildSchedule } from './scheduler.js';
 import type { Wave } from './scheduler.js';
@@ -12,6 +13,7 @@ import { runReview } from './reviewer.js';
 import type { ReviewVerdict } from './reviewer.js';
 import { delegateAsync, recordTaskRef, getSubagentResult } from './delegate.js';
 import { getMaxConcurrency, detectModelTier } from './runtime.js';
+import { buildResultMessage } from './protocol.js';
 import * as logger from './logger.js';
 
 type MinimalClient = any;
@@ -52,6 +54,8 @@ export interface OrchestrationResult {
 }
 
 function buildTaskPrompt(task: TaskItem, plan: TaskPlan): string {
+  const completionMarker = buildResultMessage(task.id, 'SUMMARY_REPLACE_ME');
+
   return `You are implementing ONE task in a larger plan.
 
 ## Goal
@@ -70,12 +74,11 @@ ${task.files.join(', ')}
 4. Report what you did and which files you created or modified.
 
 ## Completion protocol
-When done, append at the end of your response:
+When done, place this marker at the very end of your response:
+${completionMarker}
 
-<!-- <agnes:message taskId="${task.id}" status="DONE" content="SUMMARY">taskId=${task.id} status=DONE files=${task.files.join(',')}</agnes:message> -->
-
-Replace SUMMARY with a brief summary of what you implemented.
-Report DONE if everything works. Report BLOCKED if you cannot proceed.
+Replace SUMMARY_REPLACE_ME with a brief summary of what you implemented.
+Status DONE if everything works. Status BLOCKED if you cannot proceed.
 `;
 }
 
@@ -109,6 +112,12 @@ async function delegateWaveTasks(
         sessionID,
         directory,
       });
+      // delegateAsync returns error string on failure — detect and fail task directly
+      if (typeof sid === 'string' && sid.startsWith('ERROR:')) {
+        task.status = 'failed';
+        task.error = sid;
+        return;
+      }
       task.sessionID = sid;
       recordTaskRef(sid, {
         sessionID: sid,
@@ -157,6 +166,10 @@ async function pollWaveTasks(
       task.result = sub.output;
       task.status = 'completed';
       changed = true;
+      const lessonMatch = sub.output?.match(/LESSON:\s*(.+)/);
+      if (lessonMatch) {
+        logger.info(`Lesson from task ${task.id}: ${lessonMatch[1]}`);
+      }
     } else if (sub.status === 'error') {
       task.error = sub.error;
       task.status = 'failed';
@@ -175,6 +188,42 @@ export async function createOrchestration(
   const tier = detectModelTier();
   const maxParallel = getMaxConcurrency(tier);
   const maxIter = params.maxIterations ?? 3;
+
+  const RESERVED_PREFIXES = ['_', 'sys', 'meta'];
+
+  function validateTaskID(id: string, existing: Set<string>): string | null {
+    if (existing.has(id)) return null;
+    for (const prefix of RESERVED_PREFIXES) {
+      if (id.startsWith(prefix)) return generateTaskID();
+    }
+    existing.add(id);
+    return id;
+  }
+
+  function splitPlanIfNeeded(plan: TaskPlan): TaskPlan {
+    const MAX_TASKS = 50;
+    const SUBPLAN_SIZE = 25;
+    if (plan.tasks.length <= MAX_TASKS) return plan;
+
+    const subPlans: TaskPlan[] = [];
+    const depth = (plan.depth ?? 0) + 1;
+    if (depth > 3) {
+      plan.phase = 'failed';
+      logger.error('Maximum plan nesting depth exceeded (3)');
+      return plan;
+    }
+
+    for (let i = 0; i < plan.tasks.length; i += SUBPLAN_SIZE) {
+      const chunk = plan.tasks.slice(i, i + SUBPLAN_SIZE);
+      const sub = createPlan(`${plan.goal} (sub-plan ${Math.floor(i / SUBPLAN_SIZE) + 1})`, plan.maxIterations);
+      sub.tasks = chunk;
+      sub.depth = depth;
+      subPlans.push(sub);
+    }
+    plan.subPlans = subPlans;
+    plan.tasks = [];
+    return plan;
+  }
 
   let plan: TaskPlan;
 
@@ -206,15 +255,31 @@ export async function createOrchestration(
     plan.sessionID = params.sessionID;
 
     if (params.tasks && params.tasks.length > 0) {
-      plan.tasks = params.tasks.map(t => ({
-        ...t,
-        status: 'pending' as const,
-        retryCount: 0,
-        result: undefined,
-        error: undefined,
-        sessionID: undefined,
-      }));
+      const seenIDs = new Set<string>();
+      plan.tasks = [];
+      for (const t of params.tasks) {
+        const validID = validateTaskID(t.id, seenIDs);
+        if (!validID) {
+          logger.warn(`Duplicate task ID "${t.id}" — skipping`);
+          continue;
+        }
+        const adjustedID = validID !== t.id ? validID : t.id;
+        if (adjustedID !== t.id) {
+          logger.warn(`Task ID "${t.id}" uses reserved prefix — renamed to "${adjustedID}"`);
+        }
+        plan.tasks.push({
+          ...t,
+          id: adjustedID,
+          status: 'pending' as const,
+          retryCount: 0,
+          result: undefined,
+          error: undefined,
+          sessionID: undefined,
+        });
+      }
     }
+
+    splitPlanIfNeeded(plan);
 
     const waves = buildSchedule(plan.tasks, maxParallel);
     plan.waves = waves.map(w => ({ index: w.index, taskIDs: w.tasks.map(t => t.id) }));

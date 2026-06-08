@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as logger from './logger.js';
-import { detectModelTier, getMaxResultChars, getSemaphore, truncateResult } from './runtime.js';
+import { detectModelTier, getAutoDelegateSemaphore, getMaxResultChars, truncateResult } from './runtime.js';
 import { createPromiseComplianceGate, runGates } from './verification.js';
 
 type MinimalClient = any;
@@ -34,16 +34,16 @@ const bypassSessions = new Set<string>();
 const activeSessions = new Set<string>();
 
 const READONLY_BASH_PATTERNS = [
-  /^\s*(pwd|ls|dir)(\s|$)/i,
-  /^\s*git\s+(status|diff|log|show|branch|remote|rev-parse|merge-base)(\s|$)/i,
+  /^\s*(pwd|ls|dir|cat|echo|printf|head|tail|type|which|whoami|env|date|wc|sort|uniq|jq|rg|tree|locate)(\s|$)/i,
+  /^\s*git\s+(status|diff|log|show|branch|remote|rev-parse|merge-base|tag|describe|shortlog|whatchanged|bisect|stash\s+(list|show)|help)(\s|$)/i,
   /^\s*(bun|npm|pnpm|yarn)\s+(test|run\s+(lint|typecheck|test|bundle|build|check))(\s|$)/i,
 ];
 
 const MUTATING_BASH_PATTERNS = [
   />|>>|<<|\|\s*(tee|xargs)\b/i,
-  /\b(sed\s+-i|perl\s+-pi|python\b|node\b|bun\s+run\s+scripts\/|touch|mkdir|rm|mv|cp)\b/i,
+  /\b(sed\s+-i|perl\s+-pi|python\b|node\b|bun\s+run\s+scripts\/|touch|mkdir|rm|mv|cp|chmod|chown)\b/i,
   /\b(npm\s+install|npm\s+i|pnpm\s+add|yarn\s+add|bun\s+add)\b/i,
-  /^\s*git\s+(add|commit|checkout|switch|reset|clean|merge|rebase|push|pull|restore)(\s|$)/i,
+  /^\s*git\s+(add|commit|checkout|switch|reset|clean|merge|rebase|push|pull|restore|mv|rm|cherry-pick|revert|stash(\s+(push|save|drop|pop|apply))?|submodule(\s+(add|update|init))?)(\s|$)/i,
 ];
 
 export function markAutoDelegateBypassSession(sessionID: string): void {
@@ -222,7 +222,7 @@ async function runAutoDelegatedTask(
   parentSessionID: string,
   prompt: string,
 ): Promise<{ childSessionID: string; output: string }> {
-  const sem = getSemaphore();
+  const sem = getAutoDelegateSemaphore();
   await sem.acquire();
   try {
     const createResp = await client.session.create({

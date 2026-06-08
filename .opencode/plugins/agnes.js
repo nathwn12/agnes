@@ -12335,58 +12335,23 @@ function tool(input) {
 }
 tool.schema = exports_external;
 // src/plugin.ts
-import { randomUUID } from "crypto";
-import * as fs7 from "fs";
-import * as path7 from "path";
+import { randomUUID as randomUUID2 } from "crypto";
+import * as fs10 from "fs";
+import * as path10 from "path";
 
 // src/bootstrap.ts
+import * as fs2 from "fs";
+import * as path2 from "path";
+import { fileURLToPath as fileURLToPath2 } from "url";
+
+// src/runtime.ts
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
-
-// src/logger.ts
-var PREFIX = "[agnes]";
-var ENABLED = process.env.AGNES_DEBUG === "1" || process.env.AGNES_DEBUG === "true";
-function timestamp() {
-  return new Date().toISOString();
-}
-function info(message, err) {
-  if (!ENABLED)
-    return;
-  const detail = err instanceof Error ? ` \u2014 ${err.message}` : err !== undefined ? ` \u2014 ${String(err)}` : "";
-  console.error(`${PREFIX} ${timestamp()} INFO ${message}${detail}`);
-}
-function warn(message, err) {
-  if (!ENABLED)
-    return;
-  const detail = err instanceof Error ? ` \u2014 ${err.message}` : err !== undefined ? ` \u2014 ${String(err)}` : "";
-  console.error(`${PREFIX} ${timestamp()} WARN ${message}${detail}`);
-}
-function error45(message, err) {
-  if (!ENABLED)
-    return;
-  const detail = err instanceof Error ? ` \u2014 ${err.message}
-${err.stack}` : err !== undefined ? ` \u2014 ${String(err)}` : "";
-  console.error(`${PREFIX} ${timestamp()} ERROR ${message}${detail}`);
-}
-
-// src/bootstrap.ts
 var __dirname2 = path.dirname(fileURLToPath(import.meta.url));
-var CONSTITUTION_PREAMBLE = `CONSTITUTION OF AGNES
-
-I. Identity \u2014 orchestrator, not implementer. Delegate work to subagents. Never implement in orchestrator.
-II. Authority \u2014 user msg > tool output > constitution > regulations > project files > skills > training > prior turns > handoffs.
-III. Truth \u2014 every claim needs evidence. Verification outranks confidence. Tool output beats assumptions. Never declare done without verification.
-IV. Thinking \u2014 /think off (simple), /think high (default for coding), /think max (architecture).
-V. Delegation \u2014 chunk by file boundary. Parallel independent chunks. agnes_delegate blocking, agnes_get_result async. Direct implementation tools are auto-rerouted to subagents.
-VI. Modes \u2014 Question-Gate (default, gates on 3+files/arch/deps). YOLO (--yolo, skip gates, safety-only).
-VII. Completion \u2014 end with marker when all tasks done.`;
 function findPackageRoot(fromDir) {
   let current = fromDir;
   for (let i = 0;i < 10; i++) {
-    const bundlePath = path.join(current, ".opencode", "plugins", "agnes.js");
-    if (fs.existsSync(bundlePath))
-      return current;
     const pj = path.join(current, "package.json");
     if (fs.existsSync(pj)) {
       try {
@@ -12402,400 +12367,22 @@ function findPackageRoot(fromDir) {
   }
   return null;
 }
-var packageRoot = findPackageRoot(path.resolve(__dirname2, "..", "..")) ?? findPackageRoot(__dirname2) ?? path.resolve(__dirname2, "..", "..");
-var packageJsonPath = path.join(packageRoot, "package.json");
-function getPackageVersion() {
-  if (!fs.existsSync(packageJsonPath))
-    return "unknown";
+var PACKAGE_ROOT = findPackageRoot(path.resolve(__dirname2, "..", "..")) ?? findPackageRoot(__dirname2) ?? path.resolve(__dirname2, "..", "..");
+var AGNES_VERSION = (() => {
   try {
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-    return packageJson.version || "unknown";
+    const pkg = JSON.parse(fs.readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf8"));
+    return pkg.version || "unknown";
   } catch {
     return "unknown";
   }
+})();
+function getVersion() {
+  return AGNES_VERSION;
 }
-var _bootstrapCache = undefined;
-function buildBootstrapContent(version2, tier, project) {
-  if (tier === "small") {
-    return buildMinimalBootstrap(version2);
-  }
-  if (tier === "medium") {
-    return buildMediumBootstrap(version2);
-  }
-  const soulPath = path.join(packageRoot, "SOUL.md");
-  let soulContent;
-  let cacheKey = "";
-  try {
-    const stat = fs.statSync(soulPath);
-    cacheKey = `${version2}:${stat.size}:${stat.mtimeMs}:${tier}`;
-    if (_bootstrapCache?.key === cacheKey)
-      return _bootstrapCache.content;
-    soulContent = fs.readFileSync(soulPath, "utf8");
-  } catch (err) {
-    warn(`Failed to load SOUL.md from ${soulPath}`, err);
-    return buildMinimalBootstrap(version2);
-  }
-  const projectLine = project ? `Project: ${project.projectName} (${project.languages.join(", ") || "?"}) pkg:${project.packageManager}` : "";
-  const content = `${CONSTITUTION_PREAMBLE}
-
----
-
-${soulContent}
-
----
-
-v${version2} | ${projectLine}
-Commands: /plan /build-fix /code-review /tdd /verify /checkpoint /learn /security /e2e /update-docs /refactor-clean /test-coverage /yolo`;
-  _bootstrapCache = { content, key: cacheKey };
-  return content;
+function getIdentityLine() {
+  return `AGNES v${AGNES_VERSION}`;
 }
-function buildMediumBootstrap(version2) {
-  const projectLine = `AGNES orchestrator v${version2}.`;
-  return `${CONSTITUTION_PREAMBLE}
-
----
-
-${projectLine}
-Medium tier \u2014 tighter context, fewer parallel subagents, trimmed operational rules.
-Delegate via agnes_delegate/agnes_get_result. Chunk exploration by folder. Never one big subagent.
-Commands: /plan /build-fix /code-review /tdd /verify /checkpoint /yolo`;
-}
-function buildMinimalBootstrap(version2) {
-  return `AGNES v${version2} \u2014 orchestrator plugin. Delegate work to subagents via agnes_delegate/agnes_get_result. Direct implementation tools auto-reroute to subagents. Agents: general, explore. Chunk exploration by folder. Never one big subagent. 3 retries, 120s timeout.`;
-}
-function getBootstrapContent(project, tier) {
-  const version2 = getPackageVersion();
-  const modelTier = tier ?? "large";
-  return buildBootstrapContent(version2, modelTier, project);
-}
-
-// src/discovery.ts
-import * as path2 from "path";
-import * as fs2 from "fs";
-import * as os from "os";
-import { fileURLToPath as fileURLToPath2 } from "url";
-var __dirname3 = path2.dirname(fileURLToPath2(import.meta.url));
-var pluginRoot = findPackageRoot(__dirname3) ?? path2.resolve(__dirname3, "..", "..");
-var BUNDLED_COMMANDS_DIR = path2.join(pluginRoot, ".opencode", "commands");
-function readFileSafe(filePath) {
-  try {
-    return fs2.readFileSync(filePath, "utf8");
-  } catch {
-    return "";
-  }
-}
-function stripYamlFrontmatter(content) {
-  return content.replace(/^---[\s\S]*?---\n/, "");
-}
-function parseCommandFrontmatter(content) {
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!match)
-    return {};
-  const result = {};
-  for (const line of match[1].split(`
-`)) {
-    const kv = line.match(/^(\w+):\s*(.+)$/);
-    if (kv) {
-      let value = kv[2].trim();
-      if (value === "true")
-        value = true;
-      else if (value === "false")
-        value = false;
-      else if (value.startsWith('"') && value.endsWith('"'))
-        value = value.slice(1, -1);
-      result[kv[1]] = value;
-    }
-  }
-  return result;
-}
-function homeDir() {
-  return process.env.USERPROFILE || os.homedir();
-}
-function scanCommandDir(dir, source) {
-  const results = [];
-  try {
-    const entries = fs2.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.endsWith(".md"))
-        continue;
-      const name = entry.name.slice(0, -3);
-      const content = readFileSafe(path2.join(dir, entry.name));
-      if (!content)
-        continue;
-      const fm = parseCommandFrontmatter(content);
-      const template = stripYamlFrontmatter(content);
-      if (!template)
-        continue;
-      results.push({
-        name,
-        desc: fm.description || name.replace(/-/g, " "),
-        template,
-        source
-      });
-    }
-  } catch {}
-  return results;
-}
-function globalDir(sub) {
-  return path2.join(homeDir(), ".config", "opencode", sub);
-}
-function workspaceDir(worktree, sub) {
-  return path2.join(worktree, ".opencode", sub);
-}
-var cachedCommands = new Map;
-function cacheKey(worktreePath) {
-  return path2.resolve(worktreePath);
-}
-function discoverCommands(worktreePath) {
-  const key = cacheKey(worktreePath);
-  const cached2 = cachedCommands.get(key);
-  if (cached2)
-    return cached2;
-  const discovered = scanCommandDir(BUNDLED_COMMANDS_DIR, "agnes");
-  const global = scanCommandDir(globalDir("commands"), "global");
-  const workspace = scanCommandDir(workspaceDir(worktreePath, "commands"), "workspace");
-  const seen = new Set;
-  const results = [];
-  for (const cmd of [...discovered, ...global, ...workspace]) {
-    if (!seen.has(cmd.name)) {
-      seen.add(cmd.name);
-      results.push(cmd);
-    }
-  }
-  cachedCommands.set(key, results);
-  return results;
-}
-
-// src/schema.ts
-var VALID_STATUSES = ["DONE", "DONE_WITH_CONCERNS", "NEEDS_CONTEXT", "BLOCKED"];
-var VALID_TYPES = ["task", "result", "error", "status", "completion"];
-function isValidCompletionStatus(s) {
-  return typeof s === "string" && VALID_STATUSES.includes(s);
-}
-function isValidMessageType(s) {
-  return typeof s === "string" && VALID_TYPES.includes(s);
-}
-var REQUIRED_FIELDS = {
-  task: {},
-  result: { taskId: "string", status: "string" },
-  error: { taskId: "string", errorType: "string", detail: "string" },
-  status: { taskId: "string", phase: "string" },
-  completion: { status: "string", summary: "string" }
-};
-function validateMessage(obj) {
-  if (!obj || typeof obj !== "object")
-    return null;
-  const msg = obj;
-  if (typeof msg.type !== "string" || !isValidMessageType(msg.type))
-    return null;
-  if (typeof msg.id !== "string")
-    return null;
-  if (typeof msg.timestamp !== "string")
-    return null;
-  const type = msg.type;
-  const required2 = REQUIRED_FIELDS[type];
-  if (required2) {
-    for (const [field, expectedType] of Object.entries(required2)) {
-      if (typeof msg[field] !== expectedType)
-        return null;
-    }
-    if (type === "task" && typeof msg.skill !== "string" && typeof msg.goal !== "string")
-      return null;
-    if (type === "result" && typeof msg.content !== "string" && typeof msg.summary !== "string")
-      return null;
-    if ((type === "completion" || type === "result") && !isValidCompletionStatus(msg.status))
-      return null;
-  }
-  return msg;
-}
-
-// src/protocol.ts
-var LONG_TO_SHORT = {
-  type: "t",
-  id: "i",
-  timestamp: "ts",
-  status: "s",
-  content: "c",
-  summary: "m",
-  taskId: "tid",
-  errorType: "et",
-  detail: "d",
-  stack: "st",
-  phase: "ph",
-  progress: "pg",
-  skill: "sk",
-  payload: "pl",
-  goal: "g",
-  files: "f",
-  constraints: "cn",
-  config: "cfg",
-  artifact: "a",
-  reasoning_content: "rc"
-};
-var SHORT_TO_LONG = {};
-for (const [long, short] of Object.entries(LONG_TO_SHORT)) {
-  SHORT_TO_LONG[short] = long;
-}
-function keysToShort(obj) {
-  const out = {};
-  for (const [k, v] of Object.entries(obj)) {
-    out[LONG_TO_SHORT[k] ?? k] = v;
-  }
-  return out;
-}
-function keysToLong(obj) {
-  const out = {};
-  for (const [k, v] of Object.entries(obj)) {
-    out[SHORT_TO_LONG[k] ?? k] = v;
-  }
-  return out;
-}
-var MAGIC_PREFIX = "\xA7AM";
-var MAGIC_PREFIX_LEN = MAGIC_PREFIX.length;
-var OLD_ENVELOPE_START = "<!-- <agnes:message>";
-var OLD_ENVELOPE_END = "</agnes:message> -->";
-var OLD_SIMPLE_START = "<agnes:message>";
-var OLD_SIMPLE_END = "</agnes:message>";
-function stripCodeFences(text) {
-  const trimmed = text.trim();
-  const fenceStart = trimmed.match(/^```(?:json)?\s*\n/);
-  const fenceEnd = trimmed.match(/\n```\s*$/);
-  if (fenceStart && fenceEnd) {
-    return trimmed.slice(fenceStart[0].length, -fenceEnd[0].length).trim();
-  }
-  return trimmed;
-}
-function findJsonObject(text) {
-  const trimmed = text.trim();
-  if (!trimmed)
-    return null;
-  const firstBrace = trimmed.indexOf("{");
-  if (firstBrace === -1)
-    return null;
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-  for (let i = firstBrace;i < trimmed.length; i++) {
-    const ch = trimmed[i];
-    if (escape) {
-      escape = false;
-      continue;
-    }
-    if (ch === "\\" && inString) {
-      escape = true;
-      continue;
-    }
-    if (ch === '"' && !escape) {
-      inString = !inString;
-      continue;
-    }
-    if (!inString) {
-      if (ch === "{")
-        depth++;
-      if (ch === "}")
-        depth--;
-      if (depth === 0)
-        return trimmed.slice(firstBrace, i + 1);
-    }
-  }
-  return null;
-}
-function parseAgnesMessage(text) {
-  const cleaned = stripCodeFences(text);
-  if (cleaned.startsWith(MAGIC_PREFIX)) {
-    const json2 = findJsonObject(cleaned.slice(MAGIC_PREFIX_LEN));
-    if (!json2)
-      return null;
-    let parsed2;
-    try {
-      parsed2 = JSON.parse(json2);
-    } catch {
-      return null;
-    }
-    if (!parsed2 || typeof parsed2 !== "object")
-      return null;
-    const expanded = keysToLong(parsed2);
-    return validateMessage(expanded);
-  }
-  let jsonStr = null;
-  const ci = cleaned.indexOf(OLD_ENVELOPE_START);
-  if (ci !== -1) {
-    const endIdx = cleaned.indexOf(OLD_ENVELOPE_END, ci);
-    if (endIdx === -1)
-      return null;
-    jsonStr = cleaned.slice(ci + OLD_ENVELOPE_START.length, endIdx);
-  } else {
-    const si = cleaned.indexOf(OLD_SIMPLE_START);
-    if (si !== -1) {
-      const endIdx = cleaned.indexOf(OLD_SIMPLE_END, si);
-      if (endIdx === -1)
-        return null;
-      jsonStr = cleaned.slice(si + OLD_SIMPLE_START.length, endIdx);
-    }
-  }
-  if (jsonStr) {
-    let parsed2;
-    try {
-      parsed2 = JSON.parse(jsonStr);
-    } catch {
-      return null;
-    }
-    if (!parsed2 || typeof parsed2 !== "object")
-      return null;
-    return validateMessage(parsed2);
-  }
-  const fallbackJson = findJsonObject(cleaned);
-  if (!fallbackJson)
-    return null;
-  let parsed;
-  try {
-    parsed = JSON.parse(fallbackJson);
-  } catch {
-    return null;
-  }
-  if (!parsed || typeof parsed !== "object")
-    return null;
-  return validateMessage(parsed);
-}
-var _msgCounter = 0;
-function serializeAgnesMessage(msg) {
-  const m = msg;
-  const id = m.id ?? `m${++_msgCounter}`;
-  let type = "task";
-  if (typeof m.type === "string" && ["task", "result", "error", "status", "completion"].includes(m.type)) {
-    type = m.type;
-  }
-  const compact = keysToShort({
-    ...m,
-    type,
-    id,
-    timestamp: m.timestamp ?? new Date().toISOString()
-  });
-  return `${MAGIC_PREFIX}${JSON.stringify(compact)}`;
-}
-function buildResultMessage(params) {
-  const obj = {
-    type: "result",
-    taskId: params.taskId,
-    status: params.status,
-    content: params.content
-  };
-  if (params.artifact !== undefined)
-    obj.artifact = params.artifact;
-  if (params.reasoning !== undefined)
-    obj.reasoning_content = params.reasoning;
-  return serializeAgnesMessage(obj);
-}
-
-// src/delegate.ts
-import * as fs4 from "fs";
-import * as path4 from "path";
-
-// src/auto-delegate.ts
-import * as fs3 from "fs";
-import * as path3 from "path";
-
-// src/runtime.ts
+var MAX_DELEGATE_DEPTH = 2;
 var _detectedTier = null;
 function detectModelTier() {
   if (_detectedTier)
@@ -12877,7 +12464,24 @@ function setYoloMode(v) {
 function isYoloMode() {
   return _yoloMode;
 }
-
+function getGateSkip() {
+  const val = process.env.AGNES_SKIP_GATE?.toLowerCase();
+  return val === "1" || val === "true" || val === "yes";
+}
+var _instanceId = `agnes-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+function getInstanceId() {
+  return _instanceId;
+}
+var MAX_ASYNC_ERRORS = 10;
+var _asyncErrors = [];
+function pushError(sessionId, error45, stack) {
+  _asyncErrors.push({ timestamp: new Date().toISOString(), sessionId, error: error45, stack });
+  if (_asyncErrors.length > MAX_ASYNC_ERRORS)
+    _asyncErrors.shift();
+}
+function getAsyncErrors() {
+  return [..._asyncErrors];
+}
 class Semaphore {
   _max;
   _current = 0;
@@ -12890,10 +12494,10 @@ class Semaphore {
       this._current++;
       return;
     }
-    return new Promise((resolve3) => {
+    return new Promise((resolve2) => {
       this._queue.push(() => {
         this._current++;
-        resolve3();
+        resolve2();
       });
     });
   }
@@ -12902,7 +12506,8 @@ class Semaphore {
     if (next) {
       next();
     } else {
-      this._current--;
+      if (this._current > 0)
+        this._current--;
     }
   }
   get active() {
@@ -12919,8 +12524,507 @@ function getSemaphore() {
   }
   return _semaphore;
 }
+var _autoDelegateSemaphore = null;
+function getAutoDelegateSemaphore() {
+  if (!_autoDelegateSemaphore) {
+    _autoDelegateSemaphore = new Semaphore(3);
+  }
+  return _autoDelegateSemaphore;
+}
+
+// src/logger.ts
+var ENABLED = process.env.AGNES_DEBUG === "1" || process.env.AGNES_DEBUG === "true";
+function prefix() {
+  return `[agnes:${getInstanceId()}]`;
+}
+function timestamp() {
+  return new Date().toISOString();
+}
+function info(message, err) {
+  if (!ENABLED)
+    return;
+  const detail = err instanceof Error ? ` \u2014 ${err.message}` : err !== undefined ? ` \u2014 ${String(err)}` : "";
+  console.error(`${prefix()} ${timestamp()} INFO ${message}${detail}`);
+}
+function warn(message, err) {
+  if (!ENABLED)
+    return;
+  const detail = err instanceof Error ? ` \u2014 ${err.message}` : err !== undefined ? ` \u2014 ${String(err)}` : "";
+  console.error(`${prefix()} ${timestamp()} WARN ${message}${detail}`);
+}
+function error45(message, err) {
+  if (!ENABLED)
+    return;
+  const detail = err instanceof Error ? ` \u2014 ${err.message}
+${err.stack}` : err !== undefined ? ` \u2014 ${String(err)}` : "";
+  console.error(`${prefix()} ${timestamp()} ERROR ${message}${detail}`);
+}
+
+// src/bootstrap.ts
+var __dirname3 = path2.dirname(fileURLToPath2(import.meta.url));
+var AUTO_DELEGATION_ENFORCEMENT = `## AGNES Auto-Delegation Enforcement
+You are the orchestrator. Implementation belongs in subagent sessions.
+For implementation work, call agnes_delegate or agnes_orchestrate instead of write/edit/apply_patch/bash.
+Direct implementation tool calls are intercepted and rerouted to a general subagent. Delegated child sessions are allowed to edit normally.
+Use read-only tools for investigation and verification tools for checks. Synthesize subagent results for the user.`;
+var CONSTITUTION_PREAMBLE = `CONSTITUTION OF AGNES
+
+I. Identity \u2014 orchestrator, not implementer. Delegate work to subagents. Never implement in orchestrator.
+II. Authority \u2014 user msg > tool output > constitution > regulations > project files > skills > training > prior turns > handoffs.
+III. Truth \u2014 every claim needs evidence. Verification outranks confidence. Tool output beats assumptions. Never declare done without verification.
+IV. Thinking \u2014 /think off (simple), /think high (default for coding), /think max (architecture).
+V. Delegation \u2014 chunk by file boundary. Parallel independent chunks. agnes_delegate blocking, agnes_get_result async. Direct implementation tools are auto-rerouted to subagents.
+VI. Modes \u2014 Question-Gate (default, gates on 3+files/arch/deps). YOLO (--yolo, skip gates, safety-only).
+VII. Completion \u2014 end with marker when all tasks done.`;
+function findPackageRoot2(fromDir) {
+  let current = fromDir;
+  for (let i = 0;i < 10; i++) {
+    const bundlePath = path2.join(current, ".opencode", "plugins", "agnes.js");
+    if (fs2.existsSync(bundlePath))
+      return current;
+    const pj = path2.join(current, "package.json");
+    if (fs2.existsSync(pj)) {
+      try {
+        const pkg = JSON.parse(fs2.readFileSync(pj, "utf8"));
+        if (pkg.name === "agnes")
+          return current;
+      } catch {}
+    }
+    const parent = path2.resolve(current, "..");
+    if (parent === current)
+      break;
+    current = parent;
+  }
+  return null;
+}
+var packageRoot = findPackageRoot2(path2.resolve(__dirname3, "..", "..")) ?? findPackageRoot2(__dirname3) ?? path2.resolve(__dirname3, "..", "..");
+var COMMANDS_FULL = "/plan /build-fix /code-review /tdd /verify /checkpoint /learn /security /e2e /update-docs /refactor-clean /test-coverage /yolo /update-codemaps";
+var COMMANDS_MEDIUM = "/plan /build-fix /code-review /tdd /verify /checkpoint /yolo /update-codemaps";
+var MEDIUM_LINE = `Medium tier \u2014 tighter context, fewer parallel subagents, trimmed operational rules.
+Delegate via agnes_delegate/agnes_get_result. Chunk exploration by folder. Never one big subagent.`;
+var _stableCache;
+function getStableTier(version2) {
+  const ver = version2 ?? getVersion();
+  const soulPath = path2.join(packageRoot, "SOUL.md");
+  try {
+    const stat = fs2.statSync(soulPath);
+    const cacheKey = `${ver}:${stat.size}:${stat.mtimeMs}`;
+    if (_stableCache?.key === cacheKey)
+      return _stableCache.content;
+    const soulContent = fs2.readFileSync(soulPath, "utf8");
+    const content = `${CONSTITUTION_PREAMBLE}
+
+${AUTO_DELEGATION_ENFORCEMENT}
+
+---
+
+${soulContent}`;
+    _stableCache = { content, key: cacheKey };
+    return content;
+  } catch (err) {
+    warn(`Failed to load SOUL.md from ${soulPath}`, err);
+    return null;
+  }
+}
+function getContextTier(version2, project, trimmed) {
+  const ver = version2 ?? getVersion();
+  if (trimmed) {
+    return `${getIdentityLine()}
+${MEDIUM_LINE}
+Commands: ${COMMANDS_MEDIUM}`;
+  }
+  const projectLine = project ? `Project: ${project.projectName} (${project.languages.join(", ") || "?"}) pkg:${project.packageManager}` : "";
+  const context = `v${ver} | ${projectLine}
+Commands: ${COMMANDS_FULL}`;
+  const cacheKey = project ? `${hashStr(project.projectName)}:${hashStr(project.languages.join(","))}` : "none";
+  return context;
+}
+function getVolatileTier(memoryBlock, todoBlock) {
+  const parts = [];
+  if (memoryBlock)
+    parts.push(memoryBlock);
+  if (todoBlock)
+    parts.push(todoBlock);
+  return parts.length > 0 ? parts.join(`
+
+`) : null;
+}
+function hashStr(s) {
+  let hash2 = 0;
+  for (let i = 0;i < s.length; i++) {
+    const char = s.charCodeAt(i);
+    hash2 = (hash2 << 5) - hash2 + char;
+    hash2 |= 0;
+  }
+  return Math.abs(hash2).toString(36);
+}
+
+// src/discovery.ts
+import * as path3 from "path";
+import * as fs3 from "fs";
+import * as os from "os";
+import { fileURLToPath as fileURLToPath3 } from "url";
+var __dirname4 = path3.dirname(fileURLToPath3(import.meta.url));
+var pluginRoot = findPackageRoot2(__dirname4) ?? path3.resolve(__dirname4, "..", "..");
+var BUNDLED_COMMANDS_DIR = path3.join(pluginRoot, ".opencode", "commands");
+var CACHE_TTL_MS = 30000;
+var _cache = new Map;
+function readFileSafe(filePath) {
+  try {
+    return fs3.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+function stripYamlFrontmatter(content) {
+  return content.replace(/^---[\s\S]*?---\n/, "");
+}
+function parseCommandFrontmatter(content) {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match)
+    return {};
+  const result = {};
+  for (const line of match[1].split(`
+`)) {
+    const kv = line.match(/^(\w+):\s*(.+)$/);
+    if (kv) {
+      let value = kv[2].trim();
+      if (value === "true")
+        value = true;
+      else if (value === "false")
+        value = false;
+      else if (value.startsWith('"') && value.endsWith('"'))
+        value = value.slice(1, -1);
+      result[kv[1]] = value;
+    }
+  }
+  return result;
+}
+function homeDir() {
+  return process.env.USERPROFILE || os.homedir();
+}
+function globalDir(sub) {
+  return path3.join(homeDir(), ".config", "opencode", sub);
+}
+function workspaceDir(worktree, sub) {
+  return path3.join(worktree, ".opencode", sub);
+}
+function scanWithMtimes(dir, source) {
+  const files = {};
+  const commands = [];
+  try {
+    const entries = fs3.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith(".md"))
+        continue;
+      const filePath = path3.join(dir, entry.name);
+      try {
+        const stat = fs3.statSync(filePath);
+        files[filePath] = stat.mtimeMs;
+      } catch {
+        continue;
+      }
+      const name = entry.name.slice(0, -3);
+      const content = readFileSafe(filePath);
+      if (!content)
+        continue;
+      const fm = parseCommandFrontmatter(content);
+      const template = stripYamlFrontmatter(content);
+      if (!template)
+        continue;
+      commands.push({
+        name,
+        desc: fm.description || name.replace(/-/g, " "),
+        template,
+        source
+      });
+    }
+  } catch {}
+  return { commands, files };
+}
+function cacheKey(worktreePath) {
+  return path3.resolve(worktreePath);
+}
+function isCacheFresh(cached2) {
+  return Date.now() - cached2.cachedAt < CACHE_TTL_MS;
+}
+function hasMtimesChanged(cached2) {
+  for (const [filePath, mtime] of Object.entries(cached2.files)) {
+    try {
+      if (fs3.statSync(filePath).mtimeMs !== mtime)
+        return true;
+    } catch {
+      return true;
+    }
+  }
+  return false;
+}
+function forceRescan(worktreePath) {
+  _cache.delete(cacheKey(worktreePath));
+}
+function discoverCommands(worktreePath) {
+  const key = cacheKey(worktreePath);
+  const cached2 = _cache.get(key);
+  if (cached2) {
+    if (isCacheFresh(cached2) && !hasMtimesChanged(cached2)) {
+      return cached2.commands;
+    }
+    _cache.delete(key);
+  }
+  const bundled = scanWithMtimes(BUNDLED_COMMANDS_DIR, "agnes");
+  const global = scanWithMtimes(globalDir("commands"), "global");
+  const workspace = scanWithMtimes(workspaceDir(worktreePath, "commands"), "workspace");
+  const seen = new Set;
+  const results = [];
+  const allFiles = {};
+  for (const scan of [bundled, global, workspace]) {
+    Object.assign(allFiles, scan.files);
+    for (const cmd of scan.commands) {
+      if (!seen.has(cmd.name)) {
+        seen.add(cmd.name);
+        results.push(cmd);
+      }
+    }
+  }
+  _cache.set(key, { commands: results, files: allFiles, cachedAt: Date.now() });
+  return results;
+}
+
+// src/protocol.ts
+var MAX_MESSAGE_DEPTH = 5;
+var MAX_CONTENT_LEN_PREFIX = 2000;
+var MAGIC_PREFIX = "\xA7AM";
+var MAGIC_PREFIX_LEN = MAGIC_PREFIX.length;
+var MAGIC_LEN_PREFIX = "\xA7AMLEN";
+var OLD_ENVELOPE_START = "<!-- <agnes:message>";
+var OLD_ENVELOPE_END = "</agnes:message> -->";
+var OLD_SIMPLE_START = "<agnes:message>";
+var OLD_SIMPLE_END = "</agnes:message>";
+var LONG_TO_SHORT = {
+  taskID: "i",
+  description: "d",
+  agent: "a",
+  files: "f",
+  dependsOn: "D",
+  type: "t",
+  status: "s",
+  content: "c",
+  artifacts: "r",
+  phase: "p",
+  index: "x",
+  total: "n",
+  done: "o",
+  action: "A",
+  target: "T",
+  reason: "R",
+  error: "e",
+  code: "C",
+  message: "m"
+};
+var SHORT_TO_LONG = {};
+for (const [long, short] of Object.entries(LONG_TO_SHORT)) {
+  SHORT_TO_LONG[short] = long;
+}
+function keysToShort(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    out[LONG_TO_SHORT[k] ?? k] = v;
+  }
+  return out;
+}
+function keysToLong(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    out[SHORT_TO_LONG[k] ?? k] = v;
+  }
+  return out;
+}
+function stripCodeFences(text) {
+  const trimmed = text.trim();
+  const fenceStart = trimmed.match(/^```(?:json)?\s*\n/);
+  const fenceEnd = trimmed.match(/\n```\s*$/);
+  if (fenceStart && fenceEnd) {
+    return trimmed.slice(fenceStart[0].length, -fenceEnd[0].length).trim();
+  }
+  return trimmed;
+}
+function findJsonObject(text) {
+  const trimmed = text.trim();
+  if (!trimmed)
+    return null;
+  const firstBrace = trimmed.indexOf("{");
+  if (firstBrace === -1)
+    return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let maxDepth = 0;
+  for (let i = firstBrace;i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\" && inString) {
+      escape = true;
+      continue;
+    }
+    if (ch === '"' && !escape) {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (ch === "{") {
+        depth++;
+        if (depth > maxDepth)
+          maxDepth = depth;
+        if (maxDepth > MAX_MESSAGE_DEPTH)
+          return null;
+      }
+      if (ch === "}") {
+        depth--;
+        if (depth === 0)
+          return trimmed.slice(firstBrace, i + 1);
+      }
+    }
+  }
+  return null;
+}
+function handleContentLengthPrefix(text) {
+  if (!text.startsWith(MAGIC_LEN_PREFIX))
+    return text;
+  const rest = text.slice(MAGIC_LEN_PREFIX.length);
+  const colonIdx = rest.indexOf(":");
+  if (colonIdx === -1)
+    return null;
+  const lenStr = rest.slice(0, colonIdx);
+  const len = parseInt(lenStr, 10);
+  if (isNaN(len) || len <= 0)
+    return null;
+  const payload = rest.slice(colonIdx + 1);
+  if (payload.length !== len) {
+    warn(`Content-length prefix mismatch: declared ${len} but actual ${payload.length}`);
+    return null;
+  }
+  return payload;
+}
+function parseAgnesMessage(text) {
+  try {
+    const cleaned = stripCodeFences(text);
+    const content = handleContentLengthPrefix(cleaned);
+    if (content === null)
+      return null;
+    if (content.startsWith(MAGIC_PREFIX)) {
+      const json2 = findJsonObject(content.slice(MAGIC_PREFIX_LEN));
+      if (!json2)
+        return null;
+      let parsed2;
+      try {
+        parsed2 = JSON.parse(json2);
+      } catch {
+        return null;
+      }
+      if (!parsed2 || typeof parsed2 !== "object")
+        return null;
+      const expanded = keysToLong(parsed2);
+      return validateMessage(expanded);
+    }
+    let jsonStr = null;
+    const ci = content.indexOf(OLD_ENVELOPE_START);
+    if (ci !== -1) {
+      const endIdx = content.indexOf(OLD_ENVELOPE_END, ci);
+      if (endIdx === -1)
+        return null;
+      jsonStr = content.slice(ci + OLD_ENVELOPE_START.length, endIdx);
+    } else {
+      const si = content.indexOf(OLD_SIMPLE_START);
+      if (si !== -1) {
+        const endIdx = content.indexOf(OLD_SIMPLE_END, si);
+        if (endIdx === -1)
+          return null;
+        jsonStr = content.slice(si + OLD_SIMPLE_START.length, endIdx);
+      }
+    }
+    if (jsonStr) {
+      let parsed2;
+      try {
+        parsed2 = JSON.parse(jsonStr);
+      } catch {
+        return null;
+      }
+      if (!parsed2 || typeof parsed2 !== "object")
+        return null;
+      return validateMessage(parsed2);
+    }
+    const fallbackJson = findJsonObject(content);
+    if (!fallbackJson)
+      return null;
+    let parsed;
+    try {
+      parsed = JSON.parse(fallbackJson);
+    } catch {
+      return null;
+    }
+    if (!parsed || typeof parsed !== "object")
+      return null;
+    return parsed;
+  } catch (err) {
+    warn("parseAgnesMessage failed", err);
+    return null;
+  }
+}
+var VALID_TYPES = ["completion", "result", "task", "batch", "phase", "progress", "request", "error"];
+var VALID_STATUSES = ["DONE", "BLOCKED"];
+function validateMessage(msg) {
+  if (!msg.type || typeof msg.type !== "string")
+    return null;
+  if (!VALID_TYPES.includes(msg.type))
+    return null;
+  if (msg.status && typeof msg.status === "string" && !VALID_STATUSES.includes(msg.status))
+    return null;
+  return msg;
+}
+function buildResultMessage(taskID, content, artifacts) {
+  const msg = { type: "result", taskID, status: "DONE", content, artifacts };
+  const short = keysToShort(msg);
+  return formatMessage(short);
+}
+function formatMessage(obj) {
+  const json2 = JSON.stringify(obj);
+  const full = `${MAGIC_PREFIX}${json2}`;
+  if (full.length > MAX_CONTENT_LEN_PREFIX) {
+    return `${MAGIC_LEN_PREFIX}${full.length}:${full}`;
+  }
+  return full;
+}
+
+// src/delegate.ts
+import * as fs5 from "fs";
+import * as path5 from "path";
+
+// src/auto-delegate.ts
+import * as fs4 from "fs";
+import * as path4 from "path";
 
 // src/verification.ts
+var _gateStats = {
+  checksPerformed: 0,
+  checksPassed: 0,
+  checksFailed: 0,
+  retriesPerformed: 0
+};
+function getGateStats() {
+  return { ..._gateStats };
+}
+function recordGateResult(status) {
+  _gateStats.checksPerformed++;
+  if (status === "PASS")
+    _gateStats.checksPassed++;
+  if (status === "FAIL") {
+    _gateStats.checksFailed++;
+    _gateStats.lastFailureAt = new Date().toISOString();
+  }
+}
 async function runGates(gates) {
   const results = [];
   for (const gate of gates) {
@@ -12938,8 +13042,15 @@ async function runGates(gates) {
       };
     }
     results.push(result);
+    recordGateResult(result.status);
     if (result.status === "FAIL") {
-      warn(`Gate "${gate.id}" failed: ${result.evidence.errors.join("; ")}`);
+      const isBlocking = gate.isBlocking && !getGateSkip();
+      const msg = `Gate "${gate.id}" failed: ${result.evidence.errors.join("; ")}`;
+      if (isBlocking) {
+        error45(msg);
+        throw new Error(msg);
+      }
+      warn(msg);
     }
   }
   return results;
@@ -12947,9 +13058,35 @@ async function runGates(gates) {
 function extractCanonicalAgnesMessageEnvelope(text) {
   if (text.includes("\xA7AM")) {
     const idx = text.indexOf("\xA7AM");
-    const endIdx = text.indexOf("}", idx);
-    if (endIdx !== -1)
-      return text.slice(idx, endIdx + 1);
+    if (idx === -1)
+      return null;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let started = false;
+    for (let i = idx;i < text.length; i++) {
+      const ch = text[i];
+      if (ch === "\\" && inString) {
+        escape = true;
+        continue;
+      }
+      if (ch === '"' && !escape) {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (ch === "{") {
+          depth++;
+          started = true;
+        } else if (ch === "}") {
+          depth--;
+        }
+        if (started && depth === 0)
+          return text.slice(idx, i + 1);
+      }
+      escape = false;
+    }
+    return null;
   }
   const match = text.match(/<!--\s*<agnes:message>[\s\S]*?<\/agnes:message>\s*-->/);
   return match?.[0] ?? null;
@@ -12963,12 +13100,14 @@ function hasCompletionSignal(text) {
     return false;
   return parsed.type === "completion" || parsed.type === "result";
 }
-function createPromiseComplianceGate(output) {
+function createPromiseComplianceGate(output, tier) {
+  const modelTier = tier ?? detectModelTier();
+  const blocking = modelTier !== "small" && !getGateSkip();
   return {
     id: "promise-compliance",
     name: "Promise Compliance",
     description: "Checks that output contains a canonical completion or result <agnes:message>",
-    isBlocking: false,
+    isBlocking: blocking,
     run: async () => {
       const start = Date.now();
       const errors3 = [];
@@ -12991,23 +13130,18 @@ var interceptedCalls = new Map;
 var bypassSessions = new Set;
 var activeSessions = new Set;
 var READONLY_BASH_PATTERNS = [
-  /^\s*(pwd|ls|dir)(\s|$)/i,
-  /^\s*git\s+(status|diff|log|show|branch|remote|rev-parse|merge-base)(\s|$)/i,
+  /^\s*(pwd|ls|dir|cat|echo|printf|head|tail|type|which|whoami|env|date|wc|sort|uniq|jq|rg|tree|locate)(\s|$)/i,
+  /^\s*git\s+(status|diff|log|show|branch|remote|rev-parse|merge-base|tag|describe|shortlog|whatchanged|bisect|stash\s+(list|show)|help)(\s|$)/i,
   /^\s*(bun|npm|pnpm|yarn)\s+(test|run\s+(lint|typecheck|test|bundle|build|check))(\s|$)/i
 ];
 var MUTATING_BASH_PATTERNS = [
   />|>>|<<|\|\s*(tee|xargs)\b/i,
-  /\b(sed\s+-i|perl\s+-pi|python\b|node\b|bun\s+run\s+scripts\/|touch|mkdir|rm|mv|cp)\b/i,
+  /\b(sed\s+-i|perl\s+-pi|python\b|node\b|bun\s+run\s+scripts\/|touch|mkdir|rm|mv|cp|chmod|chown)\b/i,
   /\b(npm\s+install|npm\s+i|pnpm\s+add|yarn\s+add|bun\s+add)\b/i,
-  /^\s*git\s+(add|commit|checkout|switch|reset|clean|merge|rebase|push|pull|restore)(\s|$)/i
+  /^\s*git\s+(add|commit|checkout|switch|reset|clean|merge|rebase|push|pull|restore|mv|rm|cherry-pick|revert|stash(\s+(push|save|drop|pop|apply))?|submodule(\s+(add|update|init))?)(\s|$)/i
 ];
 function markAutoDelegateBypassSession(sessionID) {
   bypassSessions.add(sessionID);
-}
-function clearAutoDelegationState() {
-  interceptedCalls.clear();
-  bypassSessions.clear();
-  activeSessions.clear();
 }
 function isImplementationTool(tool3, args = {}) {
   if (tool3 === "write" || tool3 === "edit" || tool3 === "apply_patch")
@@ -13020,16 +13154,6 @@ function isImplementationTool(tool3, args = {}) {
   if (READONLY_BASH_PATTERNS.some((pattern) => pattern.test(command)))
     return false;
   return MUTATING_BASH_PATTERNS.some((pattern) => pattern.test(command));
-}
-function buildAutoDelegationSystemPrompt() {
-  return [
-    "## AGNES Auto-Delegation Enforcement",
-    "You are the orchestrator. Implementation belongs in subagent sessions.",
-    "For implementation work, call agnes_delegate or agnes_orchestrate instead of write/edit/apply_patch/bash.",
-    "Direct implementation tool calls are intercepted and rerouted to a general subagent. Delegated child sessions are allowed to edit normally.",
-    "Use read-only tools for investigation and verification tools for checks. Synthesize subagent results for the user."
-  ].join(`
-`);
 }
 function rewriteToolDescription(toolID, current) {
   if (toolID === "write" || toolID === "edit" || toolID === "apply_patch") {
@@ -13117,20 +13241,20 @@ function buildDelegationPrompt(tool3, args, conversationContext) {
 `);
 }
 function makeNoopArgs(worktreePath, tool3, callID, args) {
-  const tmpDir = path3.join(worktreePath, ".agnes", "tmp");
-  fs3.mkdirSync(tmpDir, { recursive: true });
+  const tmpDir = path4.join(worktreePath, ".agnes", "tmp");
+  fs4.mkdirSync(tmpDir, { recursive: true });
   if (tool3 === "write") {
     return {
       ...args,
-      filePath: path3.join(tmpDir, `${callID}.write.txt`),
+      filePath: path4.join(tmpDir, `${callID}.write.txt`),
       content: `AGNES auto-delegated original write call ${callID}.
 `
     };
   }
   if (tool3 === "edit") {
     const oldString = typeof args.oldString === "string" ? args.oldString : "AGNES_AUTO_DELEGATED";
-    const filePath = path3.join(tmpDir, `${callID}.edit.txt`);
-    fs3.writeFileSync(filePath, oldString, "utf8");
+    const filePath = path4.join(tmpDir, `${callID}.edit.txt`);
+    fs4.writeFileSync(filePath, oldString, "utf8");
     return {
       ...args,
       filePath,
@@ -13139,8 +13263,8 @@ function makeNoopArgs(worktreePath, tool3, callID, args) {
     };
   }
   if (tool3 === "apply_patch") {
-    const filePath = path3.join(tmpDir, `${callID}.patch.txt`);
-    fs3.writeFileSync(filePath, `AGNES_AUTO_DELEGATED
+    const filePath = path4.join(tmpDir, `${callID}.patch.txt`);
+    fs4.writeFileSync(filePath, `AGNES_AUTO_DELEGATED
 `, "utf8");
     return {
       ...args,
@@ -13161,7 +13285,7 @@ function makeNoopArgs(worktreePath, tool3, callID, args) {
   return args;
 }
 async function runAutoDelegatedTask(client, parentSessionID, prompt) {
-  const sem = getSemaphore();
+  const sem = getAutoDelegateSemaphore();
   await sem.acquire();
   try {
     const createResp = await client.session.create({
@@ -13234,6 +13358,24 @@ function truncateForPrompt(text, maxChars) {
 // src/delegate.ts
 var SUBAGENT_TIMEOUT_MS = 120000;
 var SESSION_TTL_MS = 10 * 60 * 1000;
+var HEARTBEAT_INTERVAL_MS = 15000;
+var STALE_HEARTBEAT_MS = 60000;
+var _sessionDepth = new Map;
+var _heartbeatIntervals = new Map;
+function getDepth(sessionID) {
+  return _sessionDepth.get(sessionID) ?? 0;
+}
+function setDepth(sessionID, depth) {
+  _sessionDepth.set(sessionID, depth);
+}
+function resetDepthTracking() {
+  _sessionDepth.clear();
+}
+var DELEGATE_BLOCKED_TOOLS = new Set([
+  "agnes_delegate",
+  "agnes_orchestrate",
+  "agnes_memory"
+]);
 function extractText2(response) {
   if (!response || typeof response !== "object")
     return "";
@@ -13247,6 +13389,11 @@ function extractText2(response) {
   return "";
 }
 async function createChildSession(client, params) {
+  const parentDepth = getDepth(params.sessionID);
+  const maxDepth = params.delegateDepth ?? MAX_DELEGATE_DEPTH;
+  if (parentDepth >= maxDepth) {
+    throw new Error(`MAX_DEPTH exceeded \u2014 delegation depth ${parentDepth} >= ${maxDepth}`);
+  }
   const createResp = await client.session.create({
     body: {
       parentID: params.sessionID,
@@ -13256,8 +13403,10 @@ async function createChildSession(client, params) {
   if (createResp.error) {
     throw new Error(`Failed to create child session: ${JSON.stringify(createResp.error)}`);
   }
-  markAutoDelegateBypassSession(createResp.data.id);
-  return createResp.data.id;
+  const childId = createResp.data.id;
+  setDepth(childId, parentDepth + 1);
+  markAutoDelegateBypassSession(childId);
+  return childId;
 }
 async function delegateBlocking(client, params) {
   const sem = getSemaphore();
@@ -13270,6 +13419,15 @@ async function delegateBlocking(client, params) {
       const msg = err instanceof Error ? err.message : String(err);
       return `ERROR: failed to create child session \u2014 ${msg}`;
     }
+    const blockedTools = params.blockedTools ?? DELEGATE_BLOCKED_TOOLS;
+    const blockedNote = blockedTools.size > 0 ? `
+
+**Restricted tools:** ${[...blockedTools].join(", ")}` : "";
+    const priorNote = params.priorContext ? `
+
+**Prior context from similar tasks:**
+${params.priorContext}` : "";
+    const fullPrompt = params.prompt + blockedNote + priorNote;
     const maxAttempts = 3;
     for (let attempt = 1;attempt <= maxAttempts; attempt++) {
       try {
@@ -13277,7 +13435,7 @@ async function delegateBlocking(client, params) {
           path: { id: childId },
           body: {
             agent: params.agent,
-            parts: [{ type: "text", text: params.prompt }]
+            parts: [{ type: "text", text: fullPrompt }]
           }
         });
         if (promptResp.error) {
@@ -13309,7 +13467,46 @@ async function delegateBlocking(client, params) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve3) => setTimeout(resolve3, ms));
+  return new Promise((resolve4) => setTimeout(resolve4, ms));
+}
+function stopHeartbeat(sessionID) {
+  const interval = _heartbeatIntervals.get(sessionID);
+  if (interval) {
+    clearInterval(interval);
+    _heartbeatIntervals.delete(sessionID);
+  }
+}
+function startHeartbeat(client, sessionID) {
+  stopHeartbeat(sessionID);
+  const interval = setInterval(async () => {
+    try {
+      const resp = await client.session.get({ path: { id: sessionID } });
+      if (resp.error || !resp.data) {
+        warn(`Heartbeat: session ${sessionID} lost \u2014 ${JSON.stringify(resp.error)}`);
+        const ref3 = _taskRefs.get(sessionID);
+        if (ref3) {
+          ref3.status = "session_lost";
+          ref3.lastHeartbeat = Date.now();
+          _taskRefsDirty = true;
+          debouncedFlush();
+        }
+        stopHeartbeat(sessionID);
+        return;
+      }
+      const ref2 = _taskRefs.get(sessionID);
+      if (ref2) {
+        ref2.lastHeartbeat = Date.now();
+      }
+    } catch (err) {
+      warn(`Heartbeat poll failed for ${sessionID}:`, err);
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+  _heartbeatIntervals.set(sessionID, interval);
+  const ref = _taskRefs.get(sessionID);
+  if (ref) {
+    ref.lastHeartbeat = Date.now();
+    ref.status = "running";
+  }
 }
 async function delegateAsync(client, params) {
   const sem = getSemaphore();
@@ -13322,15 +13519,23 @@ async function delegateAsync(client, params) {
       const msg = err instanceof Error ? err.message : String(err);
       return `ERROR: failed to create child session \u2014 ${msg}`;
     }
-    client.session.prompt({
+    const blockedTools = params.blockedTools ?? DELEGATE_BLOCKED_TOOLS;
+    const blockedNote = blockedTools.size > 0 ? `
+
+**Restricted tools:** ${[...blockedTools].join(", ")}` : "";
+    const fullPrompt = params.prompt + blockedNote;
+    const promptResp = await client.session.prompt({
       path: { id: childId },
       body: {
         agent: params.agent,
-        parts: [{ type: "text", text: params.prompt }]
+        parts: [{ type: "text", text: fullPrompt }]
       }
-    }).catch((err) => {
-      error45("Async subagent failed", err);
     });
+    if (promptResp.error) {
+      pushError(childId, `delegateAsync prompt failed: ${JSON.stringify(promptResp.error)}`);
+      return `ERROR: delegation prompt failed \u2014 ${JSON.stringify(promptResp.error)}`;
+    }
+    startHeartbeat(client, childId);
     return childId;
   } finally {
     sem.release();
@@ -13352,9 +13557,11 @@ async function getSubagentResult(client, sessionID, _directory) {
       path: { id: sessionID }
     });
     if (sessionResp.error) {
+      stopHeartbeat(sessionID);
       if (sessionResp.error.status === 404) {
         return { status: "not_found", error: `Session ${sessionID} not found` };
       }
+      pushError(sessionID, `session.get failed: ${JSON.stringify(sessionResp.error)}`);
       return { status: "error", error: JSON.stringify(sessionResp.error) };
     }
     const messagesResp = await client.session.messages({
@@ -13379,9 +13586,18 @@ async function getSubagentResult(client, sessionID, _directory) {
     const truncated = truncateResult(output, maxChars);
     const gates = [createPromiseComplianceGate(truncated)];
     await runGates(gates);
+    stopHeartbeat(sessionID);
+    const ref = _taskRefs.get(sessionID);
+    if (ref) {
+      ref.status = "completed";
+      ref.lastHeartbeat = Date.now();
+      _taskRefsDirty = true;
+      debouncedFlush();
+    }
     return { status: "completed", output: truncated };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    pushError(sessionID, `getSubagentResult threw: ${msg}`);
     error45("getSubagentResult threw", err);
     return { status: "error", error: msg };
   }
@@ -13391,12 +13607,12 @@ var _taskRefsPersistDir = null;
 var _taskRefs = new Map;
 var _taskRefsDirty = false;
 function getTaskRefsPath() {
-  return _taskRefsPersistDir ? path4.join(_taskRefsPersistDir, ".agnes", TASK_REFS_FILE) : null;
+  return _taskRefsPersistDir ? path5.join(_taskRefsPersistDir, ".agnes", TASK_REFS_FILE) : null;
 }
 function loadTaskRefsFromDisk(projectDir) {
   try {
-    const filePath = path4.join(projectDir, ".agnes", TASK_REFS_FILE);
-    const raw = fs4.readFileSync(filePath, "utf8");
+    const filePath = path5.join(projectDir, ".agnes", TASK_REFS_FILE);
+    const raw = fs5.readFileSync(filePath, "utf8");
     const entries = JSON.parse(raw);
     for (const e of Object.values(entries)) {
       if (!e.createdAt)
@@ -13415,11 +13631,17 @@ function flushTaskRefs() {
   const filePath = getTaskRefsPath();
   if (!filePath)
     return;
+  const tmpPath = filePath + ".tmp";
   try {
-    fs4.mkdirSync(path4.dirname(filePath), { recursive: true });
-    fs4.writeFileSync(filePath, JSON.stringify(Object.fromEntries(_taskRefs)), "utf8");
+    fs5.mkdirSync(path5.dirname(filePath), { recursive: true });
+    fs5.writeFileSync(tmpPath, JSON.stringify(Object.fromEntries(_taskRefs)), "utf8");
+    fs5.rmSync(filePath, { force: true });
+    fs5.renameSync(tmpPath, filePath);
   } catch (err) {
     warn("Failed to persist task refs", err);
+    try {
+      fs5.rmSync(tmpPath, { force: true });
+    } catch {}
   }
 }
 function debouncedFlush() {
@@ -13445,9 +13667,19 @@ function cleanupOrphanedSessions() {
   const now = Date.now();
   let cleaned = 0;
   for (const [key, info2] of _taskRefs) {
-    if (info2.createdAt && now - info2.createdAt > SESSION_TTL_MS) {
+    const expired = info2.createdAt && now - info2.createdAt > SESSION_TTL_MS;
+    const stale = info2.lastHeartbeat && info2.status === "running" && now - info2.lastHeartbeat > STALE_HEARTBEAT_MS;
+    if (expired) {
+      stopHeartbeat(key);
       _taskRefs.delete(key);
       cleaned++;
+    } else if (stale) {
+      stopHeartbeat(key);
+      info2.status = "stale";
+      info2.lastHeartbeat = now;
+      _taskRefsDirty = true;
+      debouncedFlush();
+      warn(`Task ${key.slice(0, 8)} marked stale \u2014 no heartbeat for >60s`);
     }
   }
   if (cleaned > 0) {
@@ -13460,43 +13692,375 @@ function cleanupOrphanedSessions() {
 function lookupTaskRef(taskRef) {
   return _taskRefs.get(taskRef);
 }
-function clearTaskRefs() {
-  _taskRefs.clear();
-  _taskRefsDirty = true;
-  flushTaskRefs();
-  const filePath = getTaskRefsPath();
-  if (filePath) {
-    try {
-      fs4.rmSync(filePath, { force: true });
-    } catch {}
+function getRunningTaskCount() {
+  let count = 0;
+  for (const info2 of _taskRefs.values()) {
+    if (info2.status === "running" || !info2.status && info2.createdAt)
+      count++;
+  }
+  return count;
+}
+
+// src/memory.ts
+import * as fs6 from "fs";
+import * as path6 from "path";
+var DEFAULT_TTL = {
+  user: 0,
+  project: 0,
+  session: 7 * 24 * 60 * 60 * 1000,
+  pattern: 30 * 24 * 60 * 60 * 1000,
+  pref: 0
+};
+var MAX_ENTRIES = 50;
+var MAX_VALUE_LENGTH = 500;
+var DEBOUNCE_MS = 500;
+var FORMAT_MAX_CHARS = 2000;
+function extractLessons(text, store) {
+  const lessonRegex = /LESSON:\s*(.+)/g;
+  let match;
+  while ((match = lessonRegex.exec(text)) !== null) {
+    const lesson = match[1].trim();
+    if (!lesson)
+      continue;
+    const key = `pattern/auto/${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    store.set(key, lesson.slice(0, MAX_VALUE_LENGTH), "pattern");
   }
 }
 
+class MemoryStore {
+  _entries = [];
+  _path = "";
+  _saveTimer = null;
+  _dirty = false;
+  get entryCount() {
+    return this._entries.length;
+  }
+  load(worktreePath) {
+    this._path = path6.join(worktreePath, ".agnes", "memory.json");
+    try {
+      const dir = path6.dirname(this._path);
+      if (!fs6.existsSync(dir)) {
+        fs6.mkdirSync(dir, { recursive: true });
+      }
+      if (fs6.existsSync(this._path)) {
+        const data = JSON.parse(fs6.readFileSync(this._path, "utf8"));
+        this._entries = Array.isArray(data) ? data : [];
+      }
+    } catch {
+      this._entries = [];
+    }
+    this.prune();
+  }
+  _scheduleSave() {
+    this._dirty = true;
+    if (this._saveTimer)
+      return;
+    this._saveTimer = setTimeout(() => {
+      this._saveTimer = null;
+      if (this._dirty)
+        this._saveSync();
+    }, DEBOUNCE_MS);
+  }
+  _saveSync() {
+    this._dirty = false;
+    try {
+      fs6.writeFileSync(this._path, JSON.stringify(this._entries, null, 2), "utf8");
+    } catch {}
+  }
+  save() {
+    if (this._saveTimer) {
+      clearTimeout(this._saveTimer);
+      this._saveTimer = null;
+    }
+    this._saveSync();
+  }
+  get(key) {
+    this.prune();
+    const entry = this._entries.find((e) => e.key === key);
+    if (!entry)
+      return null;
+    if (entry.ttl > 0 && Date.now() - entry.updatedAt > entry.ttl) {
+      this.delete(key);
+      return null;
+    }
+    return entry;
+  }
+  set(key, value, category, ttl) {
+    if (!key)
+      return false;
+    if (value.length > MAX_VALUE_LENGTH) {
+      value = value.slice(0, MAX_VALUE_LENGTH);
+    }
+    this.prune();
+    const existing = this._entries.find((e) => e.key === key);
+    const now = Date.now();
+    if (existing) {
+      existing.value = value;
+      existing.updatedAt = now;
+      if (ttl !== undefined)
+        existing.ttl = ttl;
+      existing.category = category;
+    } else {
+      if (this._entries.length >= MAX_ENTRIES)
+        return false;
+      this._entries.push({
+        key,
+        value,
+        createdAt: now,
+        updatedAt: now,
+        ttl: ttl ?? DEFAULT_TTL[category] ?? 0,
+        category
+      });
+    }
+    this._scheduleSave();
+    return true;
+  }
+  delete(key) {
+    this._entries = this._entries.filter((e) => e.key !== key);
+    this._scheduleSave();
+  }
+  list(category) {
+    this.prune();
+    if (category)
+      return this._entries.filter((e) => e.category === category);
+    return [...this._entries];
+  }
+  prune() {
+    const now = Date.now();
+    const before = this._entries.length;
+    this._entries = this._entries.filter((e) => e.ttl === 0 || now - e.updatedAt <= e.ttl);
+    if (this._entries.length !== before)
+      this._scheduleSave();
+  }
+  clear() {
+    this._entries = [];
+    this._scheduleSave();
+  }
+  formatForPrompt() {
+    this.prune();
+    if (this._entries.length === 0)
+      return "";
+    const lines = [];
+    let total = 0;
+    for (const e of this._entries) {
+      const line = `- [${e.category}] ${e.key}: ${e.value}`;
+      total += line.length + 1;
+      if (total > FORMAT_MAX_CHARS) {
+        lines.push(`- ... and ${this._entries.length - lines.length} more entries`);
+        break;
+      }
+      lines.push(line);
+    }
+    return `**AGNES remembers:**
+${lines.join(`
+`)}`;
+  }
+}
+
+// src/todo.ts
+import * as fs7 from "fs";
+import * as path7 from "path";
+import { randomUUID } from "crypto";
+var MAX_ITEMS = 10;
+var MAX_CONTENT_LENGTH = 200;
+var DEBOUNCE_MS2 = 500;
+var COMPLETED_TTL_MS = 24 * 60 * 60 * 1000;
+
+class TodoStore {
+  _items = [];
+  _path = "";
+  _saveTimer = null;
+  _dirty = false;
+  get itemCount() {
+    return this._items.length;
+  }
+  load(worktreePath) {
+    this._path = path7.join(worktreePath, ".agnes", "todos.json");
+    try {
+      const dir = path7.dirname(this._path);
+      if (!fs7.existsSync(dir)) {
+        fs7.mkdirSync(dir, { recursive: true });
+      }
+      if (fs7.existsSync(this._path)) {
+        const data = JSON.parse(fs7.readFileSync(this._path, "utf8"));
+        this._items = Array.isArray(data) ? data : [];
+      }
+    } catch {
+      this._items = [];
+    }
+    this.prune();
+  }
+  _scheduleSave() {
+    this._dirty = true;
+    if (this._saveTimer)
+      return;
+    this._saveTimer = setTimeout(() => {
+      this._saveTimer = null;
+      if (this._dirty)
+        this._saveSync();
+    }, DEBOUNCE_MS2);
+  }
+  _saveSync() {
+    this._dirty = false;
+    try {
+      fs7.writeFileSync(this._path, JSON.stringify(this._items, null, 2), "utf8");
+    } catch {}
+  }
+  save() {
+    if (this._saveTimer) {
+      clearTimeout(this._saveTimer);
+      this._saveTimer = null;
+    }
+    this._saveSync();
+  }
+  create(content, category) {
+    const truncated = content.slice(0, MAX_CONTENT_LENGTH);
+    const item = {
+      id: randomUUID(),
+      content: truncated,
+      status: "pending",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      category
+    };
+    if (this._items.length >= MAX_ITEMS) {
+      this._items.shift();
+    }
+    this._items.push(item);
+    this._scheduleSave();
+    return item;
+  }
+  update(id, partial2) {
+    const item = this._items.find((i) => i.id === id);
+    if (!item)
+      return null;
+    if (partial2.content !== undefined)
+      item.content = partial2.content.slice(0, MAX_CONTENT_LENGTH);
+    if (partial2.status !== undefined)
+      item.status = partial2.status;
+    if (partial2.category !== undefined)
+      item.category = partial2.category;
+    item.updatedAt = Date.now();
+    this._scheduleSave();
+    return item;
+  }
+  delete(id) {
+    this._items = this._items.filter((i) => i.id !== id);
+    this._scheduleSave();
+  }
+  list(status, category) {
+    this.prune();
+    let result = [...this._items];
+    if (status)
+      result = result.filter((i) => i.status === status);
+    if (category)
+      result = result.filter((i) => i.category === category);
+    return result;
+  }
+  reorder(ids) {
+    const idSet = new Set(ids);
+    if (ids.length !== this._items.length)
+      return false;
+    if (!this._items.every((i) => idSet.has(i.id)))
+      return false;
+    const map2 = new Map(this._items.map((i) => [i.id, i]));
+    this._items = ids.map((id) => map2.get(id));
+    this._scheduleSave();
+    return true;
+  }
+  prune() {
+    const now = Date.now();
+    const before = this._items.length;
+    this._items = this._items.filter((i) => i.status !== "completed" || now - i.updatedAt < COMPLETED_TTL_MS);
+    if (this._items.length !== before)
+      this._scheduleSave();
+  }
+  formatForPrompt() {
+    this.prune();
+    const active = this._items.filter((i) => i.status !== "completed");
+    if (active.length === 0)
+      return "";
+    const lines = active.map((i) => {
+      const icon = i.status === "in_progress" ? "\uD83D\uDD04" : i.status === "blocked" ? "\uD83D\uDEAB" : "\u2B1C";
+      const cat = i.category ? ` [${i.category}]` : "";
+      return `${icon} ${i.id.slice(0, 8)}${cat}: ${i.content}`;
+    });
+    return `**Active tasks:**
+${lines.join(`
+`)}`;
+  }
+}
+
+// src/compressor.ts
+var _sessionSummary = "";
+function getSessionSummary() {
+  return _sessionSummary;
+}
+function setSessionSummary(s) {
+  _sessionSummary = s;
+}
+
+// src/status.ts
+function collectStatus(version2, worktreePath, memory) {
+  const tier = detectModelTier();
+  const sem = getSemaphore();
+  const asyncErrors = getAsyncErrors();
+  const gateStats = getGateStats();
+  const commands = discoverCommands(worktreePath);
+  const catMap = {};
+  for (const e of memory.list()) {
+    catMap[e.category] = (catMap[e.category] ?? 0) + 1;
+  }
+  return {
+    version: version2,
+    tier,
+    concurrency: { max: 3, active: sem.active, queued: sem.queued },
+    commands: { total: commands.length },
+    sessions: { totalTaskRefs: 0, running: getRunningTaskCount() },
+    memory: { entries: memory.entryCount, categories: catMap },
+    gateStats: {
+      checks: gateStats.checksPerformed,
+      passed: gateStats.checksPassed,
+      failed: gateStats.checksFailed,
+      retries: gateStats.retriesPerformed,
+      lastFailure: gateStats.lastFailureAt
+    },
+    asyncErrors: {
+      count: asyncErrors.length,
+      recent: asyncErrors.slice(-3).map((e) => ({
+        timestamp: e.timestamp,
+        sessionId: e.sessionId,
+        error: e.error
+      }))
+    }
+  };
+}
+
 // src/plugin-support.ts
-import * as fs5 from "fs";
-import * as path5 from "path";
+import * as fs8 from "fs";
+import * as path8 from "path";
 function detectProject(cwd) {
-  let projectName = path5.basename(cwd);
+  let projectName = path8.basename(cwd);
   try {
-    const pkg = JSON.parse(fs5.readFileSync(path5.join(cwd, "package.json"), "utf8"));
+    const pkg = JSON.parse(fs8.readFileSync(path8.join(cwd, "package.json"), "utf8"));
     if (pkg.name)
       projectName = pkg.name;
   } catch {}
   const languages = [];
-  if (fs5.existsSync(path5.join(cwd, "tsconfig.json")))
+  if (fs8.existsSync(path8.join(cwd, "tsconfig.json")))
     languages.push("typescript");
-  if (fs5.existsSync(path5.join(cwd, "go.mod")))
+  if (fs8.existsSync(path8.join(cwd, "go.mod")))
     languages.push("go");
-  if (fs5.existsSync(path5.join(cwd, "Cargo.toml")))
+  if (fs8.existsSync(path8.join(cwd, "Cargo.toml")))
     languages.push("rust");
-  if (fs5.existsSync(path5.join(cwd, "pyproject.toml")))
+  if (fs8.existsSync(path8.join(cwd, "pyproject.toml")))
     languages.push("python");
-  if (fs5.existsSync(path5.join(cwd, "package.json")))
+  if (fs8.existsSync(path8.join(cwd, "package.json")))
     languages.push("javascript");
   const lockfiles = { "bun.lock": "bun", "bun.lockb": "bun", "pnpm-lock.yaml": "pnpm", "yarn.lock": "yarn", "package-lock.json": "npm" };
   let packageManager = "npm";
   for (const [lock, name] of Object.entries(lockfiles)) {
-    if (fs5.existsSync(path5.join(cwd, lock))) {
+    if (fs8.existsSync(path8.join(cwd, lock))) {
       packageManager = name;
       break;
     }
@@ -13505,15 +14069,18 @@ function detectProject(cwd) {
 }
 
 // src/planner.ts
-import * as fs6 from "fs";
-import * as path6 from "path";
+import * as fs9 from "fs";
+import * as path9 from "path";
 var PLANS_DIR = ".opencode/plans";
 var _idCounter = 0;
 function generatePlanID() {
   return `plan-${Date.now().toString(36)}-${(++_idCounter).toString(36)}`;
 }
+function generateTaskID() {
+  return `task-${(++_idCounter).toString(36).padStart(4, "0")}`;
+}
 function getPlansDir(worktreePath) {
-  return path6.join(worktreePath, PLANS_DIR);
+  return path9.join(worktreePath, PLANS_DIR);
 }
 function createPlan(goal, maxIterations = 3) {
   return {
@@ -13532,14 +14099,14 @@ function createPlan(goal, maxIterations = 3) {
 }
 function savePlan(plan, worktreePath) {
   const dir = getPlansDir(worktreePath);
-  fs6.mkdirSync(dir, { recursive: true });
-  const filePath = path6.join(dir, `${plan.id}.json`);
-  fs6.writeFileSync(filePath, JSON.stringify(plan, null, 2), "utf8");
+  fs9.mkdirSync(dir, { recursive: true });
+  const filePath = path9.join(dir, `${plan.id}.json`);
+  fs9.writeFileSync(filePath, JSON.stringify(plan, null, 2), "utf8");
 }
 function loadPlan(planID, worktreePath) {
-  const filePath = path6.join(getPlansDir(worktreePath), `${planID}.json`);
+  const filePath = path9.join(getPlansDir(worktreePath), `${planID}.json`);
   try {
-    const raw = fs6.readFileSync(filePath, "utf8");
+    const raw = fs9.readFileSync(filePath, "utf8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -13550,6 +14117,45 @@ function updatePlan(plan, worktreePath) {
 }
 function getFailedTasks(plan) {
   return plan.tasks.filter((t) => t.status === "failed" || t.status === "needs_review");
+}
+function gcPlans(worktreePath, maxAgeDays = 7, maxFiles = 50) {
+  const dir = getPlansDir(worktreePath);
+  let deleted = 0;
+  try {
+    if (!fs9.existsSync(dir))
+      return 0;
+    const entries = fs9.readdirSync(dir, { withFileTypes: true });
+    const files = entries.filter((e) => e.isFile() && e.name.endsWith(".json")).map((e) => ({
+      name: e.name,
+      path: path9.join(dir, e.name),
+      mtime: fs9.statSync(path9.join(dir, e.name)).mtimeMs
+    })).sort((a, b) => a.mtime - b.mtime);
+    const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+    for (const file2 of files) {
+      if (file2.mtime < cutoff) {
+        fs9.rmSync(file2.path, { force: true });
+        deleted++;
+      }
+    }
+    const remaining = files.filter((f) => {
+      try {
+        fs9.accessSync(f.path, fs9.constants.F_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    while (remaining.length > maxFiles) {
+      const oldest = remaining.shift();
+      if (oldest) {
+        fs9.rmSync(oldest.path, { force: true });
+        deleted++;
+      }
+    }
+  } catch {}
+  if (deleted > 0)
+    warn(`gcPlans: removed ${deleted} old plan file(s)`);
+  return deleted;
 }
 
 // src/scheduler.ts
@@ -13743,6 +14349,7 @@ async function runReview(plan) {
 
 // src/orchestrator.ts
 function buildTaskPrompt(task, plan) {
+  const completionMarker = buildResultMessage(task.id, "SUMMARY_REPLACE_ME");
   return `You are implementing ONE task in a larger plan.
 
 ## Goal
@@ -13761,12 +14368,11 @@ ${task.files.join(", ")}
 4. Report what you did and which files you created or modified.
 
 ## Completion protocol
-When done, append at the end of your response:
+When done, place this marker at the very end of your response:
+${completionMarker}
 
-<!-- <agnes:message taskId="${task.id}" status="DONE" content="SUMMARY">taskId=${task.id} status=DONE files=${task.files.join(",")}</agnes:message> -->
-
-Replace SUMMARY with a brief summary of what you implemented.
-Report DONE if everything works. Report BLOCKED if you cannot proceed.
+Replace SUMMARY_REPLACE_ME with a brief summary of what you implemented.
+Status DONE if everything works. Status BLOCKED if you cannot proceed.
 `;
 }
 function trackEditedFiles(plan, tasks) {
@@ -13791,6 +14397,11 @@ async function delegateWaveTasks(client, plan, wave, sessionID, directory) {
       sessionID,
       directory
     });
+    if (typeof sid === "string" && sid.startsWith("ERROR:")) {
+      task.status = "failed";
+      task.error = sid;
+      return;
+    }
     task.sessionID = sid;
     recordTaskRef(sid, {
       sessionID: sid,
@@ -13826,6 +14437,10 @@ async function pollWaveTasks(client, tasks, directory) {
       task.result = sub.output;
       task.status = "completed";
       changed = true;
+      const lessonMatch = sub.output?.match(/LESSON:\s*(.+)/);
+      if (lessonMatch) {
+        info(`Lesson from task ${task.id}: ${lessonMatch[1]}`);
+      }
     } else if (sub.status === "error") {
       task.error = sub.error;
       task.status = "failed";
@@ -13839,6 +14454,40 @@ async function createOrchestration(client, params) {
   const tier = detectModelTier();
   const maxParallel = getMaxConcurrency(tier);
   const maxIter = params.maxIterations ?? 3;
+  const RESERVED_PREFIXES = ["_", "sys", "meta"];
+  function validateTaskID(id, existing) {
+    if (existing.has(id))
+      return null;
+    for (const prefix2 of RESERVED_PREFIXES) {
+      if (id.startsWith(prefix2))
+        return generateTaskID();
+    }
+    existing.add(id);
+    return id;
+  }
+  function splitPlanIfNeeded(plan2) {
+    const MAX_TASKS = 50;
+    const SUBPLAN_SIZE = 25;
+    if (plan2.tasks.length <= MAX_TASKS)
+      return plan2;
+    const subPlans = [];
+    const depth = (plan2.depth ?? 0) + 1;
+    if (depth > 3) {
+      plan2.phase = "failed";
+      error45("Maximum plan nesting depth exceeded (3)");
+      return plan2;
+    }
+    for (let i = 0;i < plan2.tasks.length; i += SUBPLAN_SIZE) {
+      const chunk = plan2.tasks.slice(i, i + SUBPLAN_SIZE);
+      const sub = createPlan(`${plan2.goal} (sub-plan ${Math.floor(i / SUBPLAN_SIZE) + 1})`, plan2.maxIterations);
+      sub.tasks = chunk;
+      sub.depth = depth;
+      subPlans.push(sub);
+    }
+    plan2.subPlans = subPlans;
+    plan2.tasks = [];
+    return plan2;
+  }
   let plan;
   if (params.planID) {
     const loaded = loadPlan(params.planID, params.directory);
@@ -13867,15 +14516,30 @@ async function createOrchestration(client, params) {
     plan = createPlan(params.goal, maxIter);
     plan.sessionID = params.sessionID;
     if (params.tasks && params.tasks.length > 0) {
-      plan.tasks = params.tasks.map((t) => ({
-        ...t,
-        status: "pending",
-        retryCount: 0,
-        result: undefined,
-        error: undefined,
-        sessionID: undefined
-      }));
+      const seenIDs = new Set;
+      plan.tasks = [];
+      for (const t of params.tasks) {
+        const validID = validateTaskID(t.id, seenIDs);
+        if (!validID) {
+          warn(`Duplicate task ID "${t.id}" \u2014 skipping`);
+          continue;
+        }
+        const adjustedID = validID !== t.id ? validID : t.id;
+        if (adjustedID !== t.id) {
+          warn(`Task ID "${t.id}" uses reserved prefix \u2014 renamed to "${adjustedID}"`);
+        }
+        plan.tasks.push({
+          ...t,
+          id: adjustedID,
+          status: "pending",
+          retryCount: 0,
+          result: undefined,
+          error: undefined,
+          sessionID: undefined
+        });
+      }
     }
+    splitPlanIfNeeded(plan);
     const waves = buildSchedule(plan.tasks, maxParallel);
     plan.waves = waves.map((w) => ({ index: w.index, taskIDs: w.tasks.map((t) => t.id) }));
     plan.currentWaveIndex = 0;
@@ -14034,18 +14698,25 @@ function buildResult(plan) {
 }
 
 // src/plugin.ts
-var _bootstrapInjected = false;
+var _bootstrapInjectedSessions = new Set;
 var AgnesPlugin = async (input) => {
   const { directory, worktree } = input;
   const worktreePath = worktree || directory;
   const editedFiles = new Set;
+  const memoryStore = new MemoryStore;
+  const todoStore = new TodoStore;
   initTaskRefStore(worktreePath);
+  memoryStore.load(worktreePath);
+  todoStore.load(worktreePath);
+  try {
+    gcPlans(worktreePath);
+  } catch {}
   return {
     config: async (config2) => {
       try {
         const configObj = config2;
-        const skillsPath = path7.join(worktreePath, ".opencode", "skills");
-        if (fs7.existsSync(skillsPath)) {
+        const skillsPath = path10.join(worktreePath, ".opencode", "skills");
+        if (fs10.existsSync(skillsPath)) {
           configObj.skills = configObj.skills || {};
           const skillsObj = configObj.skills;
           skillsObj.paths = skillsObj.paths || [];
@@ -14080,11 +14751,17 @@ $ARGUMENTS`
         },
         async execute(args, ctx) {
           try {
+            const todoBlock = todoStore.formatForPrompt();
+            const enrichedPrompt = todoBlock ? `${todoBlock}
+
+---
+
+${args.prompt}` : args.prompt;
             if (args.background) {
               const ref = await delegateAsync(input.client, {
                 agent: args.agent,
                 description: args.description,
-                prompt: args.prompt,
+                prompt: enrichedPrompt,
                 sessionID: ctx.sessionID,
                 directory: ctx.directory
               });
@@ -14096,13 +14773,15 @@ $ARGUMENTS`
               });
               return ref;
             }
-            return await delegateBlocking(input.client, {
+            const result = await delegateBlocking(input.client, {
               agent: args.agent,
               description: args.description,
-              prompt: args.prompt,
+              prompt: enrichedPrompt,
               sessionID: ctx.sessionID,
               directory: ctx.directory
             });
+            extractLessons(result, memoryStore);
+            return result;
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             return `ERROR: agnes_delegate failed \u2014 ${msg}`;
@@ -14118,16 +14797,19 @@ $ARGUMENTS`
           try {
             const info2 = lookupTaskRef(args.taskRef);
             const directory2 = info2?.directory ?? ctx.directory;
-            const result = await getSubagentResult(input.client, args.taskRef, directory2);
-            switch (result.status) {
+            const result2 = await getSubagentResult(input.client, args.taskRef, directory2);
+            if (result2.status === "completed" && result2.output) {
+              extractLessons(result2.output, memoryStore);
+            }
+            switch (result2.status) {
               case "completed":
-                return result.output ?? "(no output)";
+                return result2.output ?? "(no output)";
               case "pending":
                 return "PENDING \u2014 subagent still working. Try agnes_get_result again shortly.";
               case "not_found":
                 return `ERROR: task reference "${args.taskRef}" not found. The session may have been cleaned up or never started.`;
               case "error":
-                return `ERROR: ${result.error ?? "unknown error"}`;
+                return `ERROR: ${result2.error ?? "unknown error"}`;
             }
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -14214,6 +14896,188 @@ $ARGUMENTS`
             return `ERROR: agnes_orchestrate_status failed \u2014 ${msg}`;
           }
         }
+      }),
+      agnes_memory: tool({
+        description: "Read or write AGNES persistent memory. Memory persists across sessions and is injected into bootstraps so the model can recall past outcomes, preferences, and patterns.",
+        args: {
+          action: tool.schema.enum(["get", "set", "delete", "list"]).describe("Action to perform"),
+          key: tool.schema.string().optional().describe("Memory key (required for get/set/delete)"),
+          value: tool.schema.string().optional().describe("Value to store (required for set)"),
+          category: tool.schema.enum(["user", "project", "pattern", "pref"]).optional().describe("Category for the memory entry (default: user)")
+        },
+        async execute(args) {
+          try {
+            switch (args.action) {
+              case "get": {
+                if (!args.key)
+                  return "ERROR: key is required for get";
+                const entry = memoryStore.get(args.key);
+                if (!entry)
+                  return `No memory found for key "${args.key}"`;
+                return `[${entry.category}] ${entry.key}: ${entry.value}`;
+              }
+              case "set": {
+                if (!args.key || !args.value)
+                  return "ERROR: key and value are required for set";
+                const cat = args.category ?? "user";
+                const ok = memoryStore.set(args.key, args.value, cat);
+                return ok ? `Stored [${cat}] ${args.key}` : "ERROR: memory store full (max 50 entries)";
+              }
+              case "delete": {
+                if (!args.key)
+                  return "ERROR: key is required for delete";
+                memoryStore.delete(args.key);
+                return `Deleted "${args.key}"`;
+              }
+              case "list": {
+                const entries = memoryStore.list(args.category);
+                if (entries.length === 0)
+                  return "(no memory entries)";
+                return entries.map((e) => `[${e.category}] ${e.key}: ${e.value} (ttl:${e.ttl})`).join(`
+`);
+              }
+              default:
+                return `ERROR: unknown action "${args.action}"`;
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `ERROR: agnes_memory failed \u2014 ${msg}`;
+          }
+        }
+      }),
+      agnes_todo: tool({
+        description: "Manage task checklist. Create, update, list, or delete todo items. Persists across the session.",
+        args: {
+          action: tool.schema.enum(["list", "create", "update", "delete", "checklist"]).describe("Action to perform"),
+          id: tool.schema.string().optional().describe("Todo item ID (required for update/delete)"),
+          content: tool.schema.string().optional().describe("Todo item text (required for create)"),
+          status: tool.schema.enum(["pending", "in_progress", "completed", "blocked"]).optional().describe("New status (for update)"),
+          category: tool.schema.string().optional().describe("Optional category: explore, edit, verify")
+        },
+        async execute(args) {
+          try {
+            switch (args.action) {
+              case "list": {
+                const items = todoStore.list(args.status, args.category);
+                if (items.length === 0)
+                  return "(no todos)";
+                return items.map((i) => `[${i.status}] ${i.id.slice(0, 8)}${i.category ? ` [${i.category}]` : ""}: ${i.content}`).join(`
+`);
+              }
+              case "create": {
+                if (!args.content)
+                  return "ERROR: content is required for create";
+                const item = todoStore.create(args.content, args.category);
+                return `Created todo ${item.id.slice(0, 8)}: ${item.content}`;
+              }
+              case "update": {
+                if (!args.id)
+                  return "ERROR: id is required for update";
+                const updated = todoStore.update(args.id, {
+                  content: args.content,
+                  status: args.status,
+                  category: args.category
+                });
+                if (!updated)
+                  return `ERROR: todo "${args.id}" not found`;
+                return `Updated ${args.id.slice(0, 8)} \u2192 [${updated.status}] ${updated.content}`;
+              }
+              case "delete": {
+                if (!args.id)
+                  return "ERROR: id is required for delete";
+                todoStore.delete(args.id);
+                return `Deleted todo "${args.id.slice(0, 8)}"`;
+              }
+              case "checklist": {
+                const items = todoStore.list();
+                if (items.length === 0)
+                  return "(no todos)";
+                return items.map((i) => `[${i.status === "completed" ? "x" : " "}] ${i.id.slice(0, 8)}: ${i.content}`).join(`
+`);
+              }
+              default:
+                return `ERROR: unknown action "${args.action}"`;
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `ERROR: agnes_todo failed \u2014 ${msg}`;
+          }
+        }
+      }),
+      agnes_status: tool({
+        description: "Show AGNES plugin status \u2014 version, tier, concurrency, loaded commands, session state, gate stats, async errors.",
+        args: {
+          detail: tool.schema.enum(["brief", "full"]).default("brief")
+        },
+        async execute(args) {
+          try {
+            const status = collectStatus(getVersion(), worktreePath, memoryStore);
+            if (args.detail === "brief") {
+              return [
+                `AGNES v${status.version}`,
+                `Tier: ${status.tier}`,
+                `Concurrency: ${status.concurrency.active} active / ${status.concurrency.queued} queued (max ${status.concurrency.max})`,
+                `Commands: ${status.commands.total}`,
+                `Memory: ${status.memory.entries} entries`,
+                `Sessions running: ${status.sessions.running}`,
+                `Gate checks: ${status.gateStats.checks} (P:${status.gateStats.passed} F:${status.gateStats.failed} R:${status.gateStats.retries})`,
+                `Async errors: ${status.asyncErrors.count}`
+              ].join(`
+`);
+            }
+            return JSON.stringify(status, null, 2);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `ERROR: agnes_status failed \u2014 ${msg}`;
+          }
+        }
+      }),
+      agnes_reload_commands: tool({
+        description: "Force re-scan of command directories and reload command cache.",
+        args: {},
+        async execute() {
+          try {
+            forceRescan(worktreePath);
+            const commands = discoverCommands(worktreePath);
+            return `Reloaded \u2014 ${commands.length} commands found (${commands.filter((c) => c.source === "agnes").length} bundled, ${commands.filter((c) => c.source === "global").length} global, ${commands.filter((c) => c.source === "workspace").length} workspace)`;
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `ERROR: agnes_reload_commands failed \u2014 ${msg}`;
+          }
+        }
+      }),
+      agnes_compress: tool({
+        description: "Build or retrieve a session context summary from current state (edited files, active tasks, memory). Use force=true to regenerate.",
+        args: {
+          force: tool.schema.boolean().optional().default(false).describe("Force rebuild summary from current session state")
+        },
+        async execute(args) {
+          try {
+            const existing = getSessionSummary();
+            if (!args.force && existing) {
+              return JSON.stringify({ compressed: true, summary: existing, regenerated: false });
+            }
+            const lines = [];
+            if (editedFiles.size > 0) {
+              lines.push(`Edited files this session: ${[...editedFiles].join(", ")}`);
+            }
+            if (memoryStore.entryCount > 0) {
+              lines.push(`Memory: ${memoryStore.entryCount} entries`);
+            }
+            const todos = todoStore.list();
+            const activeTodos = todos.filter((t) => t.status !== "completed");
+            if (activeTodos.length > 0) {
+              lines.push(`Active tasks: ${activeTodos.map((t) => `${t.id.slice(0, 8)}: ${t.content}`).join(" | ")}`);
+            }
+            const summary = lines.length > 0 ? lines.join(`
+`) : "(no session state to summarize)";
+            setSessionSummary(summary);
+            return JSON.stringify({ compressed: true, summary, regenerated: true });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `ERROR: agnes_compress failed \u2014 ${msg}`;
+          }
+        }
       })
     },
     "tool.definition": async ({ toolID }, output) => {
@@ -14239,36 +15103,18 @@ $ARGUMENTS`
     },
     "tool.execute.after": async (hookInput, output) => {
       await handleAutoDelegateAfter({ ...hookInput, args: hookInput.args ?? {} }, output);
+      if (output.metadata?.agnesAutoDelegated) {
+        extractLessons(output.output, memoryStore);
+      }
       const filePath = hookInput.args?.filePath;
       if ((hookInput.tool === "edit" || hookInput.tool === "write") && filePath) {
         editedFiles.add(filePath);
       }
     },
-    "experimental.chat.system.transform": async (_input, output) => {
-      output.system.push(buildAutoDelegationSystemPrompt());
-    },
     event: async ({ event }) => {
       try {
-        switch (event.type) {
-          case "session.created":
-            if (event.sessionID && !_bootstrapInjected) {
-              const bootstrap = getBootstrapContent(undefined, detectModelTier());
-              if (bootstrap) {
-                await input.client.session.prompt({
-                  path: { id: event.sessionID },
-                  body: {
-                    noReply: true,
-                    parts: [{ type: "text", text: bootstrap }]
-                  }
-                });
-                _bootstrapInjected = true;
-              }
-            }
-            break;
-          case "file.edited":
-            if (event.path)
-              editedFiles.add(event.path);
-            break;
+        if (event.type === "file.edited" && event.path) {
+          editedFiles.add(event.path);
         }
       } catch (err) {
         warn("Failed to handle event " + event.type, err);
@@ -14277,11 +15123,47 @@ $ARGUMENTS`
     "experimental.session.compacting": async (_input, output) => {
       try {
         output.context = output.context ?? [];
-        const bootstrap = getBootstrapContent(undefined, detectModelTier());
-        if (bootstrap) {
+        const version2 = getVersion();
+        const stable = getStableTier(version2);
+        const context = getContextTier(version2, undefined, detectModelTier() !== "large");
+        const parts = [];
+        if (stable)
+          parts.push(stable);
+        if (context)
+          parts.push(context);
+        if (parts.length > 0) {
           output.context.push(`
 
-${bootstrap}
+${parts.join(`
+
+---
+
+`)}
+
+`);
+        }
+        const memoryBlock = memoryStore.formatForPrompt();
+        if (memoryBlock) {
+          output.context.push(`
+
+${memoryBlock}
+
+`);
+        }
+        const todoBlock = todoStore.formatForPrompt();
+        if (todoBlock) {
+          output.context.push(`
+
+${todoBlock}
+
+`);
+        }
+        const sessionSummary = getSessionSummary();
+        if (sessionSummary) {
+          output.context.push(`
+
+**[Session Summary]**
+${sessionSummary}
 
 `);
         }
@@ -14300,16 +15182,17 @@ ${files}
     "session.deleted": async () => {
       try {
         editedFiles.clear();
-        clearAutoDelegationState();
-        resetBootstrapInjected();
-        clearTaskRefs();
+        _bootstrapInjectedSessions.clear();
+        resetDepthTracking();
+        memoryStore.prune();
+        memoryStore.save();
+        todoStore.save();
+        gcPlans(worktreePath);
       } catch (err) {
         warn("Failed to clean up session state", err);
       }
     },
     "experimental.chat.messages.transform": async (_input, output) => {
-      if (_bootstrapInjected)
-        return;
       if (!output.messages?.length)
         return;
       const firstUser = output.messages.find((m) => m.info?.role === "user");
@@ -14319,13 +15202,41 @@ ${files}
         return;
       if (firstUser.parts.some((p) => p.type === "agent"))
         return;
-      const userText = firstUser.parts.filter((p) => p.type === "text" && typeof p.text === "string").map((p) => p.text.toLowerCase()).join(" ");
+      const sessionID = firstUser.parts[0]?.sessionID ?? "";
+      if (sessionID && _bootstrapInjectedSessions.has(sessionID))
+        return;
+      const firstText = firstUser.parts.filter((p) => p.type === "text" && typeof p.text === "string").map((p) => p.text).join("");
+      const subagentPatterns = [
+        "AGNES general subagent",
+        "AGNES auto-delegated implementation",
+        "You are implementing ONE task in a larger plan"
+      ];
+      if (subagentPatterns.some((p) => firstText.includes(p)))
+        return;
+      const userText = firstText.toLowerCase();
       const yoloFlags = ["--yolo", "--auto", "/yolo", "/auto", "yolo mode", "--yes"];
       const yolo = yoloFlags.some((flag) => userText.includes(flag));
       setYoloMode(yolo);
       try {
+        const version2 = getVersion();
         const tier = detectModelTier();
-        const bootstrap = getBootstrapContent(detectProject(worktreePath), tier);
+        const memoryBlock = memoryStore.formatForPrompt();
+        const todoBlock = todoStore.formatForPrompt();
+        const stable = getStableTier(version2);
+        const context = getContextTier(version2, detectProject(worktreePath), tier !== "large");
+        const volatile = getVolatileTier(memoryBlock || undefined, todoBlock || undefined);
+        const parts = [];
+        if (stable)
+          parts.push(stable);
+        if (context)
+          parts.push(context);
+        if (volatile)
+          parts.push(volatile);
+        const bootstrap = parts.join(`
+
+---
+
+`);
         if (!bootstrap)
           return;
         let fullBootstrap = bootstrap;
@@ -14338,27 +15249,25 @@ ${files}
 
 ## Completion Protocol
 When all tasks are complete, place this HTML comment at the very end of your response (invisible to users, parsed by AGNES):
-${buildResultMessage({ taskId: "task-000", status: "DONE", content: "...", artifact: {} })}
-`;
+${buildResultMessage("task-000", "...")}
+
+Optionally include LESSON: <what to remember> in the response body (outside the HTML comment). AGNES auto-stores these as persistent patterns for future sessions.`;
         const messageID = firstUser.parts[0].messageID ?? "";
-        const sessionID = firstUser.parts[0].sessionID ?? "";
         firstUser.parts.unshift({
-          id: randomUUID(),
+          id: randomUUID2(),
           sessionID,
           messageID,
           type: "text",
           text: fullBootstrap
         });
-        _bootstrapInjected = true;
+        if (sessionID)
+          _bootstrapInjectedSessions.add(sessionID);
       } catch (err) {
         warn("Failed to build bootstrap", err);
       }
     }
   };
 };
-function resetBootstrapInjected() {
-  _bootstrapInjected = false;
-}
 export {
   AgnesPlugin
 };

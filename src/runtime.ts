@@ -1,4 +1,46 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function findPackageRoot(fromDir: string): string | null {
+  let current = fromDir;
+  for (let i = 0; i < 10; i++) {
+    const pj = path.join(current, 'package.json');
+    if (fs.existsSync(pj)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pj, 'utf8')) as { name?: string };
+        if (pkg.name === 'agnes') return current;
+      } catch { }
+    }
+    const parent = path.resolve(current, '..');
+    if (parent === current) break;
+    current = parent;
+  }
+  return null;
+}
+
+const PACKAGE_ROOT = findPackageRoot(path.resolve(__dirname, '..', '..')) ?? findPackageRoot(__dirname) ?? path.resolve(__dirname, '..', '..');
+
+export const AGNES_VERSION: string = (() => {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(PACKAGE_ROOT, 'package.json'), 'utf8')) as { version?: string };
+    return pkg.version || 'unknown';
+  } catch { return 'unknown'; }
+})();
+
+export function getVersion(): string {
+  return AGNES_VERSION;
+}
+
+export function getIdentityLine(): string {
+  return `AGNES v${AGNES_VERSION}`;
+}
+
 export type ModelTier = 'small' | 'medium' | 'large';
+
+export const MAX_DELEGATE_DEPTH = 2;
 
 let _detectedTier: ModelTier | null = null;
 
@@ -71,6 +113,46 @@ export function isYoloMode(): boolean {
   return _yoloMode;
 }
 
+// ── Gate skip ────────────────────────────────────────────────────────────────────
+
+export function getGateSkip(): boolean {
+  const val = process.env.AGNES_SKIP_GATE?.toLowerCase();
+  return val === '1' || val === 'true' || val === 'yes';
+}
+
+// ── Instance ID ──────────────────────────────────────────────────────────────────
+
+const _instanceId = `agnes-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+export function getInstanceId(): string {
+  return _instanceId;
+}
+
+// ── Async error ring buffer ──────────────────────────────────────────────────────
+
+export interface AsyncError {
+  timestamp: string;
+  sessionId: string;
+  error: string;
+  stack?: string;
+}
+
+const MAX_ASYNC_ERRORS = 10;
+const _asyncErrors: AsyncError[] = [];
+
+export function pushError(sessionId: string, error: string, stack?: string): void {
+  _asyncErrors.push({ timestamp: new Date().toISOString(), sessionId, error, stack });
+  if (_asyncErrors.length > MAX_ASYNC_ERRORS) _asyncErrors.shift();
+}
+
+export function getAsyncErrors(): AsyncError[] {
+  return [..._asyncErrors];
+}
+
+export function clearAsyncErrors(): void {
+  _asyncErrors.length = 0;
+}
+
 export class Semaphore {
   private _current = 0;
   private _queue: (() => void)[] = [];
@@ -95,7 +177,7 @@ export class Semaphore {
     if (next) {
       next();
     } else {
-      this._current--;
+      if (this._current > 0) this._current--;
     }
   }
 
@@ -115,6 +197,15 @@ export function getSemaphore(): Semaphore {
     _semaphore = new Semaphore(getMaxConcurrency(detectModelTier()));
   }
   return _semaphore;
+}
+
+let _autoDelegateSemaphore: Semaphore | null = null;
+
+export function getAutoDelegateSemaphore(): Semaphore {
+  if (!_autoDelegateSemaphore) {
+    _autoDelegateSemaphore = new Semaphore(3); // Fixed at 3 — auto-delegation is a fallback, not primary path
+  }
+  return _autoDelegateSemaphore;
 }
 
 

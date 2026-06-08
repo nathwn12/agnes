@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as logger from './logger.js';
 
 export type PlanPhase = 'pending' | 'decomposing' | 'scheduling' | 'executing' | 'reviewing' | 'running' | 'completed' | 'failed';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'needs_review';
@@ -34,6 +35,8 @@ export interface TaskPlan {
   waves?: WaveDef[];
   currentWaveIndex?: number;
   sessionID?: string;
+  depth?: number;
+  subPlans?: TaskPlan[];
 }
 
 const PLANS_DIR = '.opencode/plans';
@@ -120,4 +123,41 @@ export function getPendingTasks(plan: TaskPlan): TaskItem[] {
 
 export function hasPendingOrRunning(plan: TaskPlan): boolean {
   return plan.tasks.some(t => t.status === 'pending' || t.status === 'running');
+}
+
+export function gcPlans(worktreePath: string, maxAgeDays = 7, maxFiles = 50): number {
+  const dir = getPlansDir(worktreePath);
+  let deleted = 0;
+  try {
+    if (!fs.existsSync(dir)) return 0;
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const files = entries.filter(e => e.isFile() && e.name.endsWith('.json'))
+      .map(e => ({
+        name: e.name,
+        path: path.join(dir, e.name),
+        mtime: fs.statSync(path.join(dir, e.name)).mtimeMs,
+      }))
+      .sort((a, b) => a.mtime - b.mtime);
+
+    const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+    for (const file of files) {
+      if (file.mtime < cutoff) {
+        fs.rmSync(file.path, { force: true });
+        deleted++;
+      }
+    }
+
+    const remaining = files.filter(f => {
+      try { fs.accessSync(f.path, fs.constants.F_OK); return true; } catch { return false; }
+    });
+    while (remaining.length > maxFiles) {
+      const oldest = remaining.shift();
+      if (oldest) {
+        fs.rmSync(oldest.path, { force: true });
+        deleted++;
+      }
+    }
+  } catch { /* silent */ }
+  if (deleted > 0) logger.warn(`gcPlans: removed ${deleted} old plan file(s)`);
+  return deleted;
 }

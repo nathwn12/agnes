@@ -69,14 +69,14 @@ function makeMockClient(overrides?: Record<string, unknown>) {
           if (session) {
             session.messages.push({
               info: { role: 'assistant' },
-              parts: [{ type: 'text', text: `Result from ${opts.body.agent}: ${opts.body.parts[0].text}` }],
+              parts: [{ type: 'text', text: `Result from ${opts.body.agent}: ${opts.body.parts[0].text}\n\n\xA7AM{"t":"completion","i":"task-000","s":"DONE","c":"done","a":{}}` }],
             });
           }
         }, 10);
         return {
           data: {
             info: { role: 'assistant' },
-            parts: [{ type: 'text', text: `Result from ${opts.body.agent}: ${opts.body.parts[0].text}` }],
+            parts: [{ type: 'text', text: `Result from ${opts.body.agent}: ${opts.body.parts[0].text}\n\n\xA7AM{"t":"completion","i":"task-000","s":"DONE","c":"done","a":{}}` }],
           },
           error: null,
         };
@@ -87,6 +87,7 @@ function makeMockClient(overrides?: Record<string, unknown>) {
 
 describe('delegateBlocking', () => {
   beforeEach(() => {
+    process.env.AGNES_SKIP_GATE = '1';
     clearTaskRefs();
   });
 
@@ -113,6 +114,7 @@ describe('delegateBlocking', () => {
 
 describe('delegateAsync', () => {
   beforeEach(() => {
+    process.env.AGNES_SKIP_GATE = '1';
     clearTaskRefs();
   });
 
@@ -129,17 +131,17 @@ describe('delegateAsync', () => {
     expect(result).toContain('create failed');
   });
 
-  test('fires prompt without noReply so model actually processes', async () => {
+  test('returns error string when prompt fails', async () => {
     const client = makeMockClient({ promptError: true });
-    // promptError only applies to non-noReply calls — async fires without noReply
-    // Since it's fire-and-forget, error is swallowed (logged) and session ID returned
-    const ref = await delegateAsync(client, defaultParams);
-    expect(ref).toMatch(/^ses_child_/);
+    const result = await delegateAsync(client, defaultParams);
+    expect(result).toContain('ERROR');
+    expect(result).toContain('prompt failed');
   });
 });
 
 describe('getSubagentResult', () => {
   beforeEach(() => {
+    process.env.AGNES_SKIP_GATE = '1';
     clearTaskRefs();
   });
 
@@ -216,6 +218,7 @@ describe('taskRef store', () => {
 
 describe('integration: async delegate then get result', () => {
   beforeEach(() => {
+    process.env.AGNES_SKIP_GATE = '1';
     clearTaskRefs();
   });
 

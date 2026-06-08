@@ -3,10 +3,32 @@ import * as path from 'node:path';
 import * as logger from './logger.js';
 import { markAutoDelegateBypassSession } from './auto-delegate.js';
 import { runGates, createPromiseComplianceGate } from './verification.js';
-import { detectModelTier, getMaxResultChars, truncateResult, getSemaphore } from './runtime.js';
+import { detectModelTier, getMaxResultChars, truncateResult, getSemaphore, MAX_DELEGATE_DEPTH, pushError } from './runtime.js';
 
 const SUBAGENT_TIMEOUT_MS = 120_000; // 2 min per subagent
 const SESSION_TTL_MS = 10 * 60 * 1000; // 10 min orphan cleanup
+const HEARTBEAT_INTERVAL_MS = 15_000; // 15s between heartbeat polls
+const STALE_HEARTBEAT_MS = 60_000; // 60s without heartbeat → stale
+const _sessionDepth = new Map<string, number>();
+const _heartbeatIntervals = new Map<string, ReturnType<typeof setInterval>>();
+
+function getDepth(sessionID: string): number {
+  return _sessionDepth.get(sessionID) ?? 0;
+}
+
+function setDepth(sessionID: string, depth: number): void {
+  _sessionDepth.set(sessionID, depth);
+}
+
+export function resetDepthTracking(): void {
+  _sessionDepth.clear();
+}
+
+export const DELEGATE_BLOCKED_TOOLS = new Set([
+  'agnes_delegate',
+  'agnes_orchestrate',
+  'agnes_memory',
+]);
 
 export type MinimalClient = any;
 
@@ -16,6 +38,9 @@ export interface DelegateParams {
   prompt: string;
   sessionID: string;
   directory: string;
+  blockedTools?: Set<string>;
+  delegateDepth?: number;
+  priorContext?: string;
 }
 
 export interface SubagentResult {
@@ -30,6 +55,8 @@ interface TaskRefInfo {
   agent: string;
   description: string;
   createdAt?: number;
+  lastHeartbeat?: number;
+  status?: 'running' | 'completed' | 'failed' | 'stale' | 'session_lost';
 }
 
 function extractText(response: unknown): string {
@@ -51,6 +78,12 @@ async function createChildSession(
   client: MinimalClient,
   params: DelegateParams,
 ): Promise<string> {
+  const parentDepth = getDepth(params.sessionID);
+  const maxDepth = params.delegateDepth ?? MAX_DELEGATE_DEPTH;
+  if (parentDepth >= maxDepth) {
+    throw new Error(`MAX_DEPTH exceeded — delegation depth ${parentDepth} >= ${maxDepth}`);
+  }
+
   const createResp = await client.session.create({
     body: {
       parentID: params.sessionID,
@@ -62,8 +95,10 @@ async function createChildSession(
     throw new Error(`Failed to create child session: ${JSON.stringify(createResp.error)}`);
   }
 
-  markAutoDelegateBypassSession(createResp.data.id);
-  return createResp.data.id;
+  const childId = createResp.data.id;
+  setDepth(childId, parentDepth + 1);
+  markAutoDelegateBypassSession(childId);
+  return childId;
 }
 
 export async function delegateBlocking(
@@ -81,6 +116,15 @@ export async function delegateBlocking(
       return `ERROR: failed to create child session — ${msg}`;
     }
 
+    const blockedTools = params.blockedTools ?? DELEGATE_BLOCKED_TOOLS;
+    const blockedNote = blockedTools.size > 0
+      ? `\n\n**Restricted tools:** ${[...blockedTools].join(', ')}`
+      : '';
+    const priorNote = params.priorContext
+      ? `\n\n**Prior context from similar tasks:**\n${params.priorContext}`
+      : '';
+    const fullPrompt = params.prompt + blockedNote + priorNote;
+
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -88,7 +132,7 @@ export async function delegateBlocking(
           path: { id: childId },
           body: {
             agent: params.agent,
-            parts: [{ type: 'text', text: params.prompt }],
+            parts: [{ type: 'text', text: fullPrompt }],
           },
         });
 
@@ -126,6 +170,48 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function stopHeartbeat(sessionID: string): void {
+  const interval = _heartbeatIntervals.get(sessionID);
+  if (interval) {
+    clearInterval(interval);
+    _heartbeatIntervals.delete(sessionID);
+  }
+}
+
+function startHeartbeat(client: MinimalClient, sessionID: string): void {
+  stopHeartbeat(sessionID);
+  const interval = setInterval(async () => {
+    try {
+      const resp = await client.session.get({ path: { id: sessionID } });
+      if (resp.error || !resp.data) {
+        logger.warn(`Heartbeat: session ${sessionID} lost — ${JSON.stringify(resp.error)}`);
+        const ref = _taskRefs.get(sessionID);
+        if (ref) {
+          ref.status = 'session_lost';
+          ref.lastHeartbeat = Date.now();
+          _taskRefsDirty = true;
+          debouncedFlush();
+        }
+        stopHeartbeat(sessionID);
+        return;
+      }
+      const ref = _taskRefs.get(sessionID);
+      if (ref) {
+        ref.lastHeartbeat = Date.now();
+      }
+    } catch (err) {
+      logger.warn(`Heartbeat poll failed for ${sessionID}:`, err);
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+  _heartbeatIntervals.set(sessionID, interval);
+  // Set initial heartbeat
+  const ref = _taskRefs.get(sessionID);
+  if (ref) {
+    ref.lastHeartbeat = Date.now();
+    ref.status = 'running';
+  }
+}
+
 export async function delegateAsync(
   client: MinimalClient,
   params: DelegateParams,
@@ -141,19 +227,27 @@ export async function delegateAsync(
       return `ERROR: failed to create child session — ${msg}`;
     }
 
-    // Fire prompt WITHOUT noReply so the model actually processes it.
-    // Don't await — return the session ID immediately for polling.
-    client.session.prompt({
+    const blockedTools = params.blockedTools ?? DELEGATE_BLOCKED_TOOLS;
+    const blockedNote = blockedTools.size > 0
+      ? `\n\n**Restricted tools:** ${[...blockedTools].join(', ')}`
+      : '';
+    const fullPrompt = params.prompt + blockedNote;
+
+    const promptResp = await client.session.prompt({
       path: { id: childId },
       body: {
         agent: params.agent,
-        parts: [{ type: 'text', text: params.prompt }],
+        parts: [{ type: 'text', text: fullPrompt }],
       },
-    }).catch((err: unknown) => {
-      logger.error('Async subagent failed', err);
     });
 
-    return childId;
+    if (promptResp.error) {
+      pushError(childId, `delegateAsync prompt failed: ${JSON.stringify(promptResp.error)}`);
+      return `ERROR: delegation prompt failed — ${JSON.stringify(promptResp.error)}`;
+    }
+
+    startHeartbeat(client, childId);
+    return childId; // session ID for polling
   } finally {
     sem.release();
   }
@@ -181,10 +275,12 @@ export async function getSubagentResult(
     });
 
     if (sessionResp.error) {
+      stopHeartbeat(sessionID);
       if (sessionResp.error.status === 404) {
         return { status: 'not_found', error: `Session ${sessionID} not found` };
       }
-      return { status: 'error', error: JSON.stringify(sessionResp.error) };
+      pushError(sessionID, `session.get failed: ${JSON.stringify(sessionResp.error)}`);
+    return { status: 'error', error: JSON.stringify(sessionResp.error) };
     }
 
     const messagesResp = await client.session.messages({
@@ -216,9 +312,18 @@ export async function getSubagentResult(
     const gates = [createPromiseComplianceGate(truncated)];
     await runGates(gates);
 
+    stopHeartbeat(sessionID);
+    const ref = _taskRefs.get(sessionID);
+    if (ref) {
+      ref.status = 'completed';
+      ref.lastHeartbeat = Date.now();
+      _taskRefsDirty = true;
+      debouncedFlush();
+    }
     return { status: 'completed', output: truncated };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
+    pushError(sessionID, `getSubagentResult threw: ${msg}`);
     logger.error('getSubagentResult threw', err);
     return { status: 'error', error: msg };
   }
@@ -257,11 +362,15 @@ function flushTaskRefs(): void {
   _taskRefsDirty = false;
   const filePath = getTaskRefsPath();
   if (!filePath) return;
+  const tmpPath = filePath + '.tmp';
   try {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(Object.fromEntries(_taskRefs)), 'utf8');
+    fs.writeFileSync(tmpPath, JSON.stringify(Object.fromEntries(_taskRefs)), 'utf8');
+    fs.rmSync(filePath, { force: true });
+    fs.renameSync(tmpPath, filePath);
   } catch (err) {
     logger.warn('Failed to persist task refs', err);
+    try { fs.rmSync(tmpPath, { force: true }); } catch {}
   }
 }
 
@@ -290,9 +399,19 @@ export function cleanupOrphanedSessions(): number {
   const now = Date.now();
   let cleaned = 0;
   for (const [key, info] of _taskRefs) {
-    if (info.createdAt && now - info.createdAt > SESSION_TTL_MS) {
+    const expired = info.createdAt && now - info.createdAt > SESSION_TTL_MS;
+    const stale = info.lastHeartbeat && info.status === 'running' && now - info.lastHeartbeat > STALE_HEARTBEAT_MS;
+    if (expired) {
+      stopHeartbeat(key);
       _taskRefs.delete(key);
       cleaned++;
+    } else if (stale) {
+      stopHeartbeat(key);
+      info.status = 'stale';
+      info.lastHeartbeat = now;
+      _taskRefsDirty = true;
+      debouncedFlush();
+      logger.warn(`Task ${key.slice(0, 8)} marked stale — no heartbeat for >60s`);
     }
   }
   if (cleaned > 0) {
@@ -307,10 +426,17 @@ export function lookupTaskRef(taskRef: string): TaskRefInfo | undefined {
   return _taskRefs.get(taskRef);
 }
 
+export function getRunningTaskCount(): number {
+  let count = 0;
+  for (const info of _taskRefs.values()) {
+    if (info.status === 'running' || (!info.status && info.createdAt)) count++;
+  }
+  return count;
+}
+
 export function clearTaskRefs(): void {
+  for (const key of _taskRefs.keys()) stopHeartbeat(key);
   _taskRefs.clear();
-  _taskRefsDirty = true;
-  flushTaskRefs();
   const filePath = getTaskRefsPath();
   if (filePath) {
     try { fs.rmSync(filePath, { force: true }); } catch {}

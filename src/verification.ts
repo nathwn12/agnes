@@ -1,5 +1,7 @@
 import { parseAgnesMessage } from './protocol.js';
 import * as logger from './logger.js';
+import type { ModelTier } from './runtime.js';
+import { detectModelTier, getGateSkip } from './runtime.js';
 
 type GateStatus = 'PASS' | 'FAIL' | 'SKIP';
 
@@ -20,6 +22,44 @@ export interface Gate {
   affectedTaskIds?: string[];
 }
 
+// ── Gate stats ───────────────────────────────────────────────────────────────────
+
+interface GateStats {
+  checksPerformed: number;
+  checksPassed: number;
+  checksFailed: number;
+  retriesPerformed: number;
+  lastFailureAt?: string;
+}
+
+const _gateStats: GateStats = {
+  checksPerformed: 0,
+  checksPassed: 0,
+  checksFailed: 0,
+  retriesPerformed: 0,
+};
+
+export function getGateStats(): GateStats {
+  return { ..._gateStats };
+}
+
+function recordGateResult(status: GateStatus): void {
+  _gateStats.checksPerformed++;
+  if (status === 'PASS') _gateStats.checksPassed++;
+  if (status === 'FAIL') {
+    _gateStats.checksFailed++;
+    _gateStats.lastFailureAt = new Date().toISOString();
+  }
+}
+
+export function resetGateStats(): void {
+  _gateStats.checksPerformed = 0;
+  _gateStats.checksPassed = 0;
+  _gateStats.checksFailed = 0;
+  _gateStats.retriesPerformed = 0;
+  _gateStats.lastFailureAt = undefined;
+}
+
 export async function runGates(gates: Gate[]): Promise<GateResult[]> {
   const results: GateResult[] = [];
   for (const gate of gates) {
@@ -37,12 +77,45 @@ export async function runGates(gates: Gate[]): Promise<GateResult[]> {
       };
     }
     results.push(result);
+    recordGateResult(result.status);
+
     if (result.status === 'FAIL') {
-      // Log gate failure but don't block — small models need fluid flow
-      logger.warn(`Gate "${gate.id}" failed: ${result.evidence.errors.join('; ')}`);
+      const isBlocking = gate.isBlocking && !getGateSkip();
+      const msg = `Gate "${gate.id}" failed: ${result.evidence.errors.join('; ')}`;
+      if (isBlocking) {
+        logger.error(msg);
+        throw new Error(msg);
+      }
+      logger.warn(msg);
     }
   }
   return results;
+}
+
+export async function verifyWithRetry(
+  output: string,
+  retryFn: () => Promise<string>,
+  maxRetries: number = 2,
+  tier?: ModelTier,
+): Promise<{ passed: boolean; finalOutput: string; retries: number }> {
+  const modelTier = tier ?? detectModelTier();
+  let currentOutput = output;
+  let retries = 0;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const gate = createPromiseComplianceGate(currentOutput, modelTier);
+    try {
+      await runGates([gate]);
+      return { passed: true, finalOutput: currentOutput, retries };
+    } catch {
+      if (attempt < maxRetries) {
+        _gateStats.retriesPerformed++;
+        retries++;
+        currentOutput = await retryFn();
+      }
+    }
+  }
+  return { passed: false, finalOutput: currentOutput, retries };
 }
 
 export function allGatesPassed(results: GateResult[]): boolean {
@@ -50,11 +123,25 @@ export function allGatesPassed(results: GateResult[]): boolean {
 }
 
 function extractCanonicalAgnesMessageEnvelope(text: string): string | null {
-  // Accept both old format (<!-- <agnes:message>...) and new compact format (§AM{...})
   if (text.includes('\xA7AM')) {
     const idx = text.indexOf('\xA7AM');
-    const endIdx = text.indexOf('}', idx);
-    if (endIdx !== -1) return text.slice(idx, endIdx + 1);
+    if (idx === -1) return null;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let started = false;
+    for (let i = idx; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === '\\' && inString) { escape = true; continue; }
+      if (ch === '"' && !escape) { inString = !inString; continue; }
+      if (!inString) {
+        if (ch === '{') { depth++; started = true; }
+        else if (ch === '}') { depth--; }
+        if (started && depth === 0) return text.slice(idx, i + 1);
+      }
+      escape = false;
+    }
+    return null;
   }
   const match = text.match(/<!--\s*<agnes:message>[\s\S]*?<\/agnes:message>\s*-->/);
   return match?.[0] ?? null;
@@ -68,12 +155,15 @@ function hasCompletionSignal(text: string): boolean {
   return parsed.type === 'completion' || parsed.type === 'result';
 }
 
-export function createPromiseComplianceGate(output: string): Gate {
+export function createPromiseComplianceGate(output: string, tier?: ModelTier): Gate {
+  const modelTier = tier ?? detectModelTier();
+  const blocking = modelTier !== 'small' && !getGateSkip();
+
   return {
     id: 'promise-compliance',
     name: 'Promise Compliance',
     description: 'Checks that output contains a canonical completion or result <agnes:message>',
-    isBlocking: false,
+    isBlocking: blocking,
     run: async () => {
       const start = Date.now();
       const errors: string[] = [];
