@@ -7,14 +7,6 @@ export interface ProjectProfile {
   packageManager: string;
 }
 
-export function readFileSafe(filePath: string): string {
-  try { return fs.readFileSync(filePath, "utf8"); } catch { return ""; }
-}
-
-export function stripYamlFrontmatter(content: string): string {
-  return content.replace(/^---[\s\S]*?---\n/, "");
-}
-
 export function detectProject(cwd: string): ProjectProfile {
   let projectName = path.basename(cwd);
   try {

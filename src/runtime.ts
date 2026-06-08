@@ -1,9 +1,6 @@
 export type ModelTier = 'small' | 'medium' | 'large';
 
-export type ThinkingEffort = 'off' | 'high' | 'max';
-
 let _detectedTier: ModelTier | null = null;
-let _thinkingEffort: ThinkingEffort = 'high';
 
 export function detectModelTier(): ModelTier {
   if (_detectedTier) return _detectedTier;
@@ -41,16 +38,6 @@ export function setModelId(modelID: string): void {
   if (/\b(flash|haiku|spark|lite)\b/.test(id)) { _detectedTier = 'medium'; return; }
 
   _detectedTier = 'large';
-}
-
-export function setThinkingEffort(effort: string): void {
-  if (effort === 'off' || effort === 'high' || effort === 'max') {
-    _thinkingEffort = effort;
-  }
-}
-
-export function getThinkingEffort(): ThinkingEffort {
-  return _thinkingEffort;
 }
 
 export function getMaxConcurrency(tier: ModelTier): number {
@@ -130,13 +117,4 @@ export function getSemaphore(): Semaphore {
   return _semaphore;
 }
 
-export function resetSemaphore(): void {
-  _semaphore = null;
-}
 
-export function resetRuntimeState(): void {
-  _detectedTier = null;
-  _thinkingEffort = 'high';
-  _yoloMode = false;
-  _semaphore = null;
-}

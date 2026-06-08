@@ -3,8 +3,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import { fileURLToPath } from "node:url";
 import { findPackageRoot } from "./bootstrap.js";
-import { readFileSafe, stripYamlFrontmatter } from "./plugin-support.js";
-import { parseCommandFrontmatter } from "./discovery-policy.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = findPackageRoot(__dirname) ?? path.resolve(__dirname, "..", "..");
@@ -15,6 +13,31 @@ export interface CommandDiscovery {
   desc: string;
   template: string;
   source: "agnes" | "global" | "workspace";
+}
+
+function readFileSafe(filePath: string): string {
+  try { return fs.readFileSync(filePath, "utf8"); } catch { return ""; }
+}
+
+function stripYamlFrontmatter(content: string): string {
+  return content.replace(/^---[\s\S]*?---\n/, "");
+}
+
+function parseCommandFrontmatter(content: string): Record<string, unknown> {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) return {};
+  const result: Record<string, unknown> = {};
+  for (const line of match[1].split("\n")) {
+    const kv = line.match(/^(\w+):\s*(.+)$/);
+    if (kv) {
+      let value: unknown = kv[2].trim();
+      if (value === "true") value = true;
+      else if (value === "false") value = false;
+      else if ((value as string).startsWith('"') && (value as string).endsWith('"')) value = (value as string).slice(1, -1);
+      result[kv[1]] = value;
+    }
+  }
+  return result;
 }
 
 function homeDir(): string {

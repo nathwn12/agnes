@@ -65,8 +65,6 @@ export interface CompletionMessage extends BaseMessage {
 
 export type AnyAgnesMessage = TaskMessage | ResultMessage | ErrorMessage | StatusMessage | CompletionMessage;
 
-export const SCHEMA_MARKER = 'agnes/v1';
-
 const REQUIRED_FIELDS: Record<string, Record<string, string>> = {
   task: {},
   result: { taskId: 'string', status: 'string' },
