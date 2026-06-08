@@ -12336,8 +12336,8 @@ function tool(input) {
 tool.schema = exports_external;
 // src/plugin.ts
 import { randomUUID } from "crypto";
-import * as fs5 from "fs";
-import * as path5 from "path";
+import * as fs6 from "fs";
+import * as path6 from "path";
 
 // src/bootstrap.ts
 import * as fs from "fs";
@@ -12349,6 +12349,12 @@ var PREFIX = "[agnes]";
 var ENABLED = process.env.AGNES_DEBUG === "1" || process.env.AGNES_DEBUG === "true";
 function timestamp() {
   return new Date().toISOString();
+}
+function info(message, err) {
+  if (!ENABLED)
+    return;
+  const detail = err instanceof Error ? ` \u2014 ${err.message}` : err !== undefined ? ` \u2014 ${String(err)}` : "";
+  console.error(`${PREFIX} ${timestamp()} INFO ${message}${detail}`);
 }
 function warn(message, err) {
   if (!ENABLED)
@@ -12464,14 +12470,13 @@ function getBootstrapContent(project, tier) {
 }
 
 // src/discovery.ts
-import * as path3 from "path";
-import * as fs3 from "fs";
+import * as path2 from "path";
+import * as fs2 from "fs";
 import * as os from "os";
 import { fileURLToPath as fileURLToPath2 } from "url";
-
-// src/plugin-support.ts
-import * as fs2 from "fs";
-import * as path2 from "path";
+var __dirname3 = path2.dirname(fileURLToPath2(import.meta.url));
+var pluginRoot = findPackageRoot(__dirname3) ?? path2.resolve(__dirname3, "..", "..");
+var BUNDLED_COMMANDS_DIR = path2.join(pluginRoot, ".opencode", "commands");
 function readFileSafe(filePath) {
   try {
     return fs2.readFileSync(filePath, "utf8");
@@ -12482,36 +12487,6 @@ function readFileSafe(filePath) {
 function stripYamlFrontmatter(content) {
   return content.replace(/^---[\s\S]*?---\n/, "");
 }
-function detectProject(cwd) {
-  let projectName = path2.basename(cwd);
-  try {
-    const pkg = JSON.parse(fs2.readFileSync(path2.join(cwd, "package.json"), "utf8"));
-    if (pkg.name)
-      projectName = pkg.name;
-  } catch {}
-  const languages = [];
-  if (fs2.existsSync(path2.join(cwd, "tsconfig.json")))
-    languages.push("typescript");
-  if (fs2.existsSync(path2.join(cwd, "go.mod")))
-    languages.push("go");
-  if (fs2.existsSync(path2.join(cwd, "Cargo.toml")))
-    languages.push("rust");
-  if (fs2.existsSync(path2.join(cwd, "pyproject.toml")))
-    languages.push("python");
-  if (fs2.existsSync(path2.join(cwd, "package.json")))
-    languages.push("javascript");
-  const lockfiles = { "bun.lock": "bun", "bun.lockb": "bun", "pnpm-lock.yaml": "pnpm", "yarn.lock": "yarn", "package-lock.json": "npm" };
-  let packageManager = "npm";
-  for (const [lock, name] of Object.entries(lockfiles)) {
-    if (fs2.existsSync(path2.join(cwd, lock))) {
-      packageManager = name;
-      break;
-    }
-  }
-  return { projectName, languages, packageManager };
-}
-
-// src/discovery-policy.ts
 function parseCommandFrontmatter(content) {
   const match = content.match(/^---\n([\s\S]*?)\n---/);
   if (!match)
@@ -12533,23 +12508,18 @@ function parseCommandFrontmatter(content) {
   }
   return result;
 }
-
-// src/discovery.ts
-var __dirname3 = path3.dirname(fileURLToPath2(import.meta.url));
-var pluginRoot = findPackageRoot(__dirname3) ?? path3.resolve(__dirname3, "..", "..");
-var BUNDLED_COMMANDS_DIR = path3.join(pluginRoot, ".opencode", "commands");
 function homeDir() {
   return process.env.USERPROFILE || os.homedir();
 }
 function scanCommandDir(dir, source) {
   const results = [];
   try {
-    const entries = fs3.readdirSync(dir, { withFileTypes: true });
+    const entries = fs2.readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isFile() || !entry.name.endsWith(".md"))
         continue;
       const name = entry.name.slice(0, -3);
-      const content = readFileSafe(path3.join(dir, entry.name));
+      const content = readFileSafe(path2.join(dir, entry.name));
       if (!content)
         continue;
       const fm = parseCommandFrontmatter(content);
@@ -12567,14 +12537,14 @@ function scanCommandDir(dir, source) {
   return results;
 }
 function globalDir(sub) {
-  return path3.join(homeDir(), ".config", "opencode", sub);
+  return path2.join(homeDir(), ".config", "opencode", sub);
 }
 function workspaceDir(worktree, sub) {
-  return path3.join(worktree, ".opencode", sub);
+  return path2.join(worktree, ".opencode", sub);
 }
 var cachedCommands = new Map;
 function cacheKey(worktreePath) {
-  return path3.resolve(worktreePath);
+  return path2.resolve(worktreePath);
 }
 function discoverCommands(worktreePath) {
   const key = cacheKey(worktreePath);
@@ -12818,8 +12788,8 @@ function buildResultMessage(params) {
 }
 
 // src/delegate.ts
-import * as fs4 from "fs";
-import * as path4 from "path";
+import * as fs3 from "fs";
+import * as path3 from "path";
 
 // src/verification.ts
 async function runGates(gates) {
@@ -13171,12 +13141,12 @@ var _taskRefsPersistDir = null;
 var _taskRefs = new Map;
 var _taskRefsDirty = false;
 function getTaskRefsPath() {
-  return _taskRefsPersistDir ? path4.join(_taskRefsPersistDir, ".agnes", TASK_REFS_FILE) : null;
+  return _taskRefsPersistDir ? path3.join(_taskRefsPersistDir, ".agnes", TASK_REFS_FILE) : null;
 }
 function loadTaskRefsFromDisk(projectDir) {
   try {
-    const filePath = path4.join(projectDir, ".agnes", TASK_REFS_FILE);
-    const raw = fs4.readFileSync(filePath, "utf8");
+    const filePath = path3.join(projectDir, ".agnes", TASK_REFS_FILE);
+    const raw = fs3.readFileSync(filePath, "utf8");
     const entries = JSON.parse(raw);
     for (const e of Object.values(entries)) {
       if (!e.createdAt)
@@ -13196,8 +13166,8 @@ function flushTaskRefs() {
   if (!filePath)
     return;
   try {
-    fs4.mkdirSync(path4.dirname(filePath), { recursive: true });
-    fs4.writeFileSync(filePath, JSON.stringify(Object.fromEntries(_taskRefs)), "utf8");
+    fs3.mkdirSync(path3.dirname(filePath), { recursive: true });
+    fs3.writeFileSync(filePath, JSON.stringify(Object.fromEntries(_taskRefs)), "utf8");
   } catch (err) {
     warn("Failed to persist task refs", err);
   }
@@ -13215,17 +13185,17 @@ function initTaskRefStore(projectDir) {
   _taskRefs = loadTaskRefsFromDisk(projectDir);
   _taskRefsDirty = false;
 }
-function recordTaskRef(taskRef, info) {
+function recordTaskRef(taskRef, info2) {
   cleanupOrphanedSessions();
-  _taskRefs.set(taskRef, { ...info, createdAt: info.createdAt ?? Date.now() });
+  _taskRefs.set(taskRef, { ...info2, createdAt: info2.createdAt ?? Date.now() });
   _taskRefsDirty = true;
   debouncedFlush();
 }
 function cleanupOrphanedSessions() {
   const now = Date.now();
   let cleaned = 0;
-  for (const [key, info] of _taskRefs) {
-    if (info.createdAt && now - info.createdAt > SESSION_TTL_MS) {
+  for (const [key, info2] of _taskRefs) {
+    if (info2.createdAt && now - info2.createdAt > SESSION_TTL_MS) {
       _taskRefs.delete(key);
       cleaned++;
     }
@@ -13247,9 +13217,570 @@ function clearTaskRefs() {
   const filePath = getTaskRefsPath();
   if (filePath) {
     try {
-      fs4.rmSync(filePath, { force: true });
+      fs3.rmSync(filePath, { force: true });
     } catch {}
   }
+}
+
+// src/plugin-support.ts
+import * as fs4 from "fs";
+import * as path4 from "path";
+function detectProject(cwd) {
+  let projectName = path4.basename(cwd);
+  try {
+    const pkg = JSON.parse(fs4.readFileSync(path4.join(cwd, "package.json"), "utf8"));
+    if (pkg.name)
+      projectName = pkg.name;
+  } catch {}
+  const languages = [];
+  if (fs4.existsSync(path4.join(cwd, "tsconfig.json")))
+    languages.push("typescript");
+  if (fs4.existsSync(path4.join(cwd, "go.mod")))
+    languages.push("go");
+  if (fs4.existsSync(path4.join(cwd, "Cargo.toml")))
+    languages.push("rust");
+  if (fs4.existsSync(path4.join(cwd, "pyproject.toml")))
+    languages.push("python");
+  if (fs4.existsSync(path4.join(cwd, "package.json")))
+    languages.push("javascript");
+  const lockfiles = { "bun.lock": "bun", "bun.lockb": "bun", "pnpm-lock.yaml": "pnpm", "yarn.lock": "yarn", "package-lock.json": "npm" };
+  let packageManager = "npm";
+  for (const [lock, name] of Object.entries(lockfiles)) {
+    if (fs4.existsSync(path4.join(cwd, lock))) {
+      packageManager = name;
+      break;
+    }
+  }
+  return { projectName, languages, packageManager };
+}
+
+// src/planner.ts
+import * as fs5 from "fs";
+import * as path5 from "path";
+var PLANS_DIR = ".opencode/plans";
+var _idCounter = 0;
+function generatePlanID() {
+  return `plan-${Date.now().toString(36)}-${(++_idCounter).toString(36)}`;
+}
+function getPlansDir(worktreePath) {
+  return path5.join(worktreePath, PLANS_DIR);
+}
+function createPlan(goal, maxIterations = 3) {
+  return {
+    id: generatePlanID(),
+    goal,
+    phase: "pending",
+    tasks: [],
+    iteration: 0,
+    maxIterations,
+    startTime: Date.now(),
+    editedFiles: [],
+    waves: [],
+    currentWaveIndex: 0,
+    sessionID: undefined
+  };
+}
+function savePlan(plan, worktreePath) {
+  const dir = getPlansDir(worktreePath);
+  fs5.mkdirSync(dir, { recursive: true });
+  const filePath = path5.join(dir, `${plan.id}.json`);
+  fs5.writeFileSync(filePath, JSON.stringify(plan, null, 2), "utf8");
+}
+function loadPlan(planID, worktreePath) {
+  const filePath = path5.join(getPlansDir(worktreePath), `${planID}.json`);
+  try {
+    const raw = fs5.readFileSync(filePath, "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+function updatePlan(plan, worktreePath) {
+  savePlan(plan, worktreePath);
+}
+function getFailedTasks(plan) {
+  return plan.tasks.filter((t) => t.status === "failed" || t.status === "needs_review");
+}
+
+// src/scheduler.ts
+function topologicalWaveSort(tasks) {
+  const taskMap = new Map(tasks.map((t) => [t.id, t]));
+  const inDegree = new Map;
+  const adjacency = new Map;
+  for (const t of tasks) {
+    if (!inDegree.has(t.id))
+      inDegree.set(t.id, 0);
+    if (!adjacency.has(t.id))
+      adjacency.set(t.id, []);
+  }
+  for (const t of tasks) {
+    for (const dep of t.dependsOn) {
+      if (!taskMap.has(dep))
+        continue;
+      adjacency.get(dep)?.push(t.id);
+      inDegree.set(t.id, (inDegree.get(t.id) ?? 0) + 1);
+    }
+  }
+  const waves = [];
+  let index = 0;
+  const queue = [];
+  for (const [id, degree] of inDegree) {
+    if (degree === 0)
+      queue.push(id);
+  }
+  while (queue.length > 0) {
+    const currentWave = [...queue];
+    queue.length = 0;
+    for (const id of currentWave) {
+      for (const neighbor of adjacency.get(id) ?? []) {
+        const newDegree = (inDegree.get(neighbor) ?? 1) - 1;
+        inDegree.set(neighbor, newDegree);
+        if (newDegree === 0)
+          queue.push(neighbor);
+      }
+    }
+    waves.push({
+      index,
+      tasks: currentWave.map((id) => taskMap.get(id)).filter(Boolean)
+    });
+    index++;
+  }
+  return waves;
+}
+function detectFileConflicts(tasks) {
+  const fileOwners = new Map;
+  for (const t of tasks) {
+    for (const f of t.files) {
+      if (!fileOwners.has(f))
+        fileOwners.set(f, []);
+      fileOwners.get(f).push(t.id);
+    }
+  }
+  const conflicts = [];
+  for (const [file2, owners] of fileOwners) {
+    if (owners.length > 1) {
+      for (let i = 0;i < owners.length; i++) {
+        for (let j = i + 1;j < owners.length; j++) {
+          conflicts.push({ taskA: owners[i], taskB: owners[j], file: file2 });
+        }
+      }
+    }
+  }
+  return conflicts;
+}
+function resolveConflicts(wave, _allTasks, _maxParallel) {
+  const conflicts = detectFileConflicts(wave.tasks);
+  if (conflicts.length === 0) {
+    return { resolved: [wave], demoted: [] };
+  }
+  const conflicted = new Set;
+  for (const c of conflicts) {
+    if (!conflicted.has(c.taskA)) {
+      conflicted.add(c.taskB);
+    }
+  }
+  const keep = [];
+  const demoted = [];
+  for (const t of wave.tasks) {
+    if (conflicted.has(t.id)) {
+      demoted.push(t);
+    } else {
+      keep.push(t);
+    }
+  }
+  const resolved = [];
+  if (keep.length > 0) {
+    resolved.push({ index: wave.index, tasks: keep });
+  }
+  return { resolved, demoted };
+}
+function buildSchedule(tasks, maxParallel) {
+  const onlyPending = tasks.filter((t) => t.status === "pending" || t.status === "needs_review");
+  const waves = topologicalWaveSort(onlyPending);
+  const resolvedWaves = [];
+  const allDemoted = [];
+  for (const wave of waves) {
+    const { resolved, demoted } = resolveConflicts(wave, tasks, maxParallel);
+    resolvedWaves.push(...resolved);
+    allDemoted.push(...demoted);
+  }
+  if (allDemoted.length > 0) {
+    let idx = resolvedWaves.length;
+    for (const task of allDemoted) {
+      resolvedWaves.push({ index: idx++, tasks: [task] });
+    }
+  }
+  const capped = [];
+  for (const wave of resolvedWaves) {
+    for (let i = 0;i < wave.tasks.length; i += maxParallel) {
+      capped.push({
+        index: capped.length,
+        tasks: wave.tasks.slice(i, i + maxParallel)
+      });
+    }
+  }
+  return capped;
+}
+
+// src/reviewer.ts
+function createCompletionGate(plan) {
+  return {
+    id: "orchestrator-completion",
+    name: "Task Completion",
+    description: "All tasks must be in completed status",
+    isBlocking: true,
+    run: async () => {
+      const start = Date.now();
+      const failed = plan.tasks.filter((t) => t.status !== "completed");
+      const errors3 = failed.map((t) => `Task ${t.id} ("${t.description}"): status = ${t.status}${t.error ? `, error = ${t.error}` : ""}`);
+      return {
+        gateId: "orchestrator-completion",
+        status: errors3.length === 0 ? "PASS" : "FAIL",
+        evidence: { errors: errors3 },
+        timestamp: new Date().toISOString(),
+        durationMs: Date.now() - start
+      };
+    }
+  };
+}
+function createFileConflictGate(plan) {
+  return {
+    id: "orchestrator-file-conflict",
+    name: "File Conflict",
+    description: "No two tasks edited overlapping files without coordination",
+    isBlocking: true,
+    run: async () => {
+      const start = Date.now();
+      const errors3 = [];
+      const fileOwners = new Map;
+      for (const t of plan.tasks) {
+        if (t.status !== "completed")
+          continue;
+        for (const f of t.files) {
+          if (!fileOwners.has(f))
+            fileOwners.set(f, []);
+          fileOwners.get(f).push(t.id);
+        }
+      }
+      for (const [file2, owners] of fileOwners) {
+        if (owners.length > 1) {
+          errors3.push(`File "${file2}" was edited by multiple tasks: ${owners.join(", ")}`);
+        }
+      }
+      return {
+        gateId: "orchestrator-file-conflict",
+        status: errors3.length === 0 ? "PASS" : "FAIL",
+        evidence: { errors: errors3 },
+        timestamp: new Date().toISOString(),
+        durationMs: Date.now() - start
+      };
+    }
+  };
+}
+function extractFailedTaskIds(plan) {
+  return plan.tasks.filter((t) => t.status === "failed" || t.status === "needs_review").map((t) => t.id);
+}
+async function runReview(plan) {
+  const completionGate = createCompletionGate(plan);
+  const conflictGate = createFileConflictGate(plan);
+  const gates = [completionGate, conflictGate];
+  const results = await runGates(gates);
+  const failedGates = results.filter((r) => r.status === "FAIL");
+  const passed = failedGates.length === 0;
+  const failedTaskIds = extractFailedTaskIds(plan);
+  return { passed, results, failedGates, failedTaskIds };
+}
+
+// src/orchestrator.ts
+function buildTaskPrompt(task, plan) {
+  return `You are implementing ONE task in a larger plan.
+
+## Goal
+${plan.goal}
+
+## Your task
+${task.description}
+
+## Files to edit
+${task.files.join(", ")}
+
+## Instructions
+1. Implement exactly what's described above. No more, no less.
+2. Write tests for your changes if applicable.
+3. Run tests to verify they pass.
+4. Report what you did and which files you created or modified.
+
+## Completion protocol
+When done, append at the end of your response:
+
+<!-- <agnes:message taskId="${task.id}" status="DONE" content="SUMMARY">taskId=${task.id} status=DONE files=${task.files.join(",")}</agnes:message> -->
+
+Replace SUMMARY with a brief summary of what you implemented.
+Report DONE if everything works. Report BLOCKED if you cannot proceed.
+`;
+}
+function trackEditedFiles(plan, tasks) {
+  for (const task of tasks) {
+    if (task.status === "completed" && task.files) {
+      for (const f of task.files) {
+        if (!plan.editedFiles.includes(f)) {
+          plan.editedFiles.push(f);
+        }
+      }
+    }
+  }
+}
+async function delegateWaveTasks(client, plan, wave, sessionID, directory) {
+  const dispatchResults = await Promise.allSettled(wave.tasks.map(async (task) => {
+    task.status = "running";
+    const prompt = buildTaskPrompt(task, plan);
+    const sid = await delegateAsync(client, {
+      agent: task.agent,
+      description: task.description,
+      prompt,
+      sessionID,
+      directory
+    });
+    task.sessionID = sid;
+    recordTaskRef(sid, {
+      sessionID: sid,
+      directory,
+      agent: task.agent,
+      description: task.description
+    });
+  }));
+  for (let i = 0;i < dispatchResults.length; i++) {
+    const r = dispatchResults[i];
+    if (r.status === "rejected") {
+      const task = wave.tasks[i];
+      task.status = "failed";
+      task.error = r.reason instanceof Error ? r.reason.message : String(r.reason);
+    }
+  }
+}
+async function pollWaveTasks(client, tasks, directory) {
+  const running = tasks.filter((t) => t.status === "running" && t.sessionID);
+  let changed = false;
+  const results = await Promise.allSettled(running.map((t) => getSubagentResult(client, t.sessionID, directory)));
+  for (let i = 0;i < running.length; i++) {
+    const task = running[i];
+    const r = results[i];
+    if (r.status === "rejected") {
+      task.status = "failed";
+      task.error = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      changed = true;
+      continue;
+    }
+    const sub = r.value;
+    if (sub.status === "completed") {
+      task.result = sub.output;
+      task.status = "completed";
+      changed = true;
+    } else if (sub.status === "error") {
+      task.error = sub.error;
+      task.status = "failed";
+      changed = true;
+    }
+  }
+  const allDone = tasks.every((t) => t.status === "completed" || t.status === "failed");
+  return { allDone, changed };
+}
+async function createOrchestration(client, params) {
+  const tier = detectModelTier();
+  const maxParallel = getMaxConcurrency(tier);
+  const maxIter = params.maxIterations ?? 3;
+  let plan;
+  if (params.planID) {
+    const loaded = loadPlan(params.planID, params.directory);
+    if (!loaded) {
+      return {
+        planID: params.planID,
+        goal: "(unknown)",
+        phase: "failed",
+        iterations: 0,
+        maxIterations: maxIter,
+        totalTasks: 0,
+        completedTasks: 0,
+        runningTasks: 0,
+        failedTasks: 0,
+        editedFiles: [],
+        currentWave: 0,
+        totalWaves: 0,
+        passed: false,
+        pendingCalls: 0,
+        error: `Plan "${params.planID}" not found`
+      };
+    }
+    plan = loaded;
+    plan.sessionID = params.sessionID;
+  } else {
+    plan = createPlan(params.goal, maxIter);
+    plan.sessionID = params.sessionID;
+    if (params.tasks && params.tasks.length > 0) {
+      plan.tasks = params.tasks.map((t) => ({
+        ...t,
+        status: "pending",
+        retryCount: 0,
+        result: undefined,
+        error: undefined,
+        sessionID: undefined
+      }));
+    }
+    const waves = buildSchedule(plan.tasks, maxParallel);
+    plan.waves = waves.map((w) => ({ index: w.index, taskIDs: w.tasks.map((t) => t.id) }));
+    plan.currentWaveIndex = 0;
+  }
+  if (!plan.waves || plan.waves.length === 0) {
+    plan.phase = "completed";
+    savePlan(plan, params.directory);
+    return {
+      planID: plan.id,
+      goal: plan.goal,
+      phase: "completed",
+      iterations: 0,
+      maxIterations: maxIter,
+      totalTasks: plan.tasks.length,
+      completedTasks: 0,
+      runningTasks: 0,
+      failedTasks: 0,
+      editedFiles: [],
+      currentWave: 0,
+      totalWaves: 0,
+      passed: true,
+      pendingCalls: 0
+    };
+  }
+  if (plan.phase === "pending" || plan.phase === "scheduling") {
+    plan.phase = "running";
+    const wave0 = plan.waves[0];
+    const waveTasks = wave0.taskIDs.map((id) => plan.tasks.find((t) => t.id === id)).filter(Boolean);
+    const wave = { index: 0, tasks: waveTasks };
+    await delegateWaveTasks(client, plan, wave, params.sessionID, params.directory);
+    savePlan(plan, params.directory);
+  }
+  return buildResult(plan);
+}
+async function advanceOrchestration(client, planID, directory, sessionID) {
+  const plan = loadPlan(planID, directory);
+  if (!plan) {
+    return {
+      planID,
+      goal: "(unknown)",
+      phase: "failed",
+      iterations: 0,
+      maxIterations: 3,
+      totalTasks: 0,
+      completedTasks: 0,
+      runningTasks: 0,
+      failedTasks: 0,
+      editedFiles: [],
+      currentWave: 0,
+      totalWaves: 0,
+      passed: false,
+      pendingCalls: 0,
+      error: `Plan "${planID}" not found`
+    };
+  }
+  if (plan.phase === "completed" || plan.phase === "failed") {
+    return buildResult(plan);
+  }
+  if (!plan.waves || plan.waves.length === 0) {
+    plan.phase = "completed";
+    updatePlan(plan, directory);
+    return buildResult(plan);
+  }
+  const waveIdx = plan.currentWaveIndex ?? 0;
+  if (waveIdx >= plan.waves.length) {
+    plan.phase = "completed";
+    updatePlan(plan, directory);
+    return buildResult(plan);
+  }
+  const waveDef = plan.waves[waveIdx];
+  const waveTasks = waveDef.taskIDs.map((id) => plan.tasks.find((t) => t.id === id)).filter(Boolean);
+  if (waveTasks.length === 0) {
+    plan.currentWaveIndex = waveIdx + 1;
+    if (plan.currentWaveIndex >= plan.waves.length) {
+      plan.phase = "completed";
+    } else {
+      const nextWaveDef = plan.waves[plan.currentWaveIndex];
+      const nextTasks = nextWaveDef.taskIDs.map((id) => plan.tasks.find((t) => t.id === id)).filter(Boolean);
+      const nextWave = { index: plan.currentWaveIndex, tasks: nextTasks };
+      await delegateWaveTasks(client, plan, nextWave, sessionID, directory);
+    }
+    updatePlan(plan, directory);
+    return buildResult(plan);
+  }
+  const { allDone } = await pollWaveTasks(client, waveTasks, directory);
+  if (!allDone) {
+    updatePlan(plan, directory);
+    return buildResult(plan);
+  }
+  trackEditedFiles(plan, waveTasks);
+  const verdict = await runReview(plan);
+  if (verdict.passed) {
+    if (waveIdx + 1 < plan.waves.length) {
+      plan.currentWaveIndex = waveIdx + 1;
+      const nextWaveDef = plan.waves[plan.currentWaveIndex];
+      const nextTasks = nextWaveDef.taskIDs.map((id) => plan.tasks.find((t) => t.id === id)).filter(Boolean);
+      const nextWave = { index: plan.currentWaveIndex, tasks: nextTasks };
+      await delegateWaveTasks(client, plan, nextWave, sessionID, directory);
+    } else {
+      plan.phase = "completed";
+    }
+  } else {
+    const failed = getFailedTasks(plan);
+    if (failed.length === 0) {
+      plan.phase = "completed";
+    } else if (plan.iteration < plan.maxIterations - 1) {
+      plan.iteration++;
+      info(`Review failed, re-delegating ${failed.length} task(s) (iteration ${plan.iteration + 1}/${plan.maxIterations})`);
+      for (const task of failed) {
+        task.status = "pending";
+        task.retryCount++;
+        task.sessionID = undefined;
+        task.result = undefined;
+        task.error = undefined;
+      }
+      const waves = buildSchedule(plan.tasks, getMaxConcurrency(detectModelTier()));
+      plan.waves = waves.map((w) => ({ index: w.index, taskIDs: w.tasks.map((t) => t.id) }));
+      plan.currentWaveIndex = 0;
+      if (plan.waves.length > 0) {
+        const retryWaveDef = plan.waves[0];
+        const retryTasks = retryWaveDef.taskIDs.map((id) => plan.tasks.find((t) => t.id === id)).filter(Boolean);
+        const retryWave = { index: 0, tasks: retryTasks };
+        await delegateWaveTasks(client, plan, retryWave, sessionID, directory);
+      }
+    } else {
+      plan.phase = "failed";
+    }
+  }
+  updatePlan(plan, directory);
+  return buildResult(plan);
+}
+function buildResult(plan) {
+  const allTasks = plan.tasks;
+  const completed = allTasks.filter((t) => t.status === "completed").length;
+  const running = allTasks.filter((t) => t.status === "running").length;
+  const failed = allTasks.filter((t) => t.status === "failed").length;
+  const pending = allTasks.filter((t) => t.status === "pending" || t.status === "needs_review").length;
+  const waveCount = plan.waves?.length ?? 0;
+  const passed = plan.phase === "completed" && failed === 0;
+  return {
+    planID: plan.id,
+    goal: plan.goal,
+    phase: plan.phase,
+    iterations: plan.iteration,
+    maxIterations: plan.maxIterations,
+    totalTasks: allTasks.length,
+    completedTasks: completed,
+    runningTasks: running,
+    failedTasks: failed,
+    editedFiles: [...plan.editedFiles],
+    currentWave: (plan.currentWaveIndex ?? 0) + 1,
+    totalWaves: waveCount,
+    passed,
+    pendingCalls: pending
+  };
 }
 
 // src/plugin.ts
@@ -13263,8 +13794,8 @@ var AgnesPlugin = async (input) => {
     config: async (config2) => {
       try {
         const configObj = config2;
-        const skillsPath = path5.join(worktreePath, ".opencode", "skills");
-        if (fs5.existsSync(skillsPath)) {
+        const skillsPath = path6.join(worktreePath, ".opencode", "skills");
+        if (fs6.existsSync(skillsPath)) {
           configObj.skills = configObj.skills || {};
           const skillsObj = configObj.skills;
           skillsObj.paths = skillsObj.paths || [];
@@ -13335,8 +13866,8 @@ $ARGUMENTS`
         },
         async execute(args, ctx) {
           try {
-            const info = lookupTaskRef(args.taskRef);
-            const directory2 = info?.directory ?? ctx.directory;
+            const info2 = lookupTaskRef(args.taskRef);
+            const directory2 = info2?.directory ?? ctx.directory;
             const result = await getSubagentResult(input.client, args.taskRef, directory2);
             switch (result.status) {
               case "completed":
@@ -13351,6 +13882,86 @@ $ARGUMENTS`
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             return `ERROR: agnes_get_result failed \u2014 ${msg}`;
+          }
+        }
+      }),
+      agnes_orchestrate: tool({
+        description: "Execute a full plan \u2192 decompose \u2192 delegate \u2192 review \u2192 iterate cycle. Use for multi-file features or complex tasks that benefit from parallel subagents and iterative review.",
+        args: {
+          goal: tool.schema.string().describe("The goal or feature to implement"),
+          tasksJSON: tool.schema.string().optional().describe('JSON array of tasks. Each task: { id, description, files: string[], dependsOn: string[], agent: "explore"|"general" }. If omitted, creates an empty plan for the model to populate.'),
+          planID: tool.schema.string().optional().describe("Resume an existing plan by ID"),
+          maxIterations: tool.schema.number().optional().default(3).describe("Max review\u2192iterate cycles (default 3)")
+        },
+        async execute(args, ctx) {
+          try {
+            let tasks;
+            if (args.tasksJSON) {
+              try {
+                const parsed = JSON.parse(args.tasksJSON);
+                if (!Array.isArray(parsed))
+                  throw new Error("tasksJSON must be a JSON array");
+                tasks = parsed;
+              } catch (parseErr) {
+                return `ERROR: invalid tasksJSON \u2014 ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`;
+              }
+            }
+            const result = await createOrchestration(input.client, {
+              goal: args.goal,
+              tasks,
+              planID: args.planID,
+              maxIterations: args.maxIterations ?? 3,
+              sessionID: ctx.sessionID,
+              directory: ctx.directory
+            });
+            return [
+              `## Orchestration Created`,
+              `**Plan:** ${result.planID}`,
+              `**Goal:** ${result.goal}`,
+              `**Phase:** ${result.phase}`,
+              `**Tasks:** ${result.totalTasks} total, ${result.completedTasks} done, ${result.runningTasks} running, ${result.failedTasks} failed`,
+              `**Wave:** ${result.currentWave}/${result.totalWaves}`,
+              `**Edited files:** ${result.editedFiles.length > 0 ? result.editedFiles.join(", ") : "(none)"}`,
+              result.error ? `**Error:** ${result.error}` : "",
+              "",
+              result.phase === "completed" ? "\u2705 All tasks passed review." : result.phase === "failed" ? "\u26A0 Orchestration failed." : "\u23F3 Orchestration is running \u2014 poll with agnes_orchestrate_status to check progress."
+            ].filter(Boolean).join(`
+`);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `ERROR: agnes_orchestrate failed \u2014 ${msg}`;
+          }
+        }
+      }),
+      agnes_orchestrate_status: tool({
+        description: 'Check status of an orchestration plan AND advance the state machine. Keeps calling until phase is "completed" or "failed".',
+        args: {
+          planID: tool.schema.string().describe("The plan ID returned by agnes_orchestrate")
+        },
+        async execute(args, ctx) {
+          try {
+            const result = await advanceOrchestration(input.client, args.planID, ctx.directory, ctx.sessionID);
+            const details = result.editedFiles.length > 0 ? `
+**Files edited:** ${result.editedFiles.join(", ")}` : "";
+            const pendingInfo = result.pendingCalls > 0 ? `
+**Pending subagent calls:** ${result.pendingCalls}` : "";
+            return [
+              `## Plan: ${result.planID}`,
+              `**Phase:** ${result.phase}`,
+              `**Goal:** ${result.goal}`,
+              `**Iterations:** ${result.iterations}/${result.maxIterations}`,
+              `**Tasks:** ${result.completedTasks}/${result.totalTasks} done, ${result.runningTasks} running, ${result.failedTasks} failed`,
+              `**Wave:** ${result.currentWave}/${result.totalWaves}`,
+              pendingInfo,
+              details,
+              result.error ? `**Error:** ${result.error}` : "",
+              "",
+              result.phase === "completed" ? "\u2705 Plan completed successfully." : result.phase === "failed" ? "\u26A0 Plan failed." : "\u23F3 Plan still running \u2014 check again with agnes_orchestrate_status."
+            ].filter(Boolean).join(`
+`);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `ERROR: agnes_orchestrate_status failed \u2014 ${msg}`;
           }
         }
       })

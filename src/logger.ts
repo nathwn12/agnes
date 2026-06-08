@@ -6,6 +6,12 @@ function timestamp(): string {
   return new Date().toISOString();
 }
 
+export function info(message: string, err?: unknown): void {
+  if (!ENABLED) return;
+  const detail = err instanceof Error ? ` — ${err.message}` : err !== undefined ? ` — ${String(err)}` : '';
+  console.error(`${PREFIX} ${timestamp()} INFO ${message}${detail}`);
+}
+
 export function warn(message: string, err?: unknown): void {
   if (!ENABLED) return;
   const detail = err instanceof Error ? ` — ${err.message}` : err !== undefined ? ` — ${String(err)}` : '';

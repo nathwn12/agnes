@@ -23,6 +23,10 @@ import {
 } from './delegate.js';
 import { setYoloMode, isYoloMode, setModelId, detectModelTier } from './runtime.js';
 import { detectProject } from './plugin-support.js';
+import {
+  createOrchestration,
+  advanceOrchestration,
+} from './orchestrator.js';
 
 let _bootstrapInjected = false;
 
@@ -127,6 +131,105 @@ export const AgnesPlugin: Plugin = async (input) => {
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             return `ERROR: agnes_get_result failed — ${msg}`;
+          }
+        },
+      }),
+
+      agnes_orchestrate: tool({
+        description: 'Execute a full plan → decompose → delegate → review → iterate cycle. Use for multi-file features or complex tasks that benefit from parallel subagents and iterative review.',
+        args: {
+          goal: tool.schema.string().describe('The goal or feature to implement'),
+          tasksJSON: tool.schema.string().optional().describe('JSON array of tasks. Each task: { id, description, files: string[], dependsOn: string[], agent: "explore"|"general" }. If omitted, creates an empty plan for the model to populate.'),
+          planID: tool.schema.string().optional().describe('Resume an existing plan by ID'),
+          maxIterations: tool.schema.number().optional().default(3).describe('Max review→iterate cycles (default 3)'),
+        },
+        async execute(args, ctx) {
+          try {
+            let tasks;
+            if (args.tasksJSON) {
+              try {
+                const parsed = JSON.parse(args.tasksJSON);
+                if (!Array.isArray(parsed)) throw new Error('tasksJSON must be a JSON array');
+                tasks = parsed;
+              } catch (parseErr) {
+                return `ERROR: invalid tasksJSON — ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`;
+              }
+            }
+
+            const result = await createOrchestration(input.client, {
+              goal: args.goal,
+              tasks,
+              planID: args.planID,
+              maxIterations: args.maxIterations ?? 3,
+              sessionID: ctx.sessionID,
+              directory: ctx.directory,
+            });
+
+            return [
+              `## Orchestration Created`,
+              `**Plan:** ${result.planID}`,
+              `**Goal:** ${result.goal}`,
+              `**Phase:** ${result.phase}`,
+              `**Tasks:** ${result.totalTasks} total, ${result.completedTasks} done, ${result.runningTasks} running, ${result.failedTasks} failed`,
+              `**Wave:** ${result.currentWave}/${result.totalWaves}`,
+              `**Edited files:** ${result.editedFiles.length > 0 ? result.editedFiles.join(', ') : '(none)'}`,
+              result.error ? `**Error:** ${result.error}` : '',
+              '',
+              result.phase === 'completed'
+                ? '✅ All tasks passed review.'
+                : result.phase === 'failed'
+                  ? '⚠ Orchestration failed.'
+                  : '⏳ Orchestration is running — poll with agnes_orchestrate_status to check progress.',
+            ].filter(Boolean).join('\n');
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `ERROR: agnes_orchestrate failed — ${msg}`;
+          }
+        },
+      }),
+
+      agnes_orchestrate_status: tool({
+        description: 'Check status of an orchestration plan AND advance the state machine. Keeps calling until phase is "completed" or "failed".',
+        args: {
+          planID: tool.schema.string().describe('The plan ID returned by agnes_orchestrate'),
+        },
+        async execute(args, ctx) {
+          try {
+            const result = await advanceOrchestration(
+              input.client,
+              args.planID,
+              ctx.directory,
+              ctx.sessionID,
+            );
+
+            const details = result.editedFiles.length > 0
+              ? `\n**Files edited:** ${result.editedFiles.join(', ')}`
+              : '';
+
+            const pendingInfo = result.pendingCalls > 0
+              ? `\n**Pending subagent calls:** ${result.pendingCalls}`
+              : '';
+
+            return [
+              `## Plan: ${result.planID}`,
+              `**Phase:** ${result.phase}`,
+              `**Goal:** ${result.goal}`,
+              `**Iterations:** ${result.iterations}/${result.maxIterations}`,
+              `**Tasks:** ${result.completedTasks}/${result.totalTasks} done, ${result.runningTasks} running, ${result.failedTasks} failed`,
+              `**Wave:** ${result.currentWave}/${result.totalWaves}`,
+              pendingInfo,
+              details,
+              result.error ? `**Error:** ${result.error}` : '',
+              '',
+              result.phase === 'completed'
+                ? '✅ Plan completed successfully.'
+                : result.phase === 'failed'
+                  ? '⚠ Plan failed.'
+                  : '⏳ Plan still running — check again with agnes_orchestrate_status.',
+            ].filter(Boolean).join('\n');
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `ERROR: agnes_orchestrate_status failed — ${msg}`;
           }
         },
       }),

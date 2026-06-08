@@ -17,6 +17,7 @@ export interface Gate {
   description: string;
   run: () => Promise<GateResult>;
   isBlocking: boolean;
+  affectedTaskIds?: string[];
 }
 
 export async function runGates(gates: Gate[]): Promise<GateResult[]> {
