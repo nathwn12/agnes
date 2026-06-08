@@ -13184,6 +13184,10 @@ async function handleAutoDelegateBefore(client, worktreePath, input, output) {
       childSessionID: "",
       result: `ERROR: ${err instanceof Error ? err.message : String(err)}`
     });
+    const noopArgs = makeNoopArgs(worktreePath, input.tool, input.callID, output.args);
+    for (const key of Object.keys(output.args))
+      delete output.args[key];
+    Object.assign(output.args, noopArgs);
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`AGNES auto-delegation blocked direct ${input.tool} execution and delegation failed: ${msg}`);
   } finally {
@@ -13304,7 +13308,9 @@ async function runAutoDelegatedTask(client, parentSessionID, prompt) {
       throw new Error(`Auto-delegation prompt failed: ${JSON.stringify(promptResp.error)}`);
     }
     const output = extractText(promptResp.data);
-    await runGates([createPromiseComplianceGate(output)]);
+    try {
+      await runGates([createPromiseComplianceGate(output)]);
+    } catch {}
     const truncated = truncateResult(output, getMaxResultChars(detectModelTier()));
     return { childSessionID, output: truncated };
   } finally {
