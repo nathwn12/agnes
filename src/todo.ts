@@ -1,6 +1,7 @@
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { createDebouncedFileWriter, ensureDir, loadJsonFile } from './persist.js';
+import type { DebouncedFileWriter } from './persist.js';
 
 export interface TodoItem {
   id: string;
@@ -13,58 +14,29 @@ export interface TodoItem {
 
 const MAX_ITEMS = 10;
 const MAX_CONTENT_LENGTH = 200;
-const DEBOUNCE_MS = 500;
 const COMPLETED_TTL_MS = 24 * 60 * 60 * 1000;
 
 export class TodoStore {
   private _items: TodoItem[] = [];
-  private _path: string = '';
-  private _saveTimer: ReturnType<typeof setTimeout> | null = null;
-  private _dirty = false;
+  private _writer: DebouncedFileWriter | null = null;
 
   get itemCount(): number {
     return this._items.length;
   }
 
   load(worktreePath: string): void {
-    this._path = path.join(worktreePath, '.agnes', 'todos.json');
-    try {
-      const dir = path.dirname(this._path);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      if (fs.existsSync(this._path)) {
-        const data = JSON.parse(fs.readFileSync(this._path, 'utf8')) as TodoItem[];
-        this._items = Array.isArray(data) ? data : [];
-      }
-    } catch {
-      this._items = [];
-    }
+    const filePath = path.join(worktreePath, '.agnes', 'todos.json');
+    ensureDir(filePath);
+    this._items = loadJsonFile<TodoItem>(filePath, []);
+    this._writer = createDebouncedFileWriter(
+      () => filePath,
+      () => this._items,
+    );
     this.prune();
   }
 
-  private _scheduleSave(): void {
-    this._dirty = true;
-    if (this._saveTimer) return;
-    this._saveTimer = setTimeout(() => {
-      this._saveTimer = null;
-      if (this._dirty) this._saveSync();
-    }, DEBOUNCE_MS);
-  }
-
-  private _saveSync(): void {
-    this._dirty = false;
-    try {
-      fs.writeFileSync(this._path, JSON.stringify(this._items, null, 2), 'utf8');
-    } catch { /* silent */ }
-  }
-
   save(): void {
-    if (this._saveTimer) {
-      clearTimeout(this._saveTimer);
-      this._saveTimer = null;
-    }
-    this._saveSync();
+    this._writer?.flushSave();
   }
 
   create(content: string, category?: string): TodoItem {
@@ -81,7 +53,7 @@ export class TodoStore {
       this._items.shift();
     }
     this._items.push(item);
-    this._scheduleSave();
+    this._writer?.scheduleSave();
     return item;
   }
 
@@ -92,13 +64,13 @@ export class TodoStore {
     if (partial.status !== undefined) item.status = partial.status;
     if (partial.category !== undefined) item.category = partial.category;
     item.updatedAt = Date.now();
-    this._scheduleSave();
+    this._writer?.scheduleSave();
     return item;
   }
 
   delete(id: string): void {
     this._items = this._items.filter(i => i.id !== id);
-    this._scheduleSave();
+    this._writer?.scheduleSave();
   }
 
   list(status?: TodoItem['status'], category?: string): TodoItem[] {
@@ -115,7 +87,7 @@ export class TodoStore {
     if (!this._items.every(i => idSet.has(i.id))) return false;
     const map = new Map(this._items.map(i => [i.id, i]));
     this._items = ids.map(id => map.get(id)!);
-    this._scheduleSave();
+    this._writer?.scheduleSave();
     return true;
   }
 
@@ -125,7 +97,7 @@ export class TodoStore {
     this._items = this._items.filter(
       i => i.status !== 'completed' || now - i.updatedAt < COMPLETED_TTL_MS
     );
-    if (this._items.length !== before) this._scheduleSave();
+    if (this._items.length !== before) this._writer?.scheduleSave();
   }
 
   formatForPrompt(): string {

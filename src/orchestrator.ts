@@ -18,7 +18,7 @@ import * as logger from './logger.js';
 
 type MinimalClient = any;
 
-export interface OrchestrationParams {
+interface OrchestrationParams {
   goal: string;
   tasks?: TaskItemInput[];
   planID?: string;
@@ -27,7 +27,7 @@ export interface OrchestrationParams {
   directory: string;
 }
 
-export interface TaskItemInput {
+interface TaskItemInput {
   id: string;
   description: string;
   files: string[];
@@ -35,7 +35,7 @@ export interface TaskItemInput {
   agent: 'explore' | 'general';
 }
 
-export interface OrchestrationResult {
+interface OrchestrationResult {
   planID: string;
   goal: string;
   phase: string;

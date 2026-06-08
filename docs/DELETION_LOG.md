@@ -39,7 +39,45 @@ These functions were exported but had zero references outside their own module:
 - Exports removed/converted: 16 functions + 2 types
 - ESLint warnings eliminated: 6
 
+## [2026-06-09] Refactor-Clean + Auto-Delegation Bugfixes
+
+### Unused Exports Made Private (23 exports → internal)
+All identified by knip + ts-prune. Verified zero external consumers.
+
+| Module | Items un-exported |
+|--------|------------------|
+| `delegate.ts` | `DELEGATE_BLOCKED_TOOLS`, `MinimalClient`, `DelegateParams`, `SubagentResult`, `cleanupOrphanedSessions` |
+| `runtime.ts` | `AGNES_VERSION`, `AsyncError`, `Semaphore` — also **deleted** `clearAsyncErrors()` (zero callers) |
+| `planner.ts` | `PlanPhase`, `TaskStatus`, `WaveDef`, `generatePlanID` |
+| `reviewer.ts` | `createCompletionGate`, `createFileConflictGate` |
+| `scheduler.ts` | `FileConflict`, `topologicalWaveSort`, `detectFileConflicts`, `resolveConflicts` |
+| `orchestrator.ts` | `OrchestrationParams`, `TaskItemInput`, `OrchestrationResult` |
+| `memory.ts` | `DEFAULT_TTL` |
+
+### Consolidation
+- Extracted `src/persist.ts` with shared `createDebouncedFileWriter`, `ensureDir`, `loadJsonFile` utilities
+- `MemoryStore` + `TodoStore` now use the shared writer instead of duplicating debounced-save infrastructure
+
+### Critical Auto-Delegation Bugfixes
+
+**BUG 1+2 — `buildDelegationPrompt` lacked completion protocol (root cause)**
+- Auto-delegation subagents received no instruction to emit the `§AM{...}` envelope → promise-compliance gate always failed with "Missing canonical completion/result message envelope" → ALL implementation tool calls blocked
+- Fix: Added `## Completion Protocol` section to `buildDelegationPrompt` with the exact `§AM{"t":"result",...}` marker, mirroring `orchestrator.ts:buildTaskPrompt()` (the working pattern)
+
+**BUG 3 — Truncation severed the envelope before gate evaluation**
+- `runAutoDelegatedTask` truncated output BEFORE calling the gate → if envelope was at the end of a long output, it was replaced with `[...truncated]` → false negative
+- Fix: Gate runs on FULL output first, then truncates for return
+
+**BUG 4 — State stored AFTER gate, no after-hook on failure**
+- `interceptedCalls.set()` was after `runAutoDelegatedTask()` → if gate threw, state was never stored → after-hook (`handleAutoDelegateAfter`) couldn't map the call → orphaned
+- Fix: Store error state in `interceptedCalls` in the catch block, so after-hook always has context
+
+**BUG 6 — `getSubagentResult` claimed non-blocking gate but actually threw**
+- Comment said "Non-blocking gate check — log failures, return output regardless" but `createPromiseComplianceGate` with default `large` tier creates a blocking gate → `runGates` throws → output lost
+- Fix: Wrapped gate call in try-catch so it truly never blocks result retrieval
+
 ### Testing
 - TypeScript: `tsc --noEmit` passes clean
-- All 434 unit tests passing (0 failures)
-- ESLint: 0 errors, 41 pre-existing warnings (no-explicit-any, prefer-optional-chain)
+- All 69 unit tests passing (0 failures)
+- ESLint: 0 errors, 21 pre-existing warnings (no-explicit-any, no-console)
+- Bundle: builds clean (0.54 MB, 91 modules)

@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import * as logger from './logger.js';
 import { markAutoDelegateBypassSession } from './auto-delegate.js';
 import { runGates, createPromiseComplianceGate } from './verification.js';
-import { detectModelTier, getMaxResultChars, truncateResult, getSemaphore, MAX_DELEGATE_DEPTH, pushError } from './runtime.js';
+import { detectModelTier, getMaxResultChars, truncateResult, getSemaphore, MAX_DELEGATE_DEPTH, pushError, extractText } from './runtime.js';
 
 const SUBAGENT_TIMEOUT_MS = 120_000; // 2 min per subagent
 const SESSION_TTL_MS = 10 * 60 * 1000; // 10 min orphan cleanup
@@ -24,15 +24,15 @@ export function resetDepthTracking(): void {
   _sessionDepth.clear();
 }
 
-export const DELEGATE_BLOCKED_TOOLS = new Set([
+const DELEGATE_BLOCKED_TOOLS = new Set([
   'agnes_delegate',
   'agnes_orchestrate',
   'agnes_memory',
 ]);
 
-export type MinimalClient = any;
+type MinimalClient = any;
 
-export interface DelegateParams {
+interface DelegateParams {
   agent: string;
   description: string;
   prompt: string;
@@ -43,7 +43,7 @@ export interface DelegateParams {
   priorContext?: string;
 }
 
-export interface SubagentResult {
+interface SubagentResult {
   status: 'pending' | 'completed' | 'error' | 'not_found';
   output?: string;
   error?: string;
@@ -57,21 +57,6 @@ interface TaskRefInfo {
   createdAt?: number;
   lastHeartbeat?: number;
   status?: 'running' | 'completed' | 'failed' | 'stale' | 'session_lost';
-}
-
-function extractText(response: unknown): string {
-  if (!response || typeof response !== 'object') return '';
-  const obj = response as Record<string, unknown>;
-  if (obj.parts && Array.isArray(obj.parts)) {
-    return obj.parts
-      .filter((p): p is { type: string; text?: string } =>
-        typeof p === 'object' && p !== null && (p as Record<string, unknown>).type === 'text'
-      )
-      .map((p) => p.text ?? '')
-      .join('\n');
-  }
-  if (typeof obj.text === 'string') return obj.text;
-  return '';
 }
 
 async function createChildSession(
@@ -308,9 +293,12 @@ export async function getSubagentResult(
     const maxChars = getMaxResultChars(tier);
     const truncated = truncateResult(output, maxChars);
 
-    // Non-blocking gate check — log failures, return output regardless
-    const gates = [createPromiseComplianceGate(truncated)];
-    await runGates(gates);
+    try {
+      const gates = [createPromiseComplianceGate(truncated)];
+      await runGates(gates);
+    } catch {
+      // Non-blocking: gate failure is logged inside runGates, return output regardless
+    }
 
     stopHeartbeat(sessionID);
     const ref = _taskRefs.get(sessionID);
@@ -395,7 +383,7 @@ export function recordTaskRef(taskRef: string, info: TaskRefInfo): void {
   debouncedFlush();
 }
 
-export function cleanupOrphanedSessions(): number {
+function cleanupOrphanedSessions(): number {
   const now = Date.now();
   let cleaned = 0;
   for (const [key, info] of _taskRefs) {

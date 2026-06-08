@@ -5,13 +5,13 @@ export interface Wave {
   tasks: TaskItem[];
 }
 
-export interface FileConflict {
+interface FileConflict {
   taskA: string;
   taskB: string;
   file: string;
 }
 
-export function topologicalWaveSort(tasks: TaskItem[]): Wave[] {
+function topologicalWaveSort(tasks: TaskItem[]): Wave[] {
   const taskMap = new Map(tasks.map(t => [t.id, t]));
   const inDegree = new Map<string, number>();
   const adjacency = new Map<string, string[]>();
@@ -59,7 +59,7 @@ export function topologicalWaveSort(tasks: TaskItem[]): Wave[] {
   return waves;
 }
 
-export function detectFileConflicts(tasks: TaskItem[]): FileConflict[] {
+function detectFileConflicts(tasks: TaskItem[]): FileConflict[] {
   const fileOwners = new Map<string, string[]>();
 
   for (const t of tasks) {
@@ -82,7 +82,7 @@ export function detectFileConflicts(tasks: TaskItem[]): FileConflict[] {
   return conflicts;
 }
 
-export function resolveConflicts(
+function resolveConflicts(
   wave: Wave,
   _allTasks: TaskItem[],
   _maxParallel: number,

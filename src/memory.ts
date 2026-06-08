@@ -1,5 +1,6 @@
-import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { createDebouncedFileWriter, ensureDir, loadJsonFile } from './persist.js';
+import type { DebouncedFileWriter } from './persist.js';
 
 export interface MemoryEntry {
   key: string;
@@ -10,7 +11,7 @@ export interface MemoryEntry {
   category: 'user' | 'project' | 'session' | 'pattern' | 'pref';
 }
 
-export const DEFAULT_TTL: Record<MemoryEntry['category'], number> = {
+const DEFAULT_TTL: Record<MemoryEntry['category'], number> = {
   user: 0,
   project: 0,
   session: 7 * 24 * 60 * 60 * 1000,
@@ -20,7 +21,6 @@ export const DEFAULT_TTL: Record<MemoryEntry['category'], number> = {
 
 const MAX_ENTRIES = 50;
 const MAX_VALUE_LENGTH = 500;
-const DEBOUNCE_MS = 500;
 const FORMAT_MAX_CHARS = 2000;
 
 export function extractLessons(text: string, store: MemoryStore): void {
@@ -36,53 +36,25 @@ export function extractLessons(text: string, store: MemoryStore): void {
 
 export class MemoryStore {
   private _entries: MemoryEntry[] = [];
-  private _path: string = '';
-  private _saveTimer: ReturnType<typeof setTimeout> | null = null;
-  private _dirty = false;
+  private _writer: DebouncedFileWriter | null = null;
 
   get entryCount(): number {
     return this._entries.length;
   }
 
   load(worktreePath: string): void {
-    this._path = path.join(worktreePath, '.agnes', 'memory.json');
-    try {
-      const dir = path.dirname(this._path);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      if (fs.existsSync(this._path)) {
-        const data = JSON.parse(fs.readFileSync(this._path, 'utf8')) as MemoryEntry[];
-        this._entries = Array.isArray(data) ? data : [];
-      }
-    } catch {
-      this._entries = [];
-    }
+    const filePath = path.join(worktreePath, '.agnes', 'memory.json');
+    ensureDir(filePath);
+    this._entries = loadJsonFile<MemoryEntry>(filePath, []);
+    this._writer = createDebouncedFileWriter(
+      () => filePath,
+      () => this._entries,
+    );
     this.prune();
   }
 
-  private _scheduleSave(): void {
-    this._dirty = true;
-    if (this._saveTimer) return;
-    this._saveTimer = setTimeout(() => {
-      this._saveTimer = null;
-      if (this._dirty) this._saveSync();
-    }, DEBOUNCE_MS);
-  }
-
-  private _saveSync(): void {
-    this._dirty = false;
-    try {
-      fs.writeFileSync(this._path, JSON.stringify(this._entries, null, 2), 'utf8');
-    } catch { /* silent */ }
-  }
-
   save(): void {
-    if (this._saveTimer) {
-      clearTimeout(this._saveTimer);
-      this._saveTimer = null;
-    }
-    this._saveSync();
+    this._writer?.flushSave();
   }
 
   get(key: string): MemoryEntry | null {
@@ -120,13 +92,13 @@ export class MemoryStore {
         category,
       });
     }
-    this._scheduleSave();
+    this._writer?.scheduleSave();
     return true;
   }
 
   delete(key: string): void {
     this._entries = this._entries.filter(e => e.key !== key);
-    this._scheduleSave();
+    this._writer?.scheduleSave();
   }
 
   list(category?: MemoryEntry['category']): MemoryEntry[] {
@@ -141,12 +113,12 @@ export class MemoryStore {
     this._entries = this._entries.filter(
       e => e.ttl === 0 || now - e.updatedAt <= e.ttl
     );
-    if (this._entries.length !== before) this._scheduleSave();
+    if (this._entries.length !== before) this._writer?.scheduleSave();
   }
 
   clear(): void {
     this._entries = [];
-    this._scheduleSave();
+    this._writer?.scheduleSave();
   }
 
   formatForPrompt(): string {

@@ -1,7 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as logger from './logger.js';
-import { detectModelTier, getAutoDelegateSemaphore, getMaxResultChars, truncateResult } from './runtime.js';
+import { detectModelTier, getAutoDelegateSemaphore, getMaxResultChars, truncateResult, extractText } from './runtime.js';
 import { createPromiseComplianceGate, runGates } from './verification.js';
 
 type MinimalClient = any;
@@ -103,19 +102,22 @@ export async function handleAutoDelegateBefore(
     const context = await fetchConversationContext(client, input.sessionID);
     const prompt = buildDelegationPrompt(input.tool, output.args, context);
     const result = await runAutoDelegatedTask(client, input.sessionID, prompt);
-
     interceptedCalls.set(input.callID, {
       originalTool: input.tool,
       originalArgs: { ...output.args },
       childSessionID: result.childSessionID,
       result: result.output,
     });
-
     const noopArgs = makeNoopArgs(worktreePath, input.tool, input.callID, output.args);
     for (const key of Object.keys(output.args)) delete output.args[key];
     Object.assign(output.args, noopArgs);
   } catch (err) {
-    logger.warn('Auto-delegation failed; blocking direct implementation', err);
+    interceptedCalls.set(input.callID, {
+      originalTool: input.tool,
+      originalArgs: { ...output.args },
+      childSessionID: '',
+      result: `ERROR: ${err instanceof Error ? err.message : String(err)}`,
+    });
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`AGNES auto-delegation blocked direct ${input.tool} execution and delegation failed: ${msg}`);
   } finally {
@@ -155,6 +157,12 @@ export function buildDelegationPrompt(
     '- Preserve unrelated changes. Read files before editing when needed.',
     '- Keep the change minimal and verify when feasible.',
     '- End with a concise summary of changed files and verification performed.',
+    '',
+    '## Completion Protocol',
+    'When done, place this marker at the very end of your response:',
+    '§AM{"t":"result","i":"auto-task","s":"DONE","c":"<summary of what was done>"}',
+    'Replace <summary of what was done> with a brief summary of what you implemented.',
+    'Status DONE if everything works. Status BLOCKED if you cannot proceed.',
     '',
     'Recent conversation context:',
     conversationContext || '(no context available)',
@@ -250,8 +258,8 @@ async function runAutoDelegatedTask(
     }
 
     const output = extractText(promptResp.data);
+    await runGates([createPromiseComplianceGate(output)]);
     const truncated = truncateResult(output, getMaxResultChars(detectModelTier()));
-    await runGates([createPromiseComplianceGate(truncated)]);
     return { childSessionID, output: truncated };
   } finally {
     sem.release();
@@ -274,20 +282,6 @@ async function fetchConversationContext(client: MinimalClient, sessionID: string
     lines.push(`### ${role}\n${truncateForPrompt(text, 2500)}`);
   }
   return truncateForPrompt(lines.join('\n\n'), 12000);
-}
-
-function extractText(response: unknown): string {
-  if (!response || typeof response !== 'object') return '';
-  const obj = response as Record<string, unknown>;
-  if (Array.isArray(obj.parts)) {
-    return obj.parts
-      .filter((p): p is { type: string; text?: string } =>
-        typeof p === 'object' && p !== null && (p as Record<string, unknown>).type === 'text'
-      )
-      .map(p => p.text ?? '')
-      .join('\n');
-  }
-  return typeof obj.text === 'string' ? obj.text : '';
 }
 
 function truncateForPrompt(text: string, maxChars: number): string {

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import * as logger from './logger.js';
 import type { ProjectProfile } from './plugin-support.js';
 import type { ModelTier } from './runtime.js';
-import { getVersion, getIdentityLine } from './runtime.js';
+import { getVersion, getIdentityLine, findPackageRoot } from './runtime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -23,25 +23,6 @@ IV. Thinking — /think off (simple), /think high (default for coding), /think m
 V. Delegation — chunk by file boundary. Parallel independent chunks. agnes_delegate blocking, agnes_get_result async. Direct implementation tools are auto-rerouted to subagents.
 VI. Modes — Question-Gate (default, gates on 3+files/arch/deps). YOLO (--yolo, skip gates, safety-only).
 VII. Completion — end with marker when all tasks done.`;
-
-export function findPackageRoot(fromDir: string): string | null {
-  let current = fromDir;
-  for (let i = 0; i < 10; i++) {
-    const bundlePath = path.join(current, '.opencode', 'plugins', 'agnes.js');
-    if (fs.existsSync(bundlePath)) return current;
-    const pj = path.join(current, 'package.json');
-    if (fs.existsSync(pj)) {
-      try {
-        const pkg = JSON.parse(fs.readFileSync(pj, 'utf8')) as { name?: string };
-        if (pkg.name === 'agnes') return current;
-      } catch { }
-    }
-    const parent = path.resolve(current, '..');
-    if (parent === current) break;
-    current = parent;
-  }
-  return null;
-}
 
 const packageRoot = findPackageRoot(path.resolve(__dirname, '..', '..')) ?? findPackageRoot(__dirname) ?? path.resolve(__dirname, '..', '..');
 
@@ -102,11 +83,6 @@ Commands: ${COMMANDS_MEDIUM}`;
   const context = `v${ver} | ${projectLine}
 Commands: ${COMMANDS_FULL}`;
 
-  const cacheKey = project
-    ? `${hashStr(project.projectName)}:${hashStr(project.languages.join(','))}`
-    : 'none';
-  void cacheKey;
-
   return context;
 }
 
@@ -153,14 +129,4 @@ export function getBootstrapContent(project?: ProjectProfile, tier?: ModelTier):
   return parts.join('\n\n---\n\n');
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────────
 
-function hashStr(s: string): string {
-  let hash = 0;
-  for (let i = 0; i < s.length; i++) {
-    const char = s.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(36);
-}

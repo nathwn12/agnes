@@ -4,9 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function findPackageRoot(fromDir: string): string | null {
+export function findPackageRoot(fromDir: string): string | null {
   let current = fromDir;
   for (let i = 0; i < 10; i++) {
+    const bundlePath = path.join(current, '.opencode', 'plugins', 'agnes.js');
+    if (fs.existsSync(bundlePath)) return current;
     const pj = path.join(current, 'package.json');
     if (fs.existsSync(pj)) {
       try {
@@ -23,7 +25,7 @@ function findPackageRoot(fromDir: string): string | null {
 
 const PACKAGE_ROOT = findPackageRoot(path.resolve(__dirname, '..', '..')) ?? findPackageRoot(__dirname) ?? path.resolve(__dirname, '..', '..');
 
-export const AGNES_VERSION: string = (() => {
+const AGNES_VERSION: string = (() => {
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(PACKAGE_ROOT, 'package.json'), 'utf8')) as { version?: string };
     return pkg.version || 'unknown';
@@ -36,6 +38,20 @@ export function getVersion(): string {
 
 export function getIdentityLine(): string {
   return `AGNES v${AGNES_VERSION}`;
+}
+
+export function extractText(response: unknown): string {
+  if (!response || typeof response !== 'object') return '';
+  const obj = response as Record<string, unknown>;
+  if (Array.isArray(obj.parts)) {
+    return obj.parts
+      .filter((p): p is { type: string; text?: string } =>
+        typeof p === 'object' && p !== null && (p as Record<string, unknown>).type === 'text'
+      )
+      .map(p => p.text ?? '')
+      .join('\n');
+  }
+  return typeof obj.text === 'string' ? obj.text : '';
 }
 
 export type ModelTier = 'small' | 'medium' | 'large';
@@ -130,7 +146,7 @@ export function getInstanceId(): string {
 
 // ── Async error ring buffer ──────────────────────────────────────────────────────
 
-export interface AsyncError {
+interface AsyncError {
   timestamp: string;
   sessionId: string;
   error: string;
@@ -149,11 +165,7 @@ export function getAsyncErrors(): AsyncError[] {
   return [..._asyncErrors];
 }
 
-export function clearAsyncErrors(): void {
-  _asyncErrors.length = 0;
-}
-
-export class Semaphore {
+class Semaphore {
   private _current = 0;
   private _queue: (() => void)[] = [];
 

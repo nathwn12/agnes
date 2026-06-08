@@ -2,7 +2,7 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import { fileURLToPath } from "node:url";
-import { findPackageRoot } from "./bootstrap.js";
+import { findPackageRoot } from "./runtime.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = findPackageRoot(__dirname) ?? path.resolve(__dirname, "..", "..");

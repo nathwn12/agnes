@@ -12336,8 +12336,8 @@ function tool(input) {
 tool.schema = exports_external;
 // src/plugin.ts
 import { randomUUID as randomUUID2 } from "crypto";
-import * as fs10 from "fs";
-import * as path10 from "path";
+import * as fs9 from "fs";
+import * as path11 from "path";
 
 // src/bootstrap.ts
 import * as fs2 from "fs";
@@ -12352,6 +12352,9 @@ var __dirname2 = path.dirname(fileURLToPath(import.meta.url));
 function findPackageRoot(fromDir) {
   let current = fromDir;
   for (let i = 0;i < 10; i++) {
+    const bundlePath = path.join(current, ".opencode", "plugins", "agnes.js");
+    if (fs.existsSync(bundlePath))
+      return current;
     const pj = path.join(current, "package.json");
     if (fs.existsSync(pj)) {
       try {
@@ -12381,6 +12384,16 @@ function getVersion() {
 }
 function getIdentityLine() {
   return `AGNES v${AGNES_VERSION}`;
+}
+function extractText(response) {
+  if (!response || typeof response !== "object")
+    return "";
+  const obj = response;
+  if (Array.isArray(obj.parts)) {
+    return obj.parts.filter((p) => typeof p === "object" && p !== null && p.type === "text").map((p) => p.text ?? "").join(`
+`);
+  }
+  return typeof obj.text === "string" ? obj.text : "";
 }
 var MAX_DELEGATE_DEPTH = 2;
 var _detectedTier = null;
@@ -12482,6 +12495,7 @@ function pushError(sessionId, error45, stack) {
 function getAsyncErrors() {
   return [..._asyncErrors];
 }
+
 class Semaphore {
   _max;
   _current = 0;
@@ -12576,28 +12590,7 @@ IV. Thinking \u2014 /think off (simple), /think high (default for coding), /thin
 V. Delegation \u2014 chunk by file boundary. Parallel independent chunks. agnes_delegate blocking, agnes_get_result async. Direct implementation tools are auto-rerouted to subagents.
 VI. Modes \u2014 Question-Gate (default, gates on 3+files/arch/deps). YOLO (--yolo, skip gates, safety-only).
 VII. Completion \u2014 end with marker when all tasks done.`;
-function findPackageRoot2(fromDir) {
-  let current = fromDir;
-  for (let i = 0;i < 10; i++) {
-    const bundlePath = path2.join(current, ".opencode", "plugins", "agnes.js");
-    if (fs2.existsSync(bundlePath))
-      return current;
-    const pj = path2.join(current, "package.json");
-    if (fs2.existsSync(pj)) {
-      try {
-        const pkg = JSON.parse(fs2.readFileSync(pj, "utf8"));
-        if (pkg.name === "agnes")
-          return current;
-      } catch {}
-    }
-    const parent = path2.resolve(current, "..");
-    if (parent === current)
-      break;
-    current = parent;
-  }
-  return null;
-}
-var packageRoot = findPackageRoot2(path2.resolve(__dirname3, "..", "..")) ?? findPackageRoot2(__dirname3) ?? path2.resolve(__dirname3, "..", "..");
+var packageRoot = findPackageRoot(path2.resolve(__dirname3, "..", "..")) ?? findPackageRoot(__dirname3) ?? path2.resolve(__dirname3, "..", "..");
 var COMMANDS_FULL = "/plan /build-fix /code-review /tdd /verify /checkpoint /learn /security /e2e /update-docs /refactor-clean /test-coverage /yolo /update-codemaps";
 var COMMANDS_MEDIUM = "/plan /build-fix /code-review /tdd /verify /checkpoint /yolo /update-codemaps";
 var MEDIUM_LINE = `Medium tier \u2014 tighter context, fewer parallel subagents, trimmed operational rules.
@@ -12636,7 +12629,6 @@ Commands: ${COMMANDS_MEDIUM}`;
   const projectLine = project ? `Project: ${project.projectName} (${project.languages.join(", ") || "?"}) pkg:${project.packageManager}` : "";
   const context = `v${ver} | ${projectLine}
 Commands: ${COMMANDS_FULL}`;
-  const cacheKey = project ? `${hashStr(project.projectName)}:${hashStr(project.languages.join(","))}` : "none";
   return context;
 }
 function getVolatileTier(memoryBlock, todoBlock) {
@@ -12649,15 +12641,6 @@ function getVolatileTier(memoryBlock, todoBlock) {
 
 `) : null;
 }
-function hashStr(s) {
-  let hash2 = 0;
-  for (let i = 0;i < s.length; i++) {
-    const char = s.charCodeAt(i);
-    hash2 = (hash2 << 5) - hash2 + char;
-    hash2 |= 0;
-  }
-  return Math.abs(hash2).toString(36);
-}
 
 // src/discovery.ts
 import * as path3 from "path";
@@ -12665,7 +12648,7 @@ import * as fs3 from "fs";
 import * as os from "os";
 import { fileURLToPath as fileURLToPath3 } from "url";
 var __dirname4 = path3.dirname(fileURLToPath3(import.meta.url));
-var pluginRoot = findPackageRoot2(__dirname4) ?? path3.resolve(__dirname4, "..", "..");
+var pluginRoot = findPackageRoot(__dirname4) ?? path3.resolve(__dirname4, "..", "..");
 var BUNDLED_COMMANDS_DIR = path3.join(pluginRoot, ".opencode", "commands");
 var CACHE_TTL_MS = 30000;
 var _cache = new Map;
@@ -13195,7 +13178,12 @@ async function handleAutoDelegateBefore(client, worktreePath, input, output) {
       delete output.args[key];
     Object.assign(output.args, noopArgs);
   } catch (err) {
-    warn("Auto-delegation failed; blocking direct implementation", err);
+    interceptedCalls.set(input.callID, {
+      originalTool: input.tool,
+      originalArgs: { ...output.args },
+      childSessionID: "",
+      result: `ERROR: ${err instanceof Error ? err.message : String(err)}`
+    });
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`AGNES auto-delegation blocked direct ${input.tool} execution and delegation failed: ${msg}`);
   } finally {
@@ -13230,6 +13218,12 @@ function buildDelegationPrompt(tool3, args, conversationContext) {
     "- Preserve unrelated changes. Read files before editing when needed.",
     "- Keep the change minimal and verify when feasible.",
     "- End with a concise summary of changed files and verification performed.",
+    "",
+    "## Completion Protocol",
+    "When done, place this marker at the very end of your response:",
+    '\xA7AM{"t":"result","i":"auto-task","s":"DONE","c":"<summary of what was done>"}',
+    "Replace <summary of what was done> with a brief summary of what you implemented.",
+    "Status DONE if everything works. Status BLOCKED if you cannot proceed.",
     "",
     "Recent conversation context:",
     conversationContext || "(no context available)",
@@ -13310,8 +13304,8 @@ async function runAutoDelegatedTask(client, parentSessionID, prompt) {
       throw new Error(`Auto-delegation prompt failed: ${JSON.stringify(promptResp.error)}`);
     }
     const output = extractText(promptResp.data);
+    await runGates([createPromiseComplianceGate(output)]);
     const truncated = truncateResult(output, getMaxResultChars(detectModelTier()));
-    await runGates([createPromiseComplianceGate(truncated)]);
     return { childSessionID, output: truncated };
   } finally {
     sem.release();
@@ -13337,16 +13331,6 @@ ${truncateForPrompt(text, 2500)}`);
   return truncateForPrompt(lines.join(`
 
 `), 12000);
-}
-function extractText(response) {
-  if (!response || typeof response !== "object")
-    return "";
-  const obj = response;
-  if (Array.isArray(obj.parts)) {
-    return obj.parts.filter((p) => typeof p === "object" && p !== null && p.type === "text").map((p) => p.text ?? "").join(`
-`);
-  }
-  return typeof obj.text === "string" ? obj.text : "";
 }
 function truncateForPrompt(text, maxChars) {
   if (text.length <= maxChars)
@@ -13376,18 +13360,6 @@ var DELEGATE_BLOCKED_TOOLS = new Set([
   "agnes_orchestrate",
   "agnes_memory"
 ]);
-function extractText2(response) {
-  if (!response || typeof response !== "object")
-    return "";
-  const obj = response;
-  if (obj.parts && Array.isArray(obj.parts)) {
-    return obj.parts.filter((p) => typeof p === "object" && p !== null && p.type === "text").map((p) => p.text ?? "").join(`
-`);
-  }
-  if (typeof obj.text === "string")
-    return obj.text;
-  return "";
-}
 async function createChildSession(client, params) {
   const parentDepth = getDepth(params.sessionID);
   const maxDepth = params.delegateDepth ?? MAX_DELEGATE_DEPTH;
@@ -13445,7 +13417,7 @@ ${params.priorContext}` : "";
           }
           return `ERROR: delegation failed after ${maxAttempts} attempts \u2014 ${JSON.stringify(promptResp.error)}`;
         }
-        const output = extractText2(promptResp.data);
+        const output = extractText(promptResp.data);
         const tier = detectModelTier();
         const maxChars = getMaxResultChars(tier);
         const truncated = truncateResult(output, maxChars);
@@ -13580,12 +13552,14 @@ async function getSubagentResult(client, sessionID, _directory) {
       return { status: "pending" };
     }
     const lastMsg = assistantMessages[assistantMessages.length - 1];
-    const output = extractText2(lastMsg);
+    const output = extractText(lastMsg);
     const tier = detectModelTier();
     const maxChars = getMaxResultChars(tier);
     const truncated = truncateResult(output, maxChars);
-    const gates = [createPromiseComplianceGate(truncated)];
-    await runGates(gates);
+    try {
+      const gates = [createPromiseComplianceGate(truncated)];
+      await runGates(gates);
+    } catch {}
     stopHeartbeat(sessionID);
     const ref = _taskRefs.get(sessionID);
     if (ref) {
@@ -13702,8 +13676,57 @@ function getRunningTaskCount() {
 }
 
 // src/memory.ts
+import * as path7 from "path";
+
+// src/persist.ts
 import * as fs6 from "fs";
 import * as path6 from "path";
+var DEBOUNCE_MS = 500;
+function createDebouncedFileWriter(getPath, getData) {
+  let saveTimer = null;
+  let dirty = false;
+  function saveSync() {
+    dirty = false;
+    try {
+      fs6.writeFileSync(getPath(), JSON.stringify(getData(), null, 2), "utf8");
+    } catch {}
+  }
+  function scheduleSave() {
+    dirty = true;
+    if (saveTimer)
+      return;
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      if (dirty)
+        saveSync();
+    }, DEBOUNCE_MS);
+  }
+  function flushSave() {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    saveSync();
+  }
+  return { scheduleSave, flushSave };
+}
+function ensureDir(filePath) {
+  const dir = path6.dirname(filePath);
+  if (!fs6.existsSync(dir)) {
+    fs6.mkdirSync(dir, { recursive: true });
+  }
+}
+function loadJsonFile(filePath, fallback) {
+  try {
+    if (fs6.existsSync(filePath)) {
+      const data = JSON.parse(fs6.readFileSync(filePath, "utf8"));
+      return Array.isArray(data) ? data : fallback;
+    }
+  } catch {}
+  return fallback;
+}
+
+// src/memory.ts
 var DEFAULT_TTL = {
   user: 0,
   project: 0,
@@ -13713,7 +13736,6 @@ var DEFAULT_TTL = {
 };
 var MAX_ENTRIES = 50;
 var MAX_VALUE_LENGTH = 500;
-var DEBOUNCE_MS = 500;
 var FORMAT_MAX_CHARS = 2000;
 function extractLessons(text, store) {
   const lessonRegex = /LESSON:\s*(.+)/g;
@@ -13729,50 +13751,19 @@ function extractLessons(text, store) {
 
 class MemoryStore {
   _entries = [];
-  _path = "";
-  _saveTimer = null;
-  _dirty = false;
+  _writer = null;
   get entryCount() {
     return this._entries.length;
   }
   load(worktreePath) {
-    this._path = path6.join(worktreePath, ".agnes", "memory.json");
-    try {
-      const dir = path6.dirname(this._path);
-      if (!fs6.existsSync(dir)) {
-        fs6.mkdirSync(dir, { recursive: true });
-      }
-      if (fs6.existsSync(this._path)) {
-        const data = JSON.parse(fs6.readFileSync(this._path, "utf8"));
-        this._entries = Array.isArray(data) ? data : [];
-      }
-    } catch {
-      this._entries = [];
-    }
+    const filePath = path7.join(worktreePath, ".agnes", "memory.json");
+    ensureDir(filePath);
+    this._entries = loadJsonFile(filePath, []);
+    this._writer = createDebouncedFileWriter(() => filePath, () => this._entries);
     this.prune();
   }
-  _scheduleSave() {
-    this._dirty = true;
-    if (this._saveTimer)
-      return;
-    this._saveTimer = setTimeout(() => {
-      this._saveTimer = null;
-      if (this._dirty)
-        this._saveSync();
-    }, DEBOUNCE_MS);
-  }
-  _saveSync() {
-    this._dirty = false;
-    try {
-      fs6.writeFileSync(this._path, JSON.stringify(this._entries, null, 2), "utf8");
-    } catch {}
-  }
   save() {
-    if (this._saveTimer) {
-      clearTimeout(this._saveTimer);
-      this._saveTimer = null;
-    }
-    this._saveSync();
+    this._writer?.flushSave();
   }
   get(key) {
     this.prune();
@@ -13812,12 +13803,12 @@ class MemoryStore {
         category
       });
     }
-    this._scheduleSave();
+    this._writer?.scheduleSave();
     return true;
   }
   delete(key) {
     this._entries = this._entries.filter((e) => e.key !== key);
-    this._scheduleSave();
+    this._writer?.scheduleSave();
   }
   list(category) {
     this.prune();
@@ -13830,11 +13821,11 @@ class MemoryStore {
     const before = this._entries.length;
     this._entries = this._entries.filter((e) => e.ttl === 0 || now - e.updatedAt <= e.ttl);
     if (this._entries.length !== before)
-      this._scheduleSave();
+      this._writer?.scheduleSave();
   }
   clear() {
     this._entries = [];
-    this._scheduleSave();
+    this._writer?.scheduleSave();
   }
   formatForPrompt() {
     this.prune();
@@ -13858,60 +13849,27 @@ ${lines.join(`
 }
 
 // src/todo.ts
-import * as fs7 from "fs";
-import * as path7 from "path";
+import * as path8 from "path";
 import { randomUUID } from "crypto";
 var MAX_ITEMS = 10;
 var MAX_CONTENT_LENGTH = 200;
-var DEBOUNCE_MS2 = 500;
 var COMPLETED_TTL_MS = 24 * 60 * 60 * 1000;
 
 class TodoStore {
   _items = [];
-  _path = "";
-  _saveTimer = null;
-  _dirty = false;
+  _writer = null;
   get itemCount() {
     return this._items.length;
   }
   load(worktreePath) {
-    this._path = path7.join(worktreePath, ".agnes", "todos.json");
-    try {
-      const dir = path7.dirname(this._path);
-      if (!fs7.existsSync(dir)) {
-        fs7.mkdirSync(dir, { recursive: true });
-      }
-      if (fs7.existsSync(this._path)) {
-        const data = JSON.parse(fs7.readFileSync(this._path, "utf8"));
-        this._items = Array.isArray(data) ? data : [];
-      }
-    } catch {
-      this._items = [];
-    }
+    const filePath = path8.join(worktreePath, ".agnes", "todos.json");
+    ensureDir(filePath);
+    this._items = loadJsonFile(filePath, []);
+    this._writer = createDebouncedFileWriter(() => filePath, () => this._items);
     this.prune();
   }
-  _scheduleSave() {
-    this._dirty = true;
-    if (this._saveTimer)
-      return;
-    this._saveTimer = setTimeout(() => {
-      this._saveTimer = null;
-      if (this._dirty)
-        this._saveSync();
-    }, DEBOUNCE_MS2);
-  }
-  _saveSync() {
-    this._dirty = false;
-    try {
-      fs7.writeFileSync(this._path, JSON.stringify(this._items, null, 2), "utf8");
-    } catch {}
-  }
   save() {
-    if (this._saveTimer) {
-      clearTimeout(this._saveTimer);
-      this._saveTimer = null;
-    }
-    this._saveSync();
+    this._writer?.flushSave();
   }
   create(content, category) {
     const truncated = content.slice(0, MAX_CONTENT_LENGTH);
@@ -13927,7 +13885,7 @@ class TodoStore {
       this._items.shift();
     }
     this._items.push(item);
-    this._scheduleSave();
+    this._writer?.scheduleSave();
     return item;
   }
   update(id, partial2) {
@@ -13941,12 +13899,12 @@ class TodoStore {
     if (partial2.category !== undefined)
       item.category = partial2.category;
     item.updatedAt = Date.now();
-    this._scheduleSave();
+    this._writer?.scheduleSave();
     return item;
   }
   delete(id) {
     this._items = this._items.filter((i) => i.id !== id);
-    this._scheduleSave();
+    this._writer?.scheduleSave();
   }
   list(status, category) {
     this.prune();
@@ -13965,7 +13923,7 @@ class TodoStore {
       return false;
     const map2 = new Map(this._items.map((i) => [i.id, i]));
     this._items = ids.map((id) => map2.get(id));
-    this._scheduleSave();
+    this._writer?.scheduleSave();
     return true;
   }
   prune() {
@@ -13973,7 +13931,7 @@ class TodoStore {
     const before = this._items.length;
     this._items = this._items.filter((i) => i.status !== "completed" || now - i.updatedAt < COMPLETED_TTL_MS);
     if (this._items.length !== before)
-      this._scheduleSave();
+      this._writer?.scheduleSave();
   }
   formatForPrompt() {
     this.prune();
@@ -14037,30 +13995,30 @@ function collectStatus(version2, worktreePath, memory) {
 }
 
 // src/plugin-support.ts
-import * as fs8 from "fs";
-import * as path8 from "path";
+import * as fs7 from "fs";
+import * as path9 from "path";
 function detectProject(cwd) {
-  let projectName = path8.basename(cwd);
+  let projectName = path9.basename(cwd);
   try {
-    const pkg = JSON.parse(fs8.readFileSync(path8.join(cwd, "package.json"), "utf8"));
+    const pkg = JSON.parse(fs7.readFileSync(path9.join(cwd, "package.json"), "utf8"));
     if (pkg.name)
       projectName = pkg.name;
   } catch {}
   const languages = [];
-  if (fs8.existsSync(path8.join(cwd, "tsconfig.json")))
+  if (fs7.existsSync(path9.join(cwd, "tsconfig.json")))
     languages.push("typescript");
-  if (fs8.existsSync(path8.join(cwd, "go.mod")))
+  if (fs7.existsSync(path9.join(cwd, "go.mod")))
     languages.push("go");
-  if (fs8.existsSync(path8.join(cwd, "Cargo.toml")))
+  if (fs7.existsSync(path9.join(cwd, "Cargo.toml")))
     languages.push("rust");
-  if (fs8.existsSync(path8.join(cwd, "pyproject.toml")))
+  if (fs7.existsSync(path9.join(cwd, "pyproject.toml")))
     languages.push("python");
-  if (fs8.existsSync(path8.join(cwd, "package.json")))
+  if (fs7.existsSync(path9.join(cwd, "package.json")))
     languages.push("javascript");
   const lockfiles = { "bun.lock": "bun", "bun.lockb": "bun", "pnpm-lock.yaml": "pnpm", "yarn.lock": "yarn", "package-lock.json": "npm" };
   let packageManager = "npm";
   for (const [lock, name] of Object.entries(lockfiles)) {
-    if (fs8.existsSync(path8.join(cwd, lock))) {
+    if (fs7.existsSync(path9.join(cwd, lock))) {
       packageManager = name;
       break;
     }
@@ -14069,8 +14027,8 @@ function detectProject(cwd) {
 }
 
 // src/planner.ts
-import * as fs9 from "fs";
-import * as path9 from "path";
+import * as fs8 from "fs";
+import * as path10 from "path";
 var PLANS_DIR = ".opencode/plans";
 var _idCounter = 0;
 function generatePlanID() {
@@ -14080,7 +14038,7 @@ function generateTaskID() {
   return `task-${(++_idCounter).toString(36).padStart(4, "0")}`;
 }
 function getPlansDir(worktreePath) {
-  return path9.join(worktreePath, PLANS_DIR);
+  return path10.join(worktreePath, PLANS_DIR);
 }
 function createPlan(goal, maxIterations = 3) {
   return {
@@ -14099,14 +14057,14 @@ function createPlan(goal, maxIterations = 3) {
 }
 function savePlan(plan, worktreePath) {
   const dir = getPlansDir(worktreePath);
-  fs9.mkdirSync(dir, { recursive: true });
-  const filePath = path9.join(dir, `${plan.id}.json`);
-  fs9.writeFileSync(filePath, JSON.stringify(plan, null, 2), "utf8");
+  fs8.mkdirSync(dir, { recursive: true });
+  const filePath = path10.join(dir, `${plan.id}.json`);
+  fs8.writeFileSync(filePath, JSON.stringify(plan, null, 2), "utf8");
 }
 function loadPlan(planID, worktreePath) {
-  const filePath = path9.join(getPlansDir(worktreePath), `${planID}.json`);
+  const filePath = path10.join(getPlansDir(worktreePath), `${planID}.json`);
   try {
-    const raw = fs9.readFileSync(filePath, "utf8");
+    const raw = fs8.readFileSync(filePath, "utf8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -14122,24 +14080,24 @@ function gcPlans(worktreePath, maxAgeDays = 7, maxFiles = 50) {
   const dir = getPlansDir(worktreePath);
   let deleted = 0;
   try {
-    if (!fs9.existsSync(dir))
+    if (!fs8.existsSync(dir))
       return 0;
-    const entries = fs9.readdirSync(dir, { withFileTypes: true });
+    const entries = fs8.readdirSync(dir, { withFileTypes: true });
     const files = entries.filter((e) => e.isFile() && e.name.endsWith(".json")).map((e) => ({
       name: e.name,
-      path: path9.join(dir, e.name),
-      mtime: fs9.statSync(path9.join(dir, e.name)).mtimeMs
+      path: path10.join(dir, e.name),
+      mtime: fs8.statSync(path10.join(dir, e.name)).mtimeMs
     })).sort((a, b) => a.mtime - b.mtime);
     const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
     for (const file2 of files) {
       if (file2.mtime < cutoff) {
-        fs9.rmSync(file2.path, { force: true });
+        fs8.rmSync(file2.path, { force: true });
         deleted++;
       }
     }
     const remaining = files.filter((f) => {
       try {
-        fs9.accessSync(f.path, fs9.constants.F_OK);
+        fs8.accessSync(f.path, fs8.constants.F_OK);
         return true;
       } catch {
         return false;
@@ -14148,7 +14106,7 @@ function gcPlans(worktreePath, maxAgeDays = 7, maxFiles = 50) {
     while (remaining.length > maxFiles) {
       const oldest = remaining.shift();
       if (oldest) {
-        fs9.rmSync(oldest.path, { force: true });
+        fs8.rmSync(oldest.path, { force: true });
         deleted++;
       }
     }
@@ -14715,8 +14673,8 @@ var AgnesPlugin = async (input) => {
     config: async (config2) => {
       try {
         const configObj = config2;
-        const skillsPath = path10.join(worktreePath, ".opencode", "skills");
-        if (fs10.existsSync(skillsPath)) {
+        const skillsPath = path11.join(worktreePath, ".opencode", "skills");
+        if (fs9.existsSync(skillsPath)) {
           configObj.skills = configObj.skills || {};
           const skillsObj = configObj.skills;
           skillsObj.paths = skillsObj.paths || [];

@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
   runGates,
-  allGatesPassed,
   createPromiseComplianceGate,
 } from './verification.js';
 import type { Gate, GateResult } from './verification.js';
@@ -64,24 +63,6 @@ describe('runGates', () => {
     const results = await runGates(gates);
     expect(results).toHaveLength(1);
     expect(results[0].status).toBe('FAIL');
-  });
-});
-
-describe('allGatesPassed', () => {
-  test('returns true when all pass', () => {
-    const results: GateResult[] = [
-      makeResult({ gateId: 'a', status: 'PASS' }),
-      makeResult({ gateId: 'b', status: 'SKIP' }),
-    ];
-    expect(allGatesPassed(results)).toBe(true);
-  });
-
-  test('returns false when any fail', () => {
-    const results: GateResult[] = [
-      makeResult({ gateId: 'a', status: 'PASS' }),
-      makeResult({ gateId: 'b', status: 'FAIL' }),
-    ];
-    expect(allGatesPassed(results)).toBe(false);
   });
 });
 

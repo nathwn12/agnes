@@ -2,8 +2,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as logger from './logger.js';
 
-export type PlanPhase = 'pending' | 'decomposing' | 'scheduling' | 'executing' | 'reviewing' | 'running' | 'completed' | 'failed';
-export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'needs_review';
+type PlanPhase = 'pending' | 'decomposing' | 'scheduling' | 'executing' | 'reviewing' | 'running' | 'completed' | 'failed';
+type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'needs_review';
 
 export interface TaskItem {
   id: string;
@@ -18,7 +18,7 @@ export interface TaskItem {
   retryCount: number;
 }
 
-export interface WaveDef {
+interface WaveDef {
   index: number;
   taskIDs: string[];
 }
@@ -43,7 +43,7 @@ const PLANS_DIR = '.opencode/plans';
 
 let _idCounter = 0;
 
-export function generatePlanID(): string {
+function generatePlanID(): string {
   return `plan-${Date.now().toString(36)}-${(++_idCounter).toString(36)}`;
 }
 
@@ -92,37 +92,8 @@ export function updatePlan(plan: TaskPlan, worktreePath: string): void {
   savePlan(plan, worktreePath);
 }
 
-export function deletePlan(planID: string, worktreePath: string): void {
-  const filePath = path.join(getPlansDir(worktreePath), `${planID}.json`);
-  try {
-    fs.rmSync(filePath, { force: true });
-  } catch {
-    // ignore
-  }
-}
-
-export function findTasksByFile(plan: TaskPlan, filePath: string): TaskItem[] {
-  return plan.tasks.filter(t => t.files.includes(filePath));
-}
-
 export function getFailedTasks(plan: TaskPlan): TaskItem[] {
   return plan.tasks.filter(t => t.status === 'failed' || t.status === 'needs_review');
-}
-
-export function getCompletedTasks(plan: TaskPlan): TaskItem[] {
-  return plan.tasks.filter(t => t.status === 'completed');
-}
-
-export function getRunningTasks(plan: TaskPlan): TaskItem[] {
-  return plan.tasks.filter(t => t.status === 'running');
-}
-
-export function getPendingTasks(plan: TaskPlan): TaskItem[] {
-  return plan.tasks.filter(t => t.status === 'pending');
-}
-
-export function hasPendingOrRunning(plan: TaskPlan): boolean {
-  return plan.tasks.some(t => t.status === 'pending' || t.status === 'running');
 }
 
 export function gcPlans(worktreePath: string, maxAgeDays = 7, maxFiles = 50): number {

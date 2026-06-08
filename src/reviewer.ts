@@ -9,7 +9,7 @@ export interface ReviewVerdict {
   failedTaskIds: string[];
 }
 
-export function createCompletionGate(plan: TaskPlan): Gate {
+function createCompletionGate(plan: TaskPlan): Gate {
   return {
     id: 'orchestrator-completion',
     name: 'Task Completion',
@@ -33,7 +33,7 @@ export function createCompletionGate(plan: TaskPlan): Gate {
   };
 }
 
-export function createFileConflictGate(plan: TaskPlan): Gate {
+function createFileConflictGate(plan: TaskPlan): Gate {
   return {
     id: 'orchestrator-file-conflict',
     name: 'File Conflict',

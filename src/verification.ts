@@ -52,14 +52,6 @@ function recordGateResult(status: GateStatus): void {
   }
 }
 
-export function resetGateStats(): void {
-  _gateStats.checksPerformed = 0;
-  _gateStats.checksPassed = 0;
-  _gateStats.checksFailed = 0;
-  _gateStats.retriesPerformed = 0;
-  _gateStats.lastFailureAt = undefined;
-}
-
 export async function runGates(gates: Gate[]): Promise<GateResult[]> {
   const results: GateResult[] = [];
   for (const gate of gates) {
@@ -90,36 +82,6 @@ export async function runGates(gates: Gate[]): Promise<GateResult[]> {
     }
   }
   return results;
-}
-
-export async function verifyWithRetry(
-  output: string,
-  retryFn: () => Promise<string>,
-  maxRetries: number = 2,
-  tier?: ModelTier,
-): Promise<{ passed: boolean; finalOutput: string; retries: number }> {
-  const modelTier = tier ?? detectModelTier();
-  let currentOutput = output;
-  let retries = 0;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const gate = createPromiseComplianceGate(currentOutput, modelTier);
-    try {
-      await runGates([gate]);
-      return { passed: true, finalOutput: currentOutput, retries };
-    } catch {
-      if (attempt < maxRetries) {
-        _gateStats.retriesPerformed++;
-        retries++;
-        currentOutput = await retryFn();
-      }
-    }
-  }
-  return { passed: false, finalOutput: currentOutput, retries };
-}
-
-export function allGatesPassed(results: GateResult[]): boolean {
-  return results.every(r => r.status === 'PASS' || r.status === 'SKIP');
 }
 
 function extractCanonicalAgnesMessageEnvelope(text: string): string | null {
