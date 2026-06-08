@@ -1,246 +1,369 @@
 import type { Plugin } from '@opencode-ai/plugin';
+import { tool } from '@opencode-ai/plugin';
 import { randomUUID } from 'node:crypto';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   getBootstrapContent,
-  buildBootstrap,
-  getBootstrapPackageInfo,
 } from './bootstrap.js';
-import type { OrchestratorRules } from './bootstrap.js';
-import type { PlanIndex } from './state.js';
 import {
-  findProjectRoot,
-  readPlanIndex,
-  createBuiltinPlan,
-} from './state.js';
-import type { PlannerRoutingContext } from './state.js';
-import { getPlanGate, buildExecutionContext, classifyPlannerRoute } from './runtime.js';
-import { serializeAgnesMessage } from './protocol.js';
+  discoverCommands,
+} from './discovery.js';
+import { buildResultMessage } from './protocol.js';
 
-import { detectShell } from './shell.js';
+import * as logger from './logger.js';
 import {
-  collectMessageText,
-  evaluateCompactionPolicy,
-  rememberCompactionState,
-} from './compaction.js';
+  delegateBlocking,
+  delegateAsync,
+  getSubagentResult,
+  recordTaskRef,
+  lookupTaskRef,
+  initTaskRefStore,
+  clearTaskRefs,
+} from './delegate.js';
+import { setYoloMode, isYoloMode, setModelId, detectModelTier } from './runtime.js';
+import { detectProject } from './plugin-support.js';
+import {
+  createOrchestration,
+  advanceOrchestration,
+} from './orchestrator.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const skillsDir = path.resolve(__dirname, '../skills');
+let _bootstrapInjected = false;
 
-let _modelName: string | undefined;
-let _plannerMode: 'auto' | 'builtin' | 'full' = 'auto';
+export const AgnesPlugin: Plugin = async (input) => {
+  const { directory, worktree } = input;
+  const worktreePath = worktree || directory;
+  const editedFiles = new Set<string>();
 
-function buildStructuredBootstrap(planner?: PlannerRoutingContext): string {
-  const proseBootstrap = getBootstrapContent(planner);
-  if (!proseBootstrap) return '';
+  initTaskRefStore(worktreePath);
 
-  const pkg = getBootstrapPackageInfo();
-  const rules: OrchestratorRules = {
-    delegate: true,
-    parallelize: true,
-    onePercent: true,
-    verify: true,
-    noSharedEdits: true,
-    freshSubagents: true,
-    scarcity: true,
-    answerDirectly: true,
-    namedRoles: {
-      executor: "Runs commands, tests, builds. Returns compact pass/fail + file refs. Never suggests fixes.",
-      explorer: "Codebase research only. Glob → grep → selective read. Read-only. Never edits.",
-      planner: "Creates/refreshes plan-NNN.yaml from task requirements using planner skill.",
-      builder: "Implements one sub-task from plan. Delegates bash to executor and review to reviewer.",
-      reviewer: "Reviews diff against sub-task scope using reviewer skill. Writes findings.",
-    },
-  };
-
-  let index: PlanIndex | null = null;
-  try {
-    const workspaceRoot = findProjectRoot();
-    if (workspaceRoot) {
-      index = readPlanIndex(workspaceRoot);
-    }
-  } catch {
-    // non-fatal
-  }
-
-  const shell = detectShell();
-
-  const structuredBlocks = buildBootstrap({
-    pkg,
-    rules,
-    index,
-    planner,
-    shell: {
-      name: shell.shellType,
-      version: shell.shellType,
-      antiPatterns: shell.antiPatterns,
-      preferredSyntax: shell.preferredSyntax,
-    },
-    exec: {
-      attempt: 1,
-      struggleDetected: false,
-      lastPromiseTag: null,
-    },
-  });
-
-  return proseBootstrap + '\n\n## Structured Protocol Blocks\n' + structuredBlocks + '\n';
-}
-
-export const AgnesPlugin: Plugin = async () => {
   return {
     config: async (config: Record<string, unknown>) => {
-      detectShell();
-      const configObj = config as Record<string, unknown>;
-      _modelName = typeof configObj.model === 'string' ? configObj.model : undefined;
+      try {
+        const configObj = config as Record<string, unknown>;
 
-      const plannerConfig = (configObj.planner as Record<string, unknown> | undefined) ?? {};
-      _plannerMode = typeof plannerConfig.mode === 'string' && ['auto', 'builtin', 'full'].includes(plannerConfig.mode)
-        ? plannerConfig.mode as 'auto' | 'builtin' | 'full'
-        : 'auto';
-      configObj.planner = {
-        ...plannerConfig,
-        mode: _plannerMode,
-      } as Record<string, unknown>;
+        const skillsPath = path.join(worktreePath, '.opencode', 'skills');
+        if (fs.existsSync(skillsPath)) {
+          configObj.skills = configObj.skills || {};
+          const skillsObj = configObj.skills as Record<string, unknown>;
+          skillsObj.paths = (skillsObj.paths as string[]) || [];
+          if (!(skillsObj.paths as string[]).includes(skillsPath)) {
+            (skillsObj.paths as string[]).push(skillsPath);
+          }
+        }
 
-      configObj.provider = {
-        ...(configObj.provider as Record<string, unknown> || {}),
-        interleaved: { field: "reasoning_content" },
-      } as Record<string, unknown>;
-
-      const skillsConfig = configObj.skills as { paths?: string[] } | undefined;
-      const paths = skillsConfig?.paths ? [...skillsConfig.paths] : [];
-      if (!paths.includes(skillsDir)) {
-        paths.push(skillsDir);
-      }
-      configObj.skills = { ...(configObj.skills as Record<string, unknown> || {}), paths };
-    },
-
-    "chat.message": async (input) => {
-      if (input.model?.modelID && typeof input.model.modelID === 'string') {
-        _modelName = input.model.modelID;
+        const cmdCfgObj = (configObj.command || {}) as Record<string, unknown>;
+        for (const cmd of discoverCommands(worktreePath)) {
+          if (!cmdCfgObj[cmd.name]) {
+            cmdCfgObj[cmd.name] = {
+              description: cmd.desc,
+              template: `${cmd.template}\n\n$ARGUMENTS`,
+            };
+          }
+        }
+        configObj.command = cmdCfgObj;
+      } catch (err) {
+        logger.error('Failed to apply plugin config', err);
       }
     },
 
-    "tool.definition": async (input, output) => {
-      if (input.toolID === 'edit' || input.toolID === 'write') {
-        output.description = `[AGNES ENFORCEMENT] This tool MUST be called inside a @builder subagent, not in main context. In main context, delegate via the \`task\` tool. Rule: delegate_or_die. | ${output.description}`;
-      }
-      if (input.toolID === 'glob' || input.toolID === 'grep') {
-        output.description = `[AGNES ENFORCEMENT] Searching the codebase must be delegated to an @explorer subagent. In main context, delegate via \`task\`. Rule: no analysis in main context. | ${output.description}`;
-      }
-      if (input.toolID === 'bash') {
-        output.description = `[AGNES ENFORCEMENT] All commands must run inside an @executor subagent. In main context, delegate via \`task\`. Use \`task\` to spawn a subagent that runs this command. Rule: no mutating commands in main context. | ${output.description}`;
+    tool: {
+      agnes_delegate: tool({
+        description: 'Delegate a task to a subagent. Use this instead of the built-in delegate_task (which is deprecated and unreliable).',
+        args: {
+          agent: tool.schema.enum(['explore', 'general']).describe('Which agent type to delegate to'),
+          description: tool.schema.string().describe('Short description of the task'),
+          prompt: tool.schema.string().describe('Full instructions for the subagent'),
+          background: tool.schema.boolean().default(false).describe('If true, returns a task reference for later polling with agnes_get_result. If false, blocks until complete.'),
+        },
+        async execute(args, ctx) {
+          try {
+            if (args.background) {
+              const ref = await delegateAsync(input.client, {
+                agent: args.agent,
+                description: args.description,
+                prompt: args.prompt,
+                sessionID: ctx.sessionID,
+                directory: ctx.directory,
+              });
+              recordTaskRef(ref, {
+                sessionID: ref,
+                directory: ctx.directory,
+                agent: args.agent,
+                description: args.description,
+              });
+              return ref;
+            }
+            return await delegateBlocking(input.client, {
+              agent: args.agent,
+              description: args.description,
+              prompt: args.prompt,
+              sessionID: ctx.sessionID,
+              directory: ctx.directory,
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `ERROR: agnes_delegate failed — ${msg}`;
+          }
+        },
+      }),
+
+      agnes_get_result: tool({
+        description: 'Get the result of a previously-delegated async task (delegated via agnes_delegate with background=true).',
+        args: {
+          taskRef: tool.schema.string().describe('The task reference string returned by agnes_delegate(background=true)'),
+        },
+        async execute(args, ctx) {
+          try {
+            const info = lookupTaskRef(args.taskRef);
+            const directory = info?.directory ?? ctx.directory;
+            const result = await getSubagentResult(input.client, args.taskRef, directory);
+            switch (result.status) {
+              case 'completed':
+                return result.output ?? '(no output)';
+              case 'pending':
+                return 'PENDING — subagent still working. Try agnes_get_result again shortly.';
+              case 'not_found':
+                return `ERROR: task reference "${args.taskRef}" not found. The session may have been cleaned up or never started.`;
+              case 'error':
+                return `ERROR: ${result.error ?? 'unknown error'}`;
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `ERROR: agnes_get_result failed — ${msg}`;
+          }
+        },
+      }),
+
+      agnes_orchestrate: tool({
+        description: 'Execute a full plan → decompose → delegate → review → iterate cycle. Use for multi-file features or complex tasks that benefit from parallel subagents and iterative review.',
+        args: {
+          goal: tool.schema.string().describe('The goal or feature to implement'),
+          tasksJSON: tool.schema.string().optional().describe('JSON array of tasks. Each task: { id, description, files: string[], dependsOn: string[], agent: "explore"|"general" }. If omitted, creates an empty plan for the model to populate.'),
+          planID: tool.schema.string().optional().describe('Resume an existing plan by ID'),
+          maxIterations: tool.schema.number().optional().default(3).describe('Max review→iterate cycles (default 3)'),
+        },
+        async execute(args, ctx) {
+          try {
+            let tasks;
+            if (args.tasksJSON) {
+              try {
+                const parsed = JSON.parse(args.tasksJSON);
+                if (!Array.isArray(parsed)) throw new Error('tasksJSON must be a JSON array');
+                tasks = parsed;
+              } catch (parseErr) {
+                return `ERROR: invalid tasksJSON — ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`;
+              }
+            }
+
+            const result = await createOrchestration(input.client, {
+              goal: args.goal,
+              tasks,
+              planID: args.planID,
+              maxIterations: args.maxIterations ?? 3,
+              sessionID: ctx.sessionID,
+              directory: ctx.directory,
+            });
+
+            return [
+              `## Orchestration Created`,
+              `**Plan:** ${result.planID}`,
+              `**Goal:** ${result.goal}`,
+              `**Phase:** ${result.phase}`,
+              `**Tasks:** ${result.totalTasks} total, ${result.completedTasks} done, ${result.runningTasks} running, ${result.failedTasks} failed`,
+              `**Wave:** ${result.currentWave}/${result.totalWaves}`,
+              `**Edited files:** ${result.editedFiles.length > 0 ? result.editedFiles.join(', ') : '(none)'}`,
+              result.error ? `**Error:** ${result.error}` : '',
+              '',
+              result.phase === 'completed'
+                ? '✅ All tasks passed review.'
+                : result.phase === 'failed'
+                  ? '⚠ Orchestration failed.'
+                  : '⏳ Orchestration is running — poll with agnes_orchestrate_status to check progress.',
+            ].filter(Boolean).join('\n');
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `ERROR: agnes_orchestrate failed — ${msg}`;
+          }
+        },
+      }),
+
+      agnes_orchestrate_status: tool({
+        description: 'Check status of an orchestration plan AND advance the state machine. Keeps calling until phase is "completed" or "failed".',
+        args: {
+          planID: tool.schema.string().describe('The plan ID returned by agnes_orchestrate'),
+        },
+        async execute(args, ctx) {
+          try {
+            const result = await advanceOrchestration(
+              input.client,
+              args.planID,
+              ctx.directory,
+              ctx.sessionID,
+            );
+
+            const details = result.editedFiles.length > 0
+              ? `\n**Files edited:** ${result.editedFiles.join(', ')}`
+              : '';
+
+            const pendingInfo = result.pendingCalls > 0
+              ? `\n**Pending subagent calls:** ${result.pendingCalls}`
+              : '';
+
+            return [
+              `## Plan: ${result.planID}`,
+              `**Phase:** ${result.phase}`,
+              `**Goal:** ${result.goal}`,
+              `**Iterations:** ${result.iterations}/${result.maxIterations}`,
+              `**Tasks:** ${result.completedTasks}/${result.totalTasks} done, ${result.runningTasks} running, ${result.failedTasks} failed`,
+              `**Wave:** ${result.currentWave}/${result.totalWaves}`,
+              pendingInfo,
+              details,
+              result.error ? `**Error:** ${result.error}` : '',
+              '',
+              result.phase === 'completed'
+                ? '✅ Plan completed successfully.'
+                : result.phase === 'failed'
+                  ? '⚠ Plan failed.'
+                  : '⏳ Plan still running — check again with agnes_orchestrate_status.',
+            ].filter(Boolean).join('\n');
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `ERROR: agnes_orchestrate_status failed — ${msg}`;
+          }
+        },
+      }),
+    },
+
+    'tool.definition': async ({ toolID }, output) => {
+      try {
+        if (toolID === 'delegate_task') {
+          output.description = 'DEPRECATED — Use agnes_delegate instead. This tool may return inconsistent task IDs and is not recommended.';
+        }
+        if (toolID === 'get_task_result') {
+          output.description = 'DEPRECATED — Use agnes_get_result instead. This tool may fail to resolve task references.';
+        }
+      } catch (err) {
+        logger.warn('tool.definition hook failed', err);
       }
     },
 
-    "experimental.chat.system.transform": async (_input, output) => {
-      output.system.push(
-        '',
-        '=== AGNES DELEGATION ENFORCEMENT (HARD RULES) ===',
-        'You are AGNES. These rules are NOT optional. They are structural constraints. Violations are bugs.',
-        '',
-        '1. NEVER call edit/write/glob/grep/bash in main context. These tools are FORBIDDEN here.',
-        '2. ALWAYS use the `task` tool to spawn a subagent for any work.',
-        '3. If you catch yourself thinking, analyzing, or planning in main context — STOP. Delegate via `task`.',
-        '4. Main context is TALK + DELEGATE only. All tools except `task`, `skill`, and `read` (state only) must go through subagents.',
-        '5. The `tool.definition` hook prepends warnings to work tools. Read those warnings. Obey them.',
-        '=== END AGNES DELEGATION ENFORCEMENT ===',
-        '',
-      );
+    'chat.message': async (input: { model?: { modelID: string } }) => {
+      if (input.model?.modelID) {
+        setModelId(input.model.modelID);
+      }
+    },
+
+    'tool.execute.after': async (input: { tool: string; args?: Record<string, unknown> }, _output: unknown) => {
+      const filePath = input.args?.filePath as string | undefined;
+      if ((input.tool === 'edit' || input.tool === 'write') && filePath) {
+        editedFiles.add(filePath);
+      }
+    },
+
+    event: async ({ event }: { event: { type: string; sessionID?: string; path?: string } }) => {
+      try {
+        switch (event.type) {
+          case 'session.created':
+            if (event.sessionID && !_bootstrapInjected) {
+              const bootstrap = getBootstrapContent(undefined, detectModelTier());
+              if (bootstrap) {
+                await input.client.session.prompt({
+                  path: { id: event.sessionID },
+                  body: {
+                    noReply: true,
+                    parts: [{ type: 'text', text: bootstrap }],
+                  },
+                });
+                _bootstrapInjected = true;
+              }
+            }
+            break;
+          case 'file.edited':
+            if (event.path) editedFiles.add(event.path);
+            break;
+        }
+      } catch (err) {
+        logger.warn('Failed to handle event ' + event.type, err);
+      }
+    },
+
+    'experimental.session.compacting': async (_input: unknown, output: { context?: string[]; prompt?: string }) => {
+      try {
+        output.context = output.context ?? [];
+        const bootstrap = getBootstrapContent(undefined, detectModelTier());
+        if (bootstrap) {
+          output.context.push(`\n\n${bootstrap}\n\n`);
+        }
+        if (editedFiles.size > 0) {
+          const files = [...editedFiles].map(f => `- ${f}`).join('\n');
+          output.context.push(`\nEdited files this session:\n${files}\n`);
+        }
+      } catch (err) {
+        logger.warn('Failed to inject bootstrap into compaction context', err);
+      }
+    },
+
+    'session.deleted': async () => {
+      try {
+        editedFiles.clear();
+        resetBootstrapInjected();
+        clearTaskRefs();
+      } catch (err) {
+        logger.warn('Failed to clean up session state', err);
+      }
     },
 
     'experimental.chat.messages.transform': async (_input, output) => {
+      if (_bootstrapInjected) return;
       if (!output.messages?.length) return;
 
       const firstUser = output.messages.find((m) => m.info?.role === 'user');
       if (!firstUser?.parts?.length) return;
 
-      if (firstUser.parts.some((p) => p.type === 'text' && typeof p.text === 'string' && p.text.includes('EXTREMELY_IMPORTANT'))) return;
+      if (firstUser.parts.some((p) => p.type === 'text' && typeof p.text === 'string' && p.text.includes('[AGNES v'))) return;
+      if (firstUser.parts.some((p) => p.type === 'agent')) return;
 
-      let planGate = '';
-      let execContext = '';
-      let plannerState: PlannerRoutingContext | undefined;
+      const userText = firstUser.parts
+        .filter((p: any) => p.type === 'text' && typeof p.text === 'string')
+        .map((p: any) => p.text.toLowerCase())
+        .join(' ');
+      const yoloFlags = ['--yolo', '--auto', '/yolo', '/auto', 'yolo mode', '--yes'];
+      const yolo = yoloFlags.some((flag) => userText.includes(flag));
+      setYoloMode(yolo);
 
       try {
-        const workspaceRoot = findProjectRoot();
-        if (workspaceRoot) {
-          const userParts = firstUser.parts as Array<{ type: string; text?: string }>;
-          const userText = userParts
-            .filter((p) => p.type === 'text' && typeof p.text === 'string')
-            .map((p) => p.text as string)
-            .join(' ');
-          if (userText) {
-            plannerState = classifyPlannerRoute(userText, _plannerMode);
-            if (plannerState.route === 'builtin') {
-              const index = readPlanIndex(workspaceRoot);
-              if (!index || !index.activePlanId) {
-                createBuiltinPlan({ goal: userText, source: 'user' }, workspaceRoot);
-              }
-              planGate = getPlanGate(workspaceRoot) || '';
-            } else if (plannerState.route === 'full') {
-              planGate = getPlanGate(workspaceRoot) || '';
-            } else {
-              planGate = '';
-            }
-          }
-          const index = readPlanIndex(workspaceRoot);
-          if (index?.activePlanId) {
-            const activeEntry = index.plans.find(p => p.id === index.activePlanId);
-            if (activeEntry) {
-              execContext = buildExecutionContext(activeEntry);
-            }
-          }
+        const tier = detectModelTier();
+        const bootstrap = getBootstrapContent(detectProject(worktreePath), tier);
+        if (!bootstrap) return;
+
+        let fullBootstrap = bootstrap;
+
+        if (isYoloMode()) {
+          fullBootstrap += `\n\n**⚠ YOLO MODE ACTIVATED** — Autonomous execution. Skip question gates. Max parallelization. No confirmation pauses.`;
         }
-      } catch {
-        // non-fatal
+
+        fullBootstrap += `\n\n## Completion Protocol\nWhen all tasks are complete, place this HTML comment at the very end of your response (invisible to users, parsed by AGNES):\n${buildResultMessage({taskId:'task-000',status:'DONE',content:'...',artifact:{}})}\n`;
+
+        const messageID = (firstUser.parts[0] as { messageID?: string }).messageID ?? '';
+        const sessionID = (firstUser.parts[0] as { sessionID?: string }).sessionID ?? '';
+        firstUser.parts.unshift({
+          id: randomUUID(),
+          sessionID,
+          messageID,
+          type: 'text',
+          text: fullBootstrap,
+        });
+
+        _bootstrapInjected = true;
+      } catch (err) {
+        logger.warn('Failed to build bootstrap', err);
       }
-
-      const bootstrap = buildStructuredBootstrap(plannerState);
-      if (!bootstrap) return;
-
-      const modelLabel = _modelName ? `- Current model: \`${_modelName}\`` : '';
-
-      let fullBootstrap = bootstrap + (planGate || '');
-
-      if (modelLabel) {
-        fullBootstrap += `\n\n## Active Model\n${modelLabel}\n`;
-      }
-
-      if (execContext) {
-        fullBootstrap += `\n\n## Execution Context\n${execContext}\n`;
-      }
-
-      let compactionAdvisory = '';
-      try {
-        const allText = collectMessageText(output.messages || []);
-        if (allText) {
-          const sessionID = _modelName || 'default';
-          const decision = evaluateCompactionPolicy({
-            sessionID,
-            promptText: allText,
-          });
-          rememberCompactionState(sessionID, decision.state);
-          compactionAdvisory = decision.advisory;
-        }
-      } catch {
-        // non-fatal
-      }
-      if (compactionAdvisory) {
-        fullBootstrap += '\n\n' + compactionAdvisory + '\n';
-      }
-
-      fullBootstrap += `\n\n## Completion Protocol\nWhen all tasks are complete, place this HTML comment at the very end of your response (invisible to users, parsed by AGNES):\n<!-- ${serializeAgnesMessage({type:'completion',id:randomUUID(),timestamp:new Date().toISOString(),status:'DONE',summary:'all tasks completed successfully'})} -->\nFor partial results:\n<!-- ${serializeAgnesMessage({type:'result',taskId:'task-000',id:randomUUID(),timestamp:new Date().toISOString(),status:'DONE',content:'...',artifact:{}})} -->\n`;
-
-
-      const { sessionID, messageID } = firstUser.parts[0];
-      firstUser.parts.unshift({
-        id: randomUUID(),
-        sessionID,
-        messageID,
-        type: 'text',
-        text: fullBootstrap,
-      });
     },
+
   };
 };
+
+function resetBootstrapInjected(): void {
+  _bootstrapInjected = false;
+}

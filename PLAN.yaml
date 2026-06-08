@@ -1,0 +1,98 @@
+# AGNES Orchestration Redesign v0.23.0
+# Merging best patterns from opencode-orchestrator + subtask2
+# Strategy: promptAsync with subtask parts (no child session pool)
+
+---
+version: "0.23.0"
+status: draft
+created: 2026-06-05T15:00:00+08:00
+
+phases:
+  - id: phase-1
+    title: "Core Data Models + Return Chains"
+    description: "Add return chains, loop state, named results, and task types. No behavioral changes yet."
+    status: complete
+    tasks:
+      - [x] Extract ParallelTask type into dedicated types file
+      - [x] Add ReturnChain types + state management (session → string[], stacked returns)
+      - [x] Add LoopState types + activeLoops map
+      - [x] Add deferred/pending prompt return state (for message-hooks injection)
+      - [x] Add parent session mapping (prompt-content → sessionID for race safety)
+      - [x] Add concurrency limits type + per-agent slot tracking
+
+  - id: phase-2
+    title: "Refactor DelegationManager → OrchestratorManager (OBSOLETE — REMOVED v0.25.0)"
+    description: "Entire orchestration/ directory was deleted. AGNES now delegates via native task tool with subagent_type."
+    status: superseded
+    tasks:
+      - [x] REMOVED: src/orchestration/ deleted entirely
+      - [x] REMOVED: delegate_task, get_task_result, cancel_task tool registrations
+      - [x] REMOVED: OrchestratorManager, SessionStore, ConcurrencyController
+      - [x] REPLACED WITH: native `task` tool with `subagent_type`
+
+  - id: phase-3
+    title: "Return Chain Processing (session.idle)"
+    description: "Process return chains when sessions go idle — the heartbeat of the pipeline."
+    status: complete
+    tasks:
+      - [x] Write return chain executor (commands via command(), prompts via promptAsync)
+      - [x] Handle priority order: deferredReturn > pendingReturn > stackedReturns > returnState > nonSubtaskReturns
+      - [x] Parse inline subtask syntax (/subtask {overrides} prompt) in return items
+      - [x] Loop evaluation: parse <subtask2 loop="break"/> from LLM output
+      - [x] Handle loop iteration (re-execute command/subtask, increment counter)
+      - [x] Handle deferred returns from loops (push onto return stack on break)
+      - [x] Wire session.idle event handler in plugin.ts
+
+  - id: phase-4
+    title: "Message Transform + Summary Leak Filtering"
+    description: "Replace generic Summarize messages with return prompts; filter noise."
+    status: complete
+    tasks:
+      - [x] Detect and filter summary leak messages (step-start with known patterns)
+      - [x] Find OPENCODE_GENERIC messages ("Summarize the task tool output...")
+      - [x] Inject return prompts: replace generic text, clear stale assistant responses
+      - [x] Inject loop evaluation prompts (or yield prompts for unconditional)
+      - [x] Inject pending prompt returns from session.idle
+      - [x] Inline subtask detection in user messages (/subtask {...})
+      - [x] Mutate output.messages in-place (splice/push, never reassign)
+      - [x] Wire experimental.chat.messages.transform handler in plugin.ts
+
+  - id: phase-5
+    title: "$RESULT[name] Capture + Race-Safe Parent Mapping"
+    description: "Named subtask results and robust parent session resolution."
+    status: complete
+    tasks:
+      - [x] Register pending capture by prompt content (before subtask spawn)
+      - [x] Consume capture in tool.execute.before (when we know subtask session ID)
+      - [x] Capture result in session.idle (latest assistant text)
+      - [x] Capture non-subtask command results (main session capture)
+      - [x] Resolve $RESULT[name] references in return items and prompts
+      - [x] Parent session resolution: prompt-content → sessionID mapping
+      - [x] Wire tool.execute.before/after handlers in plugin.ts
+      - [x] Wire session.deleted cleanup
+
+  - id: phase-6
+    title: "Bootstrap + Runtime Cleanup"
+    description: "Remove dead code, align bootstrap with new architecture."
+    status: complete
+    tasks:
+      - [x] Remove dead shell references from runtime.ts
+      - [x] Remove dead verification.ts singleton gates (already done in v0.22)
+      - [x] Remove shell.ts model-routing.ts (already done)
+      - [x] Update bootstrap to include return chain/loop/results context
+      - [x] Add orchestration instructions to AGENTS.md
+      - [x] Clean up SOUL.md to reflect new delegation contract
+
+  - id: phase-7
+    title: "Tests + Dead Code Removal"
+    description: "Clean sweep — removed orphaned modules, duplicated validators, dead exports, archived plans. Wired verification gates, YOLO mode, clearTaskRefs, project profile into bootstrap."
+    status: complete
+    tasks:
+      - [x] Run typecheck — 0 errors
+      - [x] Run test suite — all pass, no regressions
+      - [x] Nuked: src/state.ts (orphaned), src/test-utils.ts (orphaned), .archive/ (26 dead skill files)
+      - [x] Nuked: duplicate session.deleted handler, redundant isValidAgnesMessage call in parseAgnesMessage
+      - [x] Nuked: registerGate(), generateMessageId(), fictional MCP/integration plan files
+      - [x] Wired: isYoloMode → bootstrap injection, clearTaskRefs → session.deleted
+      - [x] Wired: verification gates → delegate pipeline, detectProject → bootstrap
+      - [x] Wired: buildResultMessage → completion protocol injection

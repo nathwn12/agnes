@@ -3,5 +3,9 @@ node_modules/
 review-package/
 verification/
 /.agnes
+.archive/
 nul
-/.opencode
+/.opencode/index.json
+/.opencode/plans/
+/.opencode/INSTALL.md
+/.worktree

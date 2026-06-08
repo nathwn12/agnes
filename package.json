@@ -1,11 +1,17 @@
 {
   "name": "agnes",
-  "version": "0.15.0",
-  "description": "AGNES — OpenCode Native Plugin: orchestrator plugin that routes tasks across 24 fused skills",
+  "version": "0.36.2",
+  "description": "AGNES — OpenCode Native Plugin: orchestrator plugin with 9 bundled skills + 14 commands",
   "type": "module",
   "main": ".opencode/plugins/agnes.js",
   "repository": "github:nathwn12/agnes",
-  "keywords": ["opencode", "plugin", "agent", "orchestrator", "skills"],
+  "keywords": [
+    "opencode",
+    "plugin",
+    "agent",
+    "orchestrator",
+    "skills"
+  ],
   "license": "MIT",
   "scripts": {
     "bundle": "bun build src/plugin.ts --outfile .opencode/plugins/agnes.js --target bun",
@@ -13,7 +19,9 @@
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "release": "bun run scripts/release.ts --go",
+    "release:dry": "bun run scripts/release.ts"
   },
   "devDependencies": {
     "@opencode-ai/plugin": "^1.15.5",
@@ -22,9 +30,5 @@
     "@typescript-eslint/parser": "^8.59.4",
     "eslint": "^10.4.0",
     "typescript": "^5.7"
-  },
-  "dependencies": {
-    "yaml": "^2.9.0",
-    "zod": "^4.4.3"
   }
 }

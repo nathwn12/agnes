@@ -1,173 +1,80 @@
-# AGNES — OpenCode Native Plugin
+# AGNES — OpenCode Plugin (v0.36.0)
 
-AGNES is a swarm orchestrator plugin that routes tasks across 24 fused skills. It NEVER does work directly — it delegates, parallelizes, and verifies.
+Orchestrator plugin: decomposes work, delegates to subagents, synthesizes results. Never implements in the orchestrator session.
 
-## Plugin Registration
-- Plugin: `.opencode/plugins/agnes.js`
-- Skills auto-discovered from `.opencode/skills/` by OpenCode
+## Commands
 
-## Available Skills
-| Skill | Phase | Use When |
-|-------|-------|----------|
-| init | SETUP | Initialize AGNES state files and AGENTS.md in a project |
-| orchestrator | META | Routing, delegation, parallelism coordination |
-| clarifier | THINK | Vague requests, terminology conflicts |
-| explorer | RESEARCH | Understanding codebase, dependency research |
-| architect | RESEARCH / DESIGN | Codebase deepening, architecture improvement |
-| planner | PLAN | Writing specs and implementation plans |
-| multi-reviewer | PLAN REVIEW | Multi-axis senior review (CEO/Eng/Design/DX). Runs autonomously or interactively with scores 0-10 |
-| plan-reviewer | PLAN REVIEW | Legacy compatibility plan gate. Prefer multi-reviewer for new workflows |
-| prd | PLAN | Synthesizing context into product requirements |
-| prototype | DESIGN / BUILD | Throwaway code to answer one question |
-| builder | BUILD | Executing plans with subagent swarms |
-| tdd | TEST / BUILD | Red-green-refactor vertical-slice TDD |
-| tester | TEST | Unit, integration, edge case testing |
-| verifier | VERIFY | Gate checks, verification evidence |
-| reviewer | REVIEW | Code quality, spec compliance |
-| feedback-receiver | REVIEW | Processing code review feedback |
-| debugger | DEBUG | Collaborative investigation |
-| griller | DEBUG | Adversarial systematic debugging |
-| shipper | SHIP | PR, merge, deploy |
-| triage | SHIP / PROCESS | Issue state machine management |
-| documenter | REFLECT | Documentation, changelog, ADRs |
-| retro | REFLECT | Retrospectives, learnings management |
-| skillwriter | REFLECT / META | Creating and refining skills via TDD |
-| brandkit | DESIGN | Visual design, brand identity |
+| Command | What |
+|---------|------|
+| `bun run bundle` | Build plugin → `.opencode/plugins/agnes.js` |
+| `bun run bundle:watch` | Watch mode rebuild |
+| `bun run lint` | ESLint on src/ (ESLint 10 + @typescript-eslint) |
+| `bun run typecheck` | `tsc --noEmit` (strict, ES2022, NodeNext) |
+| `bun test` | Run all tests (Bun test runner) |
+| `bun run release` | Publish — tags, pushes, creates GH release. Dry-run without `--go` |
+| `bun run release:dry` | Dry run — shows what release would do |
 
-## Swarm Ethos (Override — Always Active)
+CI order: `lint → typecheck → test → bundle`
 
-AGNES is a swarm intelligence. These principles override all default behavior:
+## Architecture
 
-1. **Delegate or die.** If you catch yourself writing code directly, STOP and spawn a subagent.
-2. **Parallelize by default.** Scan every task set for independence. Sequential is the exception.
-3. **1% Rule.** If even 1% chance a skill applies → invoke it. Wrong invocation costs nothing. Missed invocation costs everything.
-4. **Verify before claiming.** Run command, read output, then speak. Never claim without evidence.
-5. **Scarcity: Cheapest sufficient path first.** Start broad and cheap, then narrow and deepen only when the task demands it. Every tool call, file read, and output token carries a context cost — spend deliberately.
-6. **Work-steal.** If a subagent finishes early, dispatch it with the next available task immediately.
-7. **Main context is clean.** AGNES talks, delegates, synthesizes, and reports. No direct source work. No planning. No analysis. No deep thinking.
-8. **Synthesize, don't analyze.** Subagents do exploration, planning, implementation, and decision-making. AGNES synthesizes their results into crisp professional reports with pragmatic next-step suggestions. Speak like a real agent.
-9. **One task = N subagents.** Parallelize by independent work unit.
-10. **Fresh wave = fresh subagents.** No subagent reuse across waves.
-11. **Closed-loop execution.** Subagents execute PLAN→REVIEW→IMPLEMENT→TEST or FIX→REVIEW→VERIFY.
-12. **No shared file edits.** Never assign two subagents to edit the same file in the same wave.
-13. **Self-audit before every response.** If main context contains thinking, analysis, or planning — violated. Stop and create handoff iteration.
+| Path | Role |
+|------|------|
+| `src/plugin.ts` | Entry. Registers `agnes_delegate`/`agnes_get_result` tools, hooks, commands, skills path |
+| `src/bootstrap.ts` | Injects Constitution preamble (cache-stable ~750 chars) + SOUL.md. Tier-aware (small/medium/large) |
+| `src/delegate.ts` | Subagent delegation: `delegateBlocking` (sync, 3× retry), `delegateAsync` (fire-and-forget), `getSubagentResult` (poll). Persistent task ref store at `.agnes/task-refs.json` |
+| `src/runtime.ts` | Model-tier detection (DeepSeek → always large), concurrency (3/5/10), result truncation (2K/4K/8K chars), YOLO mode, Semaphore |
+| `src/protocol.ts` | `<agnes:message>` protocol — compact `§AM{...}` format with key-shortening + legacy HTML comment parsing |
+| `src/schema.ts` | Type definitions + validation for 5 message types (task/result/error/status/completion) |
+| `src/verification.ts` | Promise Compliance Gate — non-blocking check for completion envelope in output |
+| `src/discovery.ts` | 3-layer command scanning: bundled → `~/.config/opencode/commands/` → `.opencode/commands/`, deduped by name |
+| `src/plugin-support.ts` | Project profile detection (lang, package manager from lockfiles) |
+| `src/logger.ts` | Stderr logger — **silent by default**, enable with `AGNES_DEBUG=1` |
 
-## Key Rules
+## Key Details
 
-- No completion claims without fresh verification.
-- One question at a time.
-- User review gate before implementation.
-- Plan files are immutable after creation.
-- Source exploration rules apply to subagents only: prefer shallow inspection, glob before read, grep before full-file scan.
-- AGNES main context never uses source glob/grep/read/edit.
-- AGNES main context never reads plan files or index.json for analysis — subagents do that.
-- AGNES main context writes state files only when explicitly updating plan state (minimal operations).
+- **Zero runtime deps.** `@opencode-ai/plugin` ^1.15.x is dev-only. yaml + zod bundled inline.
+- **Lockfile:** `bun.lock`. Never `package-lock.json`.
+- **Build target:** Bun (`--target bun`). Single-file bundle.
+- **Bootstrap injection:** Via `experimental.chat.messages.transform` (injects into first user message). Also re-injected on session compaction. Skips when bootstrap already present or when `agent` type part detected (subagent-directed).
+- **Tools:** Use `agnes_delegate` / `agnes_get_result`. Built-in `delegate_task` / `get_task_result` are deprecated (description patched in `tool.definition` hook).
+- **Delegation:** Creates child sessions via `client.session.create`. Blocking: awaits prompt result. Async: fire-and-forget, returns session ID for polling.
+- **Retry:** 3 attempts, exponential backoff (1s, 3s, 9s). 120s subagent timeout. 10min orphan cleanup.
+- **YOLO mode:** Activated by `--yolo`, `--auto`, `/yolo` in first user message. Skips question gates, max parallelism.
+- **Model tier detection:** `AGNES_MODEL_TIER` env var takes priority. DeepSeek/OpenCode models → always large. Otherwise: param-based (≤13B small, ≤60B medium, else large).
+- **Protocol format:** Compact `§AM{"t":"result","tid":"task-000","s":"DONE","c":"..."}` with single-char key aliases. Backward-compatible with legacy `<!-- <agnes:message>...</agnes:message> -->`.
+- **14 commands** bundled in `.opencode/commands/`. **9 skills** in `.opencode/skills/`. Skills auto-discovered via config hook.
+- **14 commands:** /plan /build-fix /code-review /tdd /verify /checkpoint /learn /security /e2e /update-docs /refactor-clean /test-coverage /update-codemaps /yolo
 
-## Structured Protocol (Approach B)
+## Testing
 
-AGNES now uses typed, machine-optimized internal formats instead of prose:
+- Bun test runner, `*.test.ts` beside source. Import pattern:
+  `import { describe, expect, test, beforeEach } from 'bun:test';`
+- Mock client pattern in `delegate.test.ts` wraps `client.session.{create,get,messages,prompt}` with in-memory store + simulated async responses via `setTimeout`.
+- `clearTaskRefs()` called in each `beforeEach` to isolate task-ref state.
+- No integration test prerequisites. No fixtures. No snapshot workflows.
 
-### Plan Files
-- New plans: `.agnes/plans/plan-NNN.yaml` — canonical YAML with JSON Schema (schema: agnes/plan-v1)
-- Each new iteration writes the canonical YAML plan file only
+## Conventions
 
-### Bootstrap Injection
-- DS V4 models (deepseek-v4-pro, deepseek-v4-flash, ds4/): structured YAML blocks wrapped in `<structured type="...">` tags
-- Other models (claude, gpt, gemini): existing prose format
+- **Chunking (mandatory):** Exploration split by folder/file-group (min 5 files). One edit per subagent. Sequence across import boundaries. Cross-cutting grep → one subagent.
+- **Question gate (default):** Pause on 3+ files changed, architecture decisions, new deps. Skip on single-file fixes, typos, config tweaks. Present options with recommendation.
+- **SOUL.md:** Keep in sync with bootstrap strings. Static Constitution preamble is the DeepSeek cache-stable prefix (~750 chars). Regulations section is editable operational detail.
 
-### Subagent Protocol
-- All `<agnes:message>` messages now include `schema: "agnes/message-v1"` field
-- Messages with schema field are strictly validated via Zod
-- Legacy messages (no schema) pass through unchanged
-- `reasoning_content` field preserved in result messages for DS V4
+## Release Checklist
 
-### Provider Detection
-- `src/plugin.ts` auto-detects DS V4 models and injects `interleaved: { field: "reasoning_content" }` config
-- Prevents the 400-on-turn-2 protocol bug
+```pwsh
+bun run bundle
+Remove-Item -Recurse -Force .agnes
+Remove-Item -Recurse -Force "$env:USERPROFILE\.cache\opencode\packages\agnes@git+https_*"
+# Restart OpenCode
+```
 
-### Skill Frontmatter
-- All 24 SKILL.md files have YAML frontmatter with `id`, `phase`, `use_when`, `version`
-- Human-readable body is unchanged
-- Agents can parse frontmatter for skill discovery metadata
+## Generated Files (do not hand-edit)
 
-## Answer-Directly Rule
-
-Before delegating, ask: "Can I answer this directly with no tools?"
-
-When the answer requires no tools, respond directly. Do not create plans, invoke skills, or spawn subagents for simple Q&A, definitions, or factual lookups the model already knows.
-
-## Named Subagent Roles
-
-AGNES defines 5 named subagent roles for consistent delegation:
-
-| Role | Discipline | Used By |
-|------|------------|---------|
-| `@executor` | Runs commands, tests, builds. Returns compact pass/fail + file refs. Never suggests fixes. | builder, tdd, verifier |
-| `@explorer` | Codebase research only. Glob → grep → selective read. Read-only. Never edits. | architect, planner, any context-gathering skill |
-| `@planner` | Creates/refreshes `.agnes/plans/plan-NNN.yaml` from task requirements using planner skill. Builtin fast path is only for lightweight tasks; complex work stays on planner + multi-reviewer. | orchestrator (planning phase) |
-| `@builder` | Implements one sub-task from plan. Delegates bash to @executor and review to @reviewer. | orchestrator (build phase) |
-| `@reviewer` | Reviews diff against sub-task scope using reviewer skill. Writes findings to `.opencode/review.md`. | builder, orchestrator (review phase) |
-
----
-
-## Delegation Enforcement (HARD RULES)
-
-These are NOT optional. Structural constraints enforced at plugin level. Violations are bugs.
-
-### Tool Access Control
-AGNES enforces tool-level delegation via three mechanisms:
-- `tool.definition` hook — prepends `[AGNES ENFORCEMENT]` banner to work-tool descriptions
-- `experimental.chat.system.transform` — injects hard delegation rules into system prompt
-- `buildToolAccessBlock()` — emits `<structured type="tool_access">` block in bootstrap
-
-**MAIN CONTEXT (TALK + DELEGATE only):**
-- `task` — spawn subagents for all discrete work
-- `skill` — discover and load domain skills
-- `todowrite` — track task progress
-- `question` — ask clarifying questions
-- `read`/`webfetch` — `.agnes/` state only, never source analysis
-- `analyze-task`/`auto-delegate` — routing support
-
-**SUBAGENT CONTEXT ONLY (NEVER main context):**
-- `edit`, `write` — editing/creating source files (use `@builder`)
-- `bash` — running commands (use `@executor`)
-- `glob`, `grep` — searching the codebase (use `@explorer`)
-
-### Self-Audit Before Every Tool Call
-Before calling any tool, check:
-1. Does this tool modify files? → **Delegate via `task`**
-2. Does this tool run commands? → **Delegate via `task`**
-3. Does this tool search source code? → **Delegate via `task`**
-4. Am I doing work instead of delegating? → **STOP. Spawn a subagent.**
-
----
-
-## Coding Priority Order
-
-When implementing, prioritize in this order:
-1. **Correctness** — Does it work correctly for all inputs, including edge cases?
-2. **Security** — Are there vulnerabilities, injection risks, or data leaks?
-3. **Simplicity** — Is this the simplest approach that fully solves the task?
-4. **Maintainability** — Will another developer (or AI) understand this in 6 months?
-5. **Performance** — Optimize only when measured and necessary.
-
-## Proportionality Rules
-
-- Do not create formal plans for purely advisory, exploratory, or review-only requests.
-- Keep the plan proportional to the task size and risk.
-- For simple tasks (≤3 steps, no ambiguity), use a short plan with only the necessary steps.
-- Prefer the fewest steps that still make execution clear.
-- Do not convert speculative ideas into binding requirements.
-
-## Code Review Quality Bar
-
-- **P0 (Blocking)**: Likely production breakage, data corruption, or exploitable security issue.
-- **P1 (High)**: Serious user, operational, or security impact.
-- **P2 (Medium)**: Meaningful but non-blocking risk.
-- **P3 (Low)**: Valid improvement that can be deferred.
-- Every finding requires **evidence** (specific code with file:line) and **impact** (what could go wrong).
-- Do NOT report: style-only preferences, hypothetical issues without plausible failure paths, duplicate findings for the same root cause, or low-value nits.
-
-## Executor Discipline
-
-All bash commands, test runs, builds, and validation MUST be delegated to the @executor subagent. No agent (builder, tdd, verifier, reviewer, planner) should run bash directly. The @executor returns compact pass/fail results and does not suggest next steps.
+- `.opencode/plugins/agnes.js` (build output)
+- `.opencode/plans/`
+- `.opencode/INSTALL.md`
+- `.opencode/index.json`
+- `.agnes/`
+- `node_modules/`
+- `.worktree/`
