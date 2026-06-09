@@ -13458,13 +13458,15 @@ ${params.priorContext}` : "";
     const maxAttempts = 3;
     for (let attempt = 1;attempt <= maxAttempts; attempt++) {
       try {
-        const promptResp = await client.session.prompt({
+        const promptPromise = client.session.prompt({
           path: { id: childId },
           body: {
             agent: params.agent,
             parts: [{ type: "text", text: fullPrompt }]
           }
         });
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error(`TIMEOUT after ${SUBAGENT_TIMEOUT_MS}ms`)), SUBAGENT_TIMEOUT_MS));
+        const promptResp = await Promise.race([promptPromise, timeoutPromise]);
         if (promptResp.error) {
           if (attempt < maxAttempts) {
             await sleep(Math.pow(3, attempt - 1) * 1000);
@@ -13475,9 +13477,26 @@ ${params.priorContext}` : "";
         const output = extractText(promptResp.data);
         const tier = detectModelTier();
         const maxChars = getMaxResultChars(tier);
-        const truncated = truncateResult(output, maxChars);
-        const gates = [createPromiseComplianceGate(truncated)];
-        await runGates(gates);
+        const rawEnvelope = extractCanonicalAgnesMessageEnvelope(output);
+        if (rawEnvelope) {
+          const parsed = parseAgnesMessage(rawEnvelope);
+          if (parsed) {
+            const msg = parsed;
+            if (msg.status === "BLOCKED") {
+              return `ERROR: Subagent reported BLOCKED: ${msg.content ?? "(no reason given)"}`;
+            }
+          }
+        }
+        let truncated = truncateResult(output, maxChars);
+        if (rawEnvelope && !truncated.includes("\xA7AM") && output.length > maxChars) {
+          truncated += `
+
+` + rawEnvelope;
+        }
+        try {
+          const gates = [createPromiseComplianceGate(truncated)];
+          await runGates(gates);
+        } catch {}
         return truncated;
       } catch (err) {
         if (attempt < maxAttempts) {
@@ -14284,12 +14303,15 @@ function resolveConflicts(wave) {
   return { resolved, demoted };
 }
 function buildSchedule(tasks, maxParallel) {
-  const onlyPending = tasks.filter((t) => t.status === "pending" || t.status === "needs_review");
-  const waves = topologicalWaveSort(onlyPending);
+  const waves = topologicalWaveSort(tasks);
   const result = [];
   let totalIndex = 0;
   for (const wave of waves) {
-    const { resolved, demoted } = resolveConflicts(wave);
+    const pendingInWave = wave.tasks.filter((t) => t.status === "pending" || t.status === "needs_review");
+    if (pendingInWave.length === 0)
+      continue;
+    const waveOnlyPending = { index: wave.index, tasks: pendingInWave };
+    const { resolved, demoted } = resolveConflicts(waveOnlyPending);
     for (const r of resolved) {
       for (let i = 0;i < r.tasks.length; i += maxParallel) {
         result.push({ index: totalIndex++, tasks: r.tasks.slice(i, i + maxParallel) });

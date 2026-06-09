@@ -63,7 +63,7 @@ AGNES is a plugin that installs into OpenCode's tool system. It injects a bootst
 
 | Feature | Why it matters |
 |---------|---------------|
-| **Zero runtime deps** | No npm install at consumer end. The plugin pulls nothing. |
+| **Bundled** | Single `.opencode/plugins/agnes.js` — no consumer install needed. |
 | **Parallel by default** | Independent tasks run concurrently. One file, one subagent. |
 | **Auto-chunking** | Exploration splits by folder. Edits respect import dependencies. |
 | **Bootstrap caching** | Constitution preamble is DeepSeek cache-stable (~800 chars, stat-cached by size + mtime). |
@@ -78,7 +78,7 @@ AGNES is a plugin that installs into OpenCode's tool system. It injects a bootst
 
 ## Architecture
 
-AGNES is seven modules, each with a single responsibility:
+AGNES has the following modules, each with a single responsibility:
 
 - **Bootstrap** — Injects Constitution preamble + SOUL.md at session start. Tier-aware: full for large models, trimmed for medium, minimal for small. Re-injected on compaction.
 - **Delegation** — Sync subagent calls with 3× retry and exponential backoff. Async fire-and-forget with persistent task ref store. 10-minute orphan cleanup sweep.
@@ -87,6 +87,15 @@ AGNES is seven modules, each with a single responsibility:
 - **Protocol** — Compact message format. Key-shortened JSON (`t`→`type`, `tid`→`taskId`) for token efficiency. Legacy HTML comment parsing for backward compatibility.
 - **Discovery** — 3-layer command scanning: bundled `.opencode/commands/` → `~/.config/opencode/commands/` → project `.opencode/commands/`. Skills auto-discovered from `.opencode/skills/`.
 - **Plugin Support** — Project profile detection: language, package manager from lockfiles.
+- **Orchestrator** — Plan decomposition (auto or from JSON), wave scheduling, parallel subagent dispatch, review gates, retry with exponential backoff.
+- **Planner** — Plan CRUD (create/save/load/update), plan GC, task ID generation.
+- **Scheduler** — Topological wave sorting, file-conflict detection, parallel-cap execution scheduling.
+- **Reviewer** — Review gates: task completion, file conflicts, envelope presence, acceptance criteria.
+- **Memory** — Persistent key-value store with TTL-based expiry, categories (user/project/pattern/pref).
+- **Todo** — Task checklist manager with status tracking (pending/in_progress/completed/blocked), auto-prune.
+- **Status** — Aggregated diagnostics: version, tier, concurrency, commands, sessions, memory, gate stats, async errors.
+- **Compressor** — Session summary getter/setter for compaction context injection.
+- **Persist** — Debounced file writer, directory assurance, JSON file loader.
 
 ---
 

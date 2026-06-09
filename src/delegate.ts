@@ -122,13 +122,19 @@ export async function delegateBlocking(
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const promptResp = await client.session.prompt({
+        const promptPromise = client.session.prompt({
           path: { id: childId },
           body: {
             agent: params.agent,
             parts: [{ type: 'text', text: fullPrompt }],
           },
         });
+
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`TIMEOUT after ${SUBAGENT_TIMEOUT_MS}ms`)), SUBAGENT_TIMEOUT_MS)
+        );
+
+        const promptResp = await Promise.race([promptPromise, timeoutPromise]);
 
         if (promptResp.error) {
           if (attempt < maxAttempts) {
@@ -141,9 +147,31 @@ export async function delegateBlocking(
         const output = extractText(promptResp.data);
         const tier = detectModelTier();
         const maxChars = getMaxResultChars(tier);
-        const truncated = truncateResult(output, maxChars);
-        const gates = [createPromiseComplianceGate(truncated)];
-        await runGates(gates);
+
+        const rawEnvelope = extractCanonicalAgnesMessageEnvelope(output);
+        if (rawEnvelope) {
+          const parsed = parseAgnesMessage(rawEnvelope);
+          if (parsed) {
+            const msg = parsed as unknown as Record<string, unknown>;
+            if (msg.status === 'BLOCKED') {
+              return `ERROR: Subagent reported BLOCKED: ${msg.content ?? '(no reason given)'}`;
+            }
+          }
+        }
+
+        let truncated = truncateResult(output, maxChars);
+
+        if (rawEnvelope && !truncated.includes('\xA7AM') && output.length > maxChars) {
+          truncated += '\n\n' + rawEnvelope;
+        }
+
+        try {
+          const gates = [createPromiseComplianceGate(truncated)];
+          await runGates(gates);
+        } catch {
+          // Gate failure is non-blocking — logged inside runGates
+        }
+
         return truncated;
       } catch (err) {
         if (attempt < maxAttempts) {
@@ -175,6 +203,7 @@ function stopHeartbeat(sessionID: string): void {
 function startHeartbeat(client: MinimalClient, sessionID: string): void {
   stopHeartbeat(sessionID);
   const interval = setInterval(async () => {
+    interval.unref();
     try {
       const resp = await client.session.get({ path: { id: sessionID } });
       if (resp.error || !resp.data) {
@@ -212,37 +241,39 @@ export async function delegateAsync(
 ): Promise<string> {
   const sem = getSemaphore();
   await sem.acquire();
-  let childId: string;
   try {
-    childId = await createChildSession(client, params);
-  } catch (err) {
+    let childId: string;
+    try {
+      childId = await createChildSession(client, params);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return `ERROR: failed to create child session — ${msg}`;
+    }
+
+    const blockedTools = params.blockedTools ?? DELEGATE_BLOCKED_TOOLS;
+    const blockedNote = blockedTools.size > 0
+      ? `\n\n**Restricted tools:** ${[...blockedTools].join(', ')}`
+      : '';
+    const fullPrompt = params.prompt + blockedNote;
+
+    const promptResp = await client.session.prompt({
+      path: { id: childId },
+      body: {
+        agent: params.agent,
+        parts: [{ type: 'text', text: fullPrompt }],
+      },
+    });
+
+    if (promptResp.error) {
+      pushError(childId, `delegateAsync prompt failed: ${JSON.stringify(promptResp.error)}`);
+      return `ERROR: delegation prompt failed — ${JSON.stringify(promptResp.error)}`;
+    }
+
+    startHeartbeat(client, childId);
+    return childId; // session ID for polling
+  } finally {
     sem.release();
-    const msg = err instanceof Error ? err.message : String(err);
-    return `ERROR: failed to create child session — ${msg}`;
   }
-  sem.release(); // Release before prompt — async tasks are independent
-
-  const blockedTools = params.blockedTools ?? DELEGATE_BLOCKED_TOOLS;
-  const blockedNote = blockedTools.size > 0
-    ? `\n\n**Restricted tools:** ${[...blockedTools].join(', ')}`
-    : '';
-  const fullPrompt = params.prompt + blockedNote;
-
-  const promptResp = await client.session.prompt({
-    path: { id: childId },
-    body: {
-      agent: params.agent,
-      parts: [{ type: 'text', text: fullPrompt }],
-    },
-  });
-
-  if (promptResp.error) {
-    pushError(childId, `delegateAsync prompt failed: ${JSON.stringify(promptResp.error)}`);
-    return `ERROR: delegation prompt failed — ${JSON.stringify(promptResp.error)}`;
-  }
-
-  startHeartbeat(client, childId);
-  return childId; // session ID for polling
 }
 
 export async function getSubagentResult(

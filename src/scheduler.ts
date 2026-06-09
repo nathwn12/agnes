@@ -115,15 +115,20 @@ function resolveConflicts(
 }
 
 export function buildSchedule(tasks: TaskItem[], maxParallel: number): Wave[] {
-  const onlyPending = tasks.filter(t => t.status === 'pending' || t.status === 'needs_review');
-
-  const waves = topologicalWaveSort(onlyPending);
+  // Pass ALL tasks for correct dependency tracking (edges to completed tasks
+  // must be preserved so that pending successors don't get scheduled too early).
+  // Only pending tasks appear in the output waves.
+  const waves = topologicalWaveSort(tasks);
 
   const result: Wave[] = [];
   let totalIndex = 0;
 
   for (const wave of waves) {
-    const { resolved, demoted } = resolveConflicts(wave);
+    const pendingInWave = wave.tasks.filter(t => t.status === 'pending' || t.status === 'needs_review');
+    if (pendingInWave.length === 0) continue;
+
+    const waveOnlyPending: Wave = { index: wave.index, tasks: pendingInWave };
+    const { resolved, demoted } = resolveConflicts(waveOnlyPending);
 
     // Add resolved tasks (capped by maxParallel)
     for (const r of resolved) {

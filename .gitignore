@@ -9,3 +9,4 @@ nul
 /.opencode/plans/
 /.opencode/INSTALL.md
 /.worktree
+/.opencode/node_modules/

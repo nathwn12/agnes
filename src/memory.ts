@@ -29,7 +29,12 @@ export function extractLessons(text: string, store: MemoryStore): void {
   while ((match = lessonRegex.exec(text)) !== null) {
     const lesson = match[1].trim();
     if (!lesson) continue;
-    const key = `pattern/auto/${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const existing = store.list('pattern').find(e => e.value === lesson);
+    if (existing) {
+      existing.updatedAt = Date.now();
+      continue;
+    }
+    const key = `pattern/auto/${lesson.slice(0, 40).replace(/\s+/g, '_').toLowerCase()}`;
     store.set(key, lesson.slice(0, MAX_VALUE_LENGTH), 'pattern');
   }
 }
@@ -131,7 +136,7 @@ export class MemoryStore {
       const line = `- [${e.category}] ${e.key}: ${e.value}`;
       total += line.length + 1;
       if (total > FORMAT_MAX_CHARS) {
-        lines.push(`- ... and ${this._entries.length - lines.length} more entries`);
+        lines.push(`- ... and ${this._entries.length - lines.length + 1} more entries`);
         break;
       }
       lines.push(line);

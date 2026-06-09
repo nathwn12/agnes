@@ -1,4 +1,4 @@
-# AGNES — OpenCode Plugin (v0.38.1)
+# AGNES — OpenCode Plugin (v0.39.0)
 
 AGNES adds delegation, orchestration, auto-delegation, memory, todos, and protocol-enforced subagent handoff to OpenCode. It provides tools for subagent dispatch (`agnes_delegate`/`agnes_get_result`), multi-task orchestration (`agnes_orchestrate`/`agnes_orchestrate_status`), memory (`agnes_memory`), task tracking (`agnes_todo`), diagnostics (`agnes_status`), context management (`agnes_compress`), and command management (`agnes_reload_commands`).
 
@@ -46,11 +46,18 @@ CI order: `lint → typecheck → test → bundle`
 
 ## Key Details
 
-- **Zero runtime deps.** `@opencode-ai/plugin` ^1.15.x is dev-only. yaml + zod bundled inline.
+- **Runtime deps:** `@opencode-ai/plugin` (in `.opencode/package.json` with committed `node_modules/`). yaml + zod inlined.
 - **Lockfile:** `bun.lock`. Never `package-lock.json`.
 - **Build target:** Bun (`--target bun`). Single-file bundle.
 - **Bootstrap injection:** Via `experimental.chat.messages.transform` (injects into first user message). Also re-injected on session compaction. Skips when bootstrap already present or when `agent` type part detected (subagent-directed).
-- **Tools:** Use `agnes_delegate` / `agnes_get_result`. Built-in `delegate_task` / `get_task_result` are deprecated (description patched in `tool.definition` hook). Additional tools: `agnes_orchestrate`, `agnes_orchestrate_status`, `agnes_memory`, `agnes_todo`, `agnes_status`, `agnes_reload_commands`, `agnes_compress`.
+- **Tools:** Use `agnes_delegate` / `agnes_get_result`. Built-in `delegate_task` / `get_task_result` are deprecated (description patched in `tool.definition` hook). Additional tools:
+  - `agnes_orchestrate` — decompose goal → delegate waves → review → iterate. Pass `goal`, optional `tasksJSON` for manual task list, optional `planID` to resume.
+  - `agnes_orchestrate_status` — poll an active plan, advances the state machine on each call. Returns phase, task counts, wave progress.
+  - `agnes_memory` — CRUD persistent key-value store. Categories: `user`, `project`, `pattern`, `pref`. Auto-injected into bootstrap. Methods: `get`, `set`, `delete`, `list`.
+  - `agnes_todo` — task checklist manager. CRUD + status tracking (`pending`/`in_progress`/`completed`/`blocked`). Categories: `explore`, `edit`, `verify`.
+  - `agnes_status` — diagnostics: version, model tier, concurrency (active/queued/max), command count, memory entries, running sessions, gate stats, async errors.
+  - `agnes_reload_commands` — force rescan of all command directories (bundled → global → workspace). Returns count by source.
+  - `agnes_compress` — build session summary from edited files, active tasks, and memory entries. Use `force=true` to regenerate.
 - **Delegation:** Creates child sessions via `client.session.create`. Blocking: awaits prompt result. Async: fire-and-forget, returns session ID for polling.
 - **Retry:** 3 attempts, exponential backoff (1s, 3s, 9s). 120s subagent timeout. 10min orphan cleanup.
 - **YOLO mode:** Activated by `--yolo`, `--auto`, `/yolo` in first user message. Skips question gates, max parallelism.

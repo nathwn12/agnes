@@ -822,6 +822,13 @@ export async function advanceOrchestration(
       plan.phase = 'completed';
     } else if (plan.iteration < plan.maxIterations - 1) {
       plan.iteration++;
+      // Reset any orphaned running tasks (their sessions are from a previous wave)
+      for (const task of plan.tasks) {
+        if (task.status === 'running') {
+          task.status = 'failed';
+          task.error = 'Orphaned from previous wave retry';
+        }
+      }
       logger.info(`Review failed, re-delegating ${failed.length} task(s) (iteration ${plan.iteration + 1}/${plan.maxIterations})`);
       for (const task of failed) {
         task.status = 'pending';

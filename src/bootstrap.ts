@@ -103,6 +103,7 @@ function buildMinimalBootstrap(version: string): string {
 ${AUTO_DELEGATION_ENFORCEMENT}`;
 }
 
+/** @deprecated Not called from production code — use getStableTier / getContextTier / getVolatileTier directly. */
 export function getBootstrapContent(project?: ProjectProfile, tier?: ModelTier): string | null {
   const version = getVersion();
   const modelTier: ModelTier = tier ?? 'large';

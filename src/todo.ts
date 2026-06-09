@@ -50,7 +50,12 @@ export class TodoStore {
       category,
     };
     if (this._items.length >= MAX_ITEMS) {
-      this._items.shift();
+      const completedIdx = this._items.findIndex(i => i.status === 'completed');
+      if (completedIdx !== -1) {
+        this._items.splice(completedIdx, 1);
+      } else {
+        this._items.shift();
+      }
     }
     this._items.push(item);
     this._writer?.scheduleSave();
