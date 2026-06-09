@@ -13171,15 +13171,17 @@ function isImplementationTool(tool3, args = {}) {
     return false;
   const pwshMatch = command.match(/^\s*(pwsh|powershell)\s+-(Command|C)\s+/i);
   if (pwshMatch) {
-    const inner = command.slice(pwshMatch[0].length).replace(/^["']/, "");
-    if (/^\s*(Get-|Test-|Select-|Write-Host|Write-Output)\b/i.test(inner))
+    const inner = command.slice(pwshMatch[0].length).replace(/^["']/, "").replace(/["']$/, "");
+    if (MUTATING_BASH_PATTERNS.some((pattern) => pattern.test(inner)))
+      return true;
+    if (READONLY_BASH_PATTERNS.some((pattern) => pattern.test(inner)))
       return false;
     return true;
   }
   const pwshFileMatch = command.match(/^\s*(pwsh|powershell)\s+-(File|F)\s+/i);
   if (pwshFileMatch)
     return true;
-  return true;
+  return false;
 }
 function rewriteToolDescription(toolID, current) {
   if (toolID === "write" || toolID === "edit" || toolID === "apply_patch") {
@@ -13216,6 +13218,11 @@ async function handleAutoDelegateBefore(client, worktreePath, input, output) {
       childSessionID: result.childSessionID,
       result: result.output
     });
+    try {
+      await client.tui?.showToast?.({
+        body: { message: `AGNES delegated ${input.tool} to subagent ${result.childSessionID.slice(0, 8)}`, variant: "info" }
+      });
+    } catch {}
     const noopArgs = makeNoopArgs(worktreePath, input.tool, input.callID, output.args);
     for (const key of Object.keys(output.args))
       delete output.args[key];
@@ -13321,7 +13328,7 @@ function makeNoopArgs(worktreePath, tool3, callID, args) {
     };
   }
   if (tool3 === "bash") {
-    return { ...args, command: 'printf "AGNES auto-delegated command\\n"' };
+    return { ...args, command: "# noop" };
   }
   return args;
 }
@@ -13525,6 +13532,7 @@ function stopHeartbeat(sessionID) {
 function startHeartbeat(client, sessionID) {
   stopHeartbeat(sessionID);
   const interval = setInterval(async () => {
+    interval.unref();
     try {
       const resp = await client.session.get({ path: { id: sessionID } });
       if (resp.error || !resp.data) {
@@ -13557,33 +13565,35 @@ function startHeartbeat(client, sessionID) {
 async function delegateAsync(client, params) {
   const sem = getSemaphore();
   await sem.acquire();
-  let childId;
   try {
-    childId = await createChildSession(client, params);
-  } catch (err) {
-    sem.release();
-    const msg = err instanceof Error ? err.message : String(err);
-    return `ERROR: failed to create child session \u2014 ${msg}`;
-  }
-  sem.release();
-  const blockedTools = params.blockedTools ?? DELEGATE_BLOCKED_TOOLS;
-  const blockedNote = blockedTools.size > 0 ? `
+    let childId;
+    try {
+      childId = await createChildSession(client, params);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return `ERROR: failed to create child session \u2014 ${msg}`;
+    }
+    const blockedTools = params.blockedTools ?? DELEGATE_BLOCKED_TOOLS;
+    const blockedNote = blockedTools.size > 0 ? `
 
 **Restricted tools:** ${[...blockedTools].join(", ")}` : "";
-  const fullPrompt = params.prompt + blockedNote;
-  const promptResp = await client.session.prompt({
-    path: { id: childId },
-    body: {
-      agent: params.agent,
-      parts: [{ type: "text", text: fullPrompt }]
+    const fullPrompt = params.prompt + blockedNote;
+    const promptResp = await client.session.prompt({
+      path: { id: childId },
+      body: {
+        agent: params.agent,
+        parts: [{ type: "text", text: fullPrompt }]
+      }
+    });
+    if (promptResp.error) {
+      pushError(childId, `delegateAsync prompt failed: ${JSON.stringify(promptResp.error)}`);
+      return `ERROR: delegation prompt failed \u2014 ${JSON.stringify(promptResp.error)}`;
     }
-  });
-  if (promptResp.error) {
-    pushError(childId, `delegateAsync prompt failed: ${JSON.stringify(promptResp.error)}`);
-    return `ERROR: delegation prompt failed \u2014 ${JSON.stringify(promptResp.error)}`;
+    startHeartbeat(client, childId);
+    return childId;
+  } finally {
+    sem.release();
   }
-  startHeartbeat(client, childId);
-  return childId;
 }
 async function getSubagentResult(client, sessionID, _directory) {
   const refInfo = lookupTaskRef(sessionID);
@@ -13842,7 +13852,12 @@ function extractLessons(text, store) {
     const lesson = match[1].trim();
     if (!lesson)
       continue;
-    const key = `pattern/auto/${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const existing = store.list("pattern").find((e) => e.value === lesson);
+    if (existing) {
+      existing.updatedAt = Date.now();
+      continue;
+    }
+    const key = `pattern/auto/${lesson.slice(0, 40).replace(/\s+/g, "_").toLowerCase()}`;
     store.set(key, lesson.slice(0, MAX_VALUE_LENGTH), "pattern");
   }
 }
@@ -13935,7 +13950,7 @@ class MemoryStore {
       const line = `- [${e.category}] ${e.key}: ${e.value}`;
       total += line.length + 1;
       if (total > FORMAT_MAX_CHARS) {
-        lines.push(`- ... and ${this._entries.length - lines.length} more entries`);
+        lines.push(`- ... and ${this._entries.length - lines.length + 1} more entries`);
         break;
       }
       lines.push(line);
@@ -13980,7 +13995,12 @@ class TodoStore {
       category
     };
     if (this._items.length >= MAX_ITEMS) {
-      this._items.shift();
+      const completedIdx = this._items.findIndex((i) => i.status === "completed");
+      if (completedIdx !== -1) {
+        this._items.splice(completedIdx, 1);
+      } else {
+        this._items.shift();
+      }
     }
     this._items.push(item);
     this._writer?.scheduleSave();
@@ -15116,6 +15136,12 @@ async function advanceOrchestration(client, planID, directory, sessionID) {
       plan.phase = "completed";
     } else if (plan.iteration < plan.maxIterations - 1) {
       plan.iteration++;
+      for (const task of plan.tasks) {
+        if (task.status === "running") {
+          task.status = "failed";
+          task.error = "Orphaned from previous wave retry";
+        }
+      }
       info(`Review failed, re-delegating ${failed.length} task(s) (iteration ${plan.iteration + 1}/${plan.maxIterations})`);
       for (const task of failed) {
         task.status = "pending";

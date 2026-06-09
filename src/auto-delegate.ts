@@ -94,14 +94,15 @@ export function isImplementationTool(tool: string, args: Record<string, unknown>
   // For pwsh/powershell wrappers, classify by inner command
   const pwshMatch = command.match(/^\s*(pwsh|powershell)\s+-(Command|C)\s+/i);
   if (pwshMatch) {
-    const inner = command.slice(pwshMatch[0].length).replace(/^["']/, '');
-    if (/^\s*(Get-|Test-|Select-|Write-Host|Write-Output)\b/i.test(inner)) return false;
+    const inner = command.slice(pwshMatch[0].length).replace(/^["']/, '').replace(/["']$/, '');
+    if (MUTATING_BASH_PATTERNS.some(pattern => pattern.test(inner))) return true;
+    if (READONLY_BASH_PATTERNS.some(pattern => pattern.test(inner))) return false;
     return true;
   }
   const pwshFileMatch = command.match(/^\s*(pwsh|powershell)\s+-(File|F)\s+/i);
   if (pwshFileMatch) return true; // External script files are always potentially mutating
 
-  return true;
+  return false;
 }
 
 export function buildAutoDelegationSystemPrompt(): string {
@@ -147,6 +148,11 @@ export async function handleAutoDelegateBefore(
       childSessionID: result.childSessionID,
       result: result.output,
     });
+    try {
+      await (client as any).tui?.showToast?.({
+        body: { message: `AGNES delegated ${input.tool} to subagent ${result.childSessionID.slice(0, 8)}`, variant: 'info' },
+      });
+    } catch { /* TUI toast is non-critical */ }
     const noopArgs = makeNoopArgs(worktreePath, input.tool, input.callID, output.args);
     for (const key of Object.keys(output.args)) delete output.args[key];
     Object.assign(output.args, noopArgs);
@@ -261,7 +267,7 @@ function makeNoopArgs(
   }
 
   if (tool === 'bash') {
-    return { ...args, command: 'printf "AGNES auto-delegated command\\n"' };
+    return { ...args, command: '# noop' };
   }
 
   return args;

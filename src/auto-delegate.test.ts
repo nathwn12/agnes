@@ -87,6 +87,16 @@ describe('auto-delegation classification', () => {
     expect(isImplementationTool('bash', { command: 'powershell -Command "Get-Content file.txt"' })).toBe(false);
     expect(isImplementationTool('bash', { command: 'pwsh -Command "Test-Path file.txt"' })).toBe(false);
     expect(isImplementationTool('bash', { command: 'pwsh -Command \'Select-String -Pattern "foo" src/*.ts\'' })).toBe(false);
+    expect(isImplementationTool('bash', { command: 'pwsh -Command "git status"' })).toBe(false);
+    expect(isImplementationTool('bash', { command: 'pwsh -Command "git diff"' })).toBe(false);
+    expect(isImplementationTool('bash', { command: 'pwsh -Command "git log --oneline -5"' })).toBe(false);
+    expect(isImplementationTool('bash', { command: 'pwsh -Command "bun run typecheck"' })).toBe(false);
+  });
+
+  test('classifies mutating pwsh/git wrapper calls as implementation', () => {
+    expect(isImplementationTool('bash', { command: 'pwsh -Command "git commit -m test"' })).toBe(true);
+    expect(isImplementationTool('bash', { command: 'pwsh -Command "git push origin main"' })).toBe(true);
+    expect(isImplementationTool('bash', { command: 'pwsh -Command "mkdir new-folder"' })).toBe(true);
   });
 
   test('allows plain pwsh/powershell -File invocations as mutating', () => {
