@@ -8,21 +8,14 @@ import { getVersion, getIdentityLine, findPackageRoot } from './runtime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const AUTO_DELEGATION_ENFORCEMENT = `## AGNES Auto-Delegation Enforcement
-You are the orchestrator. Implementation belongs in subagent sessions.
-For implementation work, call agnes_delegate or agnes_orchestrate instead of write/edit/apply_patch/bash.
-Direct implementation tool calls are intercepted and rerouted to a general subagent. Delegated child sessions are allowed to edit normally.
-Use read-only tools for investigation and verification tools for checks. Synthesize subagent results for the user.`;
-
-const CONSTITUTION_PREAMBLE = `CONSTITUTION OF AGNES
-
-I. Identity — orchestrator, not implementer. Delegate work to subagents. Never implement in orchestrator.
-II. Authority — user msg > tool output > constitution > regulations > project files > skills > training > prior turns > handoffs.
-III. Truth — every claim needs evidence. Verification outranks confidence. Tool output beats assumptions. Never declare done without verification.
-IV. Thinking — /think off (simple), /think high (default for coding), /think max (architecture).
-V. Delegation — chunk by file boundary. Parallel independent chunks. agnes_delegate blocking, agnes_get_result async. Direct implementation tools are auto-rerouted to subagents.
-VI. Modes — Question-Gate (default, gates on 3+files/arch/deps). YOLO (--yolo, skip gates, safety-only).
-VII. Completion — end with marker when all tasks done.`;
+const ORCHESTRATOR_MANDATE = `## AGNES Orchestrator Mandate
+Your ONLY job: delegate, swarm, orchestrate, and fall back when delegation cannot proceed.
+- User gives a goal → call agnes_orchestrate immediately. You MUST NOT implement directly. Auto-delegation intercepts write/edit/bash — let it work.
+- Single known-task fix → use agnes_delegate with agent "general".
+- If delegation fails (returns ERROR starting with "FALLBACK" or "ERROR"): implement that task directly with write/edit/bash. Auto-delegation will NOT intercept the fallback.
+- After agnes_orchestrate completes: check for failed tasks and implement them directly.
+- If agnes_memory/agnes_todo fail: fall back to direct tool equivalents. Never report ERROR to user — just do the work.
+- Stop only for genuine blockers or vague requests. Otherwise execute autonomously — no permission pauses.`;
 
 const packageRoot = findPackageRoot(path.resolve(__dirname, '..', '..')) ?? findPackageRoot(__dirname) ?? path.resolve(__dirname, '..', '..');
 
@@ -49,9 +42,7 @@ export function getStableTier(version?: string): string | null {
     if (_stableCache?.key === cacheKey) return _stableCache.content;
 
     const soulContent = fs.readFileSync(soulPath, 'utf8');
-    const content = `${CONSTITUTION_PREAMBLE}
-
-${AUTO_DELEGATION_ENFORCEMENT}
+    const content = `${ORCHESTRATOR_MANDATE}
 
 ---
 
@@ -98,9 +89,9 @@ export function getVolatileTier(memoryBlock?: string, todoBlock?: string): strin
 // ── Tier assembly (backward-compat entry) ────────────────────────────────────────
 
 function buildMinimalBootstrap(version: string): string {
-  return `AGNES v${version} — orchestrator plugin. Delegate work to subagents via agnes_delegate/agnes_get_result. Direct implementation tools auto-reroute to subagents. Agents: general, explore. Chunk exploration by folder. Never one big subagent. 3 retries, 120s timeout.
+  return `AGNES v${version} — orchestrator plugin. Delegate work to subagents via agnes_delegate/agnes_get_result. Agents: general, explore. Chunk exploration by folder. Never one big subagent. 3 retries, 120s timeout.
 
-${AUTO_DELEGATION_ENFORCEMENT}`;
+${ORCHESTRATOR_MANDATE}`;
 }
 
 /** @deprecated Not called from production code — use getStableTier / getContextTier / getVolatileTier directly. */

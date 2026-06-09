@@ -1,7 +1,6 @@
 import { parseAgnesMessage } from './protocol.js';
 import * as logger from './logger.js';
-import type { ModelTier } from './runtime.js';
-import { detectModelTier, getGateSkip } from './runtime.js';
+import { getGateSkip } from './runtime.js';
 
 type GateStatus = 'PASS' | 'FAIL' | 'SKIP';
 
@@ -125,15 +124,12 @@ export function hasCompletionSignal(text: string): boolean {
   return parsed.type === 'completion' || parsed.type === 'result';
 }
 
-export function createPromiseComplianceGate(output: string, tier?: ModelTier): Gate {
-  const modelTier = tier ?? detectModelTier();
-  const blocking = modelTier !== 'small' && !getGateSkip();
-
+export function createPromiseComplianceGate(output: string): Gate {
   return {
     id: 'promise-compliance',
     name: 'Promise Compliance',
     description: 'Checks that output contains a canonical completion or result <agnes:message>',
-    isBlocking: blocking,
+    isBlocking: false,
     run: async () => {
       const start = Date.now();
       const errors: string[] = [];

@@ -112,14 +112,14 @@ describe('delegateBlocking', () => {
   test('returns error string when session creation fails', async () => {
     const client = makeMockClient({ createError: true });
     const result = await delegateBlocking(client, defaultParams);
-    expect(result).toContain('ERROR');
+    expect(result).toContain('FALLBACK');
     expect(result).toContain('create failed');
   });
 
   test('returns error string when prompt fails', async () => {
     const client = makeMockClient({ promptError: true });
     const result = await delegateBlocking(client, defaultParams);
-    expect(result).toContain('ERROR');
+    expect(result).toContain('FALLBACK');
     expect(result).toContain('prompt failed');
   });
 });
@@ -139,14 +139,14 @@ describe('delegateAsync', () => {
   test('returns error string when session creation fails', async () => {
     const client = makeMockClient({ createError: true });
     const result = await delegateAsync(client, defaultParams);
-    expect(result).toContain('ERROR');
+    expect(result).toContain('FALLBACK');
     expect(result).toContain('create failed');
   });
 
   test('returns error string when prompt fails', async () => {
     const client = makeMockClient({ promptError: true });
     const result = await delegateAsync(client, defaultParams);
-    expect(result).toContain('ERROR');
+    expect(result).toContain('FALLBACK');
     expect(result).toContain('prompt failed');
   });
 });

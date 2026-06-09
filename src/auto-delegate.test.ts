@@ -153,6 +153,7 @@ describe('auto-delegation prompts and descriptions', () => {
 describe('auto-delegation hooks', () => {
   beforeEach(() => {
     process.env.AGNES_SKIP_GATE = '1';
+    process.env.AGNES_AUTO_DELEGATE = '1';
     clearAutoDelegationState();
   });
 

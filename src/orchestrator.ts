@@ -679,49 +679,7 @@ export async function advanceOrchestration(
   }
 
   if (!plan.waves || plan.waves.length === 0) {
-    if (plan.subPlans && plan.subPlans.length > 0) {
-      // Stale subplans from older version — flatten into tasks
-      let migrated = 0;
-      for (const sub of plan.subPlans) {
-        for (const t of sub.tasks) {
-          if (!plan.tasks.find(pt => pt.id === t.id)) {
-            plan.tasks.push(t);
-            migrated++;
-          }
-        }
-      }
-      plan.subPlans = undefined;
-      if (migrated > 0) {
-        const waves = buildSchedule(plan.tasks, getMaxConcurrency(detectModelTier()));
-        plan.waves = waves.map(w => ({ index: w.index, taskIDs: w.tasks.map(t => t.id) }));
-        plan.currentWaveIndex = 0;
-        const subUnscheduled = validateScheduleComplete(plan);
-        if (subUnscheduled.length > 0) {
-          plan.phase = 'failed';
-          updatePlan(plan, directory);
-          const subResult = buildResult(plan);
-          subResult.error = `Subplan tasks could not be scheduled: ${subUnscheduled.join(', ')}`;
-          return subResult;
-        }
-        if (waves.length > 0) {
-          plan.phase = 'running';
-          const waveZeroDef = plan.waves[0];
-          const waveZeroTasks = waveZeroDef.taskIDs
-            .map(id => plan.tasks.find(t => t.id === id))
-            .filter(Boolean) as TaskItem[];
-          const waveZero: Wave = { index: 0, tasks: waveZeroTasks };
-          await delegateWaveTasks(client, plan, waveZero, sessionID, directory);
-          updatePlan(plan, directory);
-          return buildResult(plan);
-        }
-        plan.phase = 'failed';
-        updatePlan(plan, directory);
-        const subResult = buildResult(plan);
-        subResult.error = 'Subplan tasks could not be scheduled (circular dependencies or conflicts)';
-        return subResult;
-      }
-    }
-    // Tasks exist but no waves and no subplans — try to schedule from scratch
+    // No waves exist — try to schedule from scratch
     if (plan.tasks.length > 0) {
       const waves = buildSchedule(plan.tasks, getMaxConcurrency(detectModelTier()));
       plan.waves = waves.map(w => ({ index: w.index, taskIDs: w.tasks.map(t => t.id) }));

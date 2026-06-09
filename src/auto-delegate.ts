@@ -131,7 +131,7 @@ export async function handleAutoDelegateBefore(
   input: ToolBeforeInput,
   output: { args: Record<string, unknown> },
 ): Promise<void> {
-  if (process.env.AGNES_AUTO_DELEGATE === '0') return;
+  if (process.env.AGNES_AUTO_DELEGATE !== '1') return;
   if (!client?.session) return;
   if (bypassSessions.has(input.sessionID)) return;
   if (activeSessions.has(input.sessionID)) return;

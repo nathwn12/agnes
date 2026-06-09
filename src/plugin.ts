@@ -38,7 +38,6 @@ import { gcPlans } from './planner.js';
 import {
   handleAutoDelegateAfter,
   handleAutoDelegateBefore,
-  rewriteToolDescription,
   cleanupTmpFiles,
 } from './auto-delegate.js';
 
@@ -195,6 +194,12 @@ export const AgnesPlugin: Plugin = async (input) => {
               directory: ctx.directory,
             });
 
+            const fallbackNote = result.failedTasks > 0
+              ? `\n**⚠ ${result.failedTasks} task(s) failed — implement them directly using write/edit/bash.**`
+              : '';
+            const phaseMsg = result.phase === 'completed' && result.failedTasks === 0
+              ? 'All tasks passed review.'
+              : `${result.phase === 'failed' ? 'Orchestration failed' : 'Orchestration finished'} — ${result.failedTasks} task(s) failed. Implement them below.`;
             return [
               `## Orchestration Created`,
               `**Plan:** ${result.planID}`,
@@ -204,12 +209,9 @@ export const AgnesPlugin: Plugin = async (input) => {
               `**Wave:** ${result.currentWave}/${result.totalWaves}`,
               `**Edited files:** ${result.editedFiles.length > 0 ? result.editedFiles.join(', ') : '(none)'}`,
               result.error ? `**Error:** ${result.error}` : '',
+              fallbackNote,
               '',
-              result.phase === 'completed'
-                ? '✅ All tasks passed review.'
-                : result.phase === 'failed'
-                  ? '⚠ Orchestration failed.'
-                  : '⏳ Orchestration is running — poll with agnes_orchestrate_status to check progress.',
+              phaseMsg,
             ].filter(Boolean).join('\n');
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -240,6 +242,9 @@ export const AgnesPlugin: Plugin = async (input) => {
               ? `\n**Pending subagent calls:** ${result.pendingCalls}`
               : '';
 
+            const statusFallbackNote = result.failedTasks > 0
+              ? `\n**⚠ ${result.failedTasks} task(s) failed — implement them directly using write/edit/bash.**`
+              : '';
             return [
               `## Plan: ${result.planID}`,
               `**Phase:** ${result.phase}`,
@@ -250,12 +255,13 @@ export const AgnesPlugin: Plugin = async (input) => {
               pendingInfo,
               details,
               result.error ? `**Error:** ${result.error}` : '',
+              statusFallbackNote,
               '',
-              result.phase === 'completed'
-                ? '✅ Plan completed successfully.'
-                : result.phase === 'failed'
-                  ? '⚠ Plan failed.'
-                  : '⏳ Plan still running — check again with agnes_orchestrate_status.',
+              result.phase === 'completed' && result.failedTasks === 0
+                ? 'Plan completed successfully. All tasks passed review.'
+                : result.phase === 'completed' || result.phase === 'failed'
+                  ? `Plan finished — ${result.failedTasks} task(s) failed. Implement them directly.`
+                  : 'Plan still running — check again with agnes_orchestrate_status.',
             ].filter(Boolean).join('\n');
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -450,11 +456,9 @@ export const AgnesPlugin: Plugin = async (input) => {
       try {
         if (toolID === 'delegate_task') {
           output.description = 'DEPRECATED — Use agnes_delegate instead. This tool may return inconsistent task IDs and is not recommended.';
-        }
-        if (toolID === 'get_task_result') {
+        } else if (toolID === 'get_task_result') {
           output.description = 'DEPRECATED — Use agnes_get_result instead. This tool may fail to resolve task references.';
         }
-        output.description = rewriteToolDescription(toolID, output.description);
       } catch (err) {
         logger.warn('tool.definition hook failed', err);
       }
@@ -600,7 +604,7 @@ export const AgnesPlugin: Plugin = async (input) => {
           fullBootstrap += `\n\n**⚠ YOLO MODE ACTIVATED** — Autonomous execution. Skip question gates. Max parallelization. No confirmation pauses.`;
         }
 
-        fullBootstrap += `\n\n## Completion Protocol\nWhen all tasks are complete, place this HTML comment at the very end of your response (invisible to users, parsed by AGNES):\n${buildResultMessage('task-000', '...')}\n\nOptionally include LESSON: <what to remember> in the response body (outside the HTML comment). AGNES auto-stores these as persistent patterns for future sessions.`;
+        fullBootstrap += `\n\n## Completion Protocol\nWhen all tasks are done, end your response with:\n${buildResultMessage('task-000', '<summary>')}\n\nOptionally include LESSON: <what to remember> for persistent memory.`;
 
         const messageID = (firstUser.parts[0] as { messageID?: string }).messageID ?? '';
         firstUser.parts.unshift({

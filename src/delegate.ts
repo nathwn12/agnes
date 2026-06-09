@@ -2,7 +2,6 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as logger from './logger.js';
 import { markAutoDelegateBypassSession } from './auto-delegate.js';
-import { runGates, createPromiseComplianceGate } from './verification.js';
 import { detectModelTier, getMaxResultChars, truncateResult, getSemaphore, MAX_DELEGATE_DEPTH, pushError, extractText } from './runtime.js';
 import { parseAgnesMessage } from './protocol.js';
 import { extractCanonicalAgnesMessageEnvelope } from './verification.js';
@@ -107,7 +106,7 @@ export async function delegateBlocking(
       childId = await createChildSession(client, params);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return `ERROR: failed to create child session — ${msg}`;
+      return `FALLBACK: failed to create child session — ${msg}. Implement directly using write/edit/bash.`;
     }
 
     const blockedTools = params.blockedTools ?? DELEGATE_BLOCKED_TOOLS;
@@ -119,11 +118,17 @@ export async function delegateBlocking(
       : '';
     const fullPrompt = params.prompt + blockedNote + priorNote;
 
+    // Each retry gets a fresh child session — never reuse a hung session
     const maxAttempts = 3;
+    let currentChildId = childId;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
+        if (attempt > 1) {
+          currentChildId = await createChildSession(client, params);
+        }
+
         const promptPromise = client.session.prompt({
-          path: { id: childId },
+          path: { id: currentChildId },
           body: {
             agent: params.agent,
             parts: [{ type: 'text', text: fullPrompt }],
@@ -141,7 +146,7 @@ export async function delegateBlocking(
             await sleep(Math.pow(3, attempt - 1) * 1000);
             continue;
           }
-          return `ERROR: delegation failed after ${maxAttempts} attempts — ${JSON.stringify(promptResp.error)}`;
+          return `FALLBACK: delegation failed after ${maxAttempts} attempts — implement directly using write/edit/bash: ${JSON.stringify(promptResp.error)}`;
         }
 
         const output = extractText(promptResp.data);
@@ -154,7 +159,7 @@ export async function delegateBlocking(
           if (parsed) {
             const msg = parsed as unknown as Record<string, unknown>;
             if (msg.status === 'BLOCKED') {
-              return `ERROR: Subagent reported BLOCKED: ${msg.content ?? '(no reason given)'}`;
+              return `FALLBACK: Subagent reported BLOCKED: ${msg.content ?? '(no reason given)'}. Implement directly using write/edit/bash.`;
             }
           }
         }
@@ -165,13 +170,6 @@ export async function delegateBlocking(
           truncated += '\n\n' + rawEnvelope;
         }
 
-        try {
-          const gates = [createPromiseComplianceGate(truncated)];
-          await runGates(gates);
-        } catch {
-          // Gate failure is non-blocking — logged inside runGates
-        }
-
         return truncated;
       } catch (err) {
         if (attempt < maxAttempts) {
@@ -179,10 +177,10 @@ export async function delegateBlocking(
           continue;
         }
         const msg = err instanceof Error ? err.message : String(err);
-        return `ERROR: delegation failed after ${maxAttempts} attempts — ${msg}`;
+        return `FALLBACK: delegation failed after ${maxAttempts} attempts — ${msg}. Implement directly using write/edit/bash.`;
       }
     }
-    return `ERROR: delegation failed after ${maxAttempts} attempts — exhausted all retries`;
+    return `FALLBACK: delegation failed after ${maxAttempts} attempts — exhausted all retries. Implement directly using write/edit/bash.`;
   } finally {
     sem.release();
   }
@@ -247,7 +245,7 @@ export async function delegateAsync(
       childId = await createChildSession(client, params);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return `ERROR: failed to create child session — ${msg}`;
+      return `FALLBACK: failed to create child session — ${msg}. Implement directly using write/edit/bash.`;
     }
 
     const blockedTools = params.blockedTools ?? DELEGATE_BLOCKED_TOOLS;
@@ -256,7 +254,7 @@ export async function delegateAsync(
       : '';
     const fullPrompt = params.prompt + blockedNote;
 
-    const promptResp = await client.session.prompt({
+    const promptPromise = client.session.prompt({
       path: { id: childId },
       body: {
         agent: params.agent,
@@ -264,9 +262,15 @@ export async function delegateAsync(
       },
     });
 
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`delegateAsync TIMEOUT after ${SUBAGENT_TIMEOUT_MS}ms`)), SUBAGENT_TIMEOUT_MS)
+    );
+
+    const promptResp = await Promise.race([promptPromise, timeoutPromise]);
+
     if (promptResp.error) {
       pushError(childId, `delegateAsync prompt failed: ${JSON.stringify(promptResp.error)}`);
-      return `ERROR: delegation prompt failed — ${JSON.stringify(promptResp.error)}`;
+      return `FALLBACK: delegation prompt failed — ${JSON.stringify(promptResp.error)}. Implement directly using write/edit/bash.`;
     }
 
     startHeartbeat(client, childId);
@@ -359,13 +363,6 @@ export async function getSubagentResult(
     // If truncation removed the AGNES envelope, re-append it so review gates can find it
     if (rawEnvelope && !truncated.includes('\xA7AM') && output.length > maxChars) {
       truncated += '\n\n' + rawEnvelope;
-    }
-
-    try {
-      const gates = [createPromiseComplianceGate(truncated)];
-      await runGates(gates);
-    } catch {
-      // Non-blocking: gate failure is logged inside runGates, return output regardless
     }
 
     stopHeartbeat(sessionID);

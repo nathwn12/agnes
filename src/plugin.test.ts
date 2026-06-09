@@ -139,21 +139,24 @@ describe('experimental.chat.messages.transform hook', () => {
 });
 
 describe('tool.definition hook', () => {
-  test('tool.definition annotates direct edit tools with auto-delegation routing', async () => {
+  test('tool.definition annotates deprecated delegate tools', async () => {
     const { AgnesPlugin } = await import('./plugin.js');
     const plugin = await AgnesPlugin({ directory: process.cwd() });
-    const output = { description: 'Edit a file', parameters: {} };
-    await (plugin as any)['tool.definition']({ toolID: 'edit' }, output);
-    expect(output.description).toContain('AUTO-DELEGATION');
+    const delegateOutput = { description: 'Delegate a task', parameters: {} };
+    await (plugin as any)['tool.definition']({ toolID: 'delegate_task' }, delegateOutput);
+    expect(delegateOutput.description).toContain('DEPRECATED');
+    const getResultOutput = { description: 'Get task result', parameters: {} };
+    await (plugin as any)['tool.definition']({ toolID: 'get_task_result' }, getResultOutput);
+    expect(getResultOutput.description).toContain('DEPRECATED');
   });
 
   test('bootstrap contains delegation and commands', async () => {
     const { getBootstrapContent } = await import('./bootstrap.js');
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
-    expect(content).toContain('explore');
-    expect(content).toContain('general');
     expect(content).toContain('agnes_delegate');
+    expect(content).toContain('agnes_orchestrate');
+    expect(content).toContain('implement that task directly');
   });
 });
 
@@ -162,8 +165,8 @@ describe('bootstrap delegation enforcement', () => {
     
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
-    expect(content!).toContain('explore');
-    expect(content!).toContain('general');
     expect(content!).toContain('agnes_delegate');
+    expect(content!).toContain('agnes_orchestrate');
+    expect(content!).toContain('implement that task directly');
   });
 });

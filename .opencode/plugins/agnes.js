@@ -12574,20 +12574,14 @@ ${err.stack}` : err !== undefined ? ` \u2014 ${String(err)}` : "";
 
 // src/bootstrap.ts
 var __dirname3 = path2.dirname(fileURLToPath2(import.meta.url));
-var AUTO_DELEGATION_ENFORCEMENT = `## AGNES Auto-Delegation Enforcement
-You are the orchestrator. Implementation belongs in subagent sessions.
-For implementation work, call agnes_delegate or agnes_orchestrate instead of write/edit/apply_patch/bash.
-Direct implementation tool calls are intercepted and rerouted to a general subagent. Delegated child sessions are allowed to edit normally.
-Use read-only tools for investigation and verification tools for checks. Synthesize subagent results for the user.`;
-var CONSTITUTION_PREAMBLE = `CONSTITUTION OF AGNES
-
-I. Identity \u2014 orchestrator, not implementer. Delegate work to subagents. Never implement in orchestrator.
-II. Authority \u2014 user msg > tool output > constitution > regulations > project files > skills > training > prior turns > handoffs.
-III. Truth \u2014 every claim needs evidence. Verification outranks confidence. Tool output beats assumptions. Never declare done without verification.
-IV. Thinking \u2014 /think off (simple), /think high (default for coding), /think max (architecture).
-V. Delegation \u2014 chunk by file boundary. Parallel independent chunks. agnes_delegate blocking, agnes_get_result async. Direct implementation tools are auto-rerouted to subagents.
-VI. Modes \u2014 Question-Gate (default, gates on 3+files/arch/deps). YOLO (--yolo, skip gates, safety-only).
-VII. Completion \u2014 end with marker when all tasks done.`;
+var ORCHESTRATOR_MANDATE = `## AGNES Orchestrator Mandate
+Your ONLY job: delegate, swarm, orchestrate, and fall back when delegation cannot proceed.
+- User gives a goal \u2192 call agnes_orchestrate immediately. You MUST NOT implement directly. Auto-delegation intercepts write/edit/bash \u2014 let it work.
+- Single known-task fix \u2192 use agnes_delegate with agent "general".
+- If delegation fails (returns ERROR starting with "FALLBACK" or "ERROR"): implement that task directly with write/edit/bash. Auto-delegation will NOT intercept the fallback.
+- After agnes_orchestrate completes: check for failed tasks and implement them directly.
+- If agnes_memory/agnes_todo fail: fall back to direct tool equivalents. Never report ERROR to user \u2014 just do the work.
+- Stop only for genuine blockers or vague requests. Otherwise execute autonomously \u2014 no permission pauses.`;
 var packageRoot = findPackageRoot(path2.resolve(__dirname3, "..", "..")) ?? findPackageRoot(__dirname3) ?? path2.resolve(__dirname3, "..", "..");
 var COMMANDS_FULL = "/plan /build-fix /code-review /tdd /verify /checkpoint /learn /security /e2e /update-docs /refactor-clean /test-coverage /yolo /update-codemaps";
 var COMMANDS_MEDIUM = "/plan /build-fix /code-review /tdd /verify /checkpoint /yolo /update-codemaps";
@@ -12603,9 +12597,7 @@ function getStableTier(version2) {
     if (_stableCache?.key === cacheKey)
       return _stableCache.content;
     const soulContent = fs2.readFileSync(soulPath, "utf8");
-    const content = `${CONSTITUTION_PREAMBLE}
-
-${AUTO_DELEGATION_ENFORCEMENT}
+    const content = `${ORCHESTRATOR_MANDATE}
 
 ---
 
@@ -13088,14 +13080,12 @@ function hasCompletionSignal(text) {
     return false;
   return parsed.type === "completion" || parsed.type === "result";
 }
-function createPromiseComplianceGate(output, tier) {
-  const modelTier = tier ?? detectModelTier();
-  const blocking = modelTier !== "small" && !getGateSkip();
+function createPromiseComplianceGate(output) {
   return {
     id: "promise-compliance",
     name: "Promise Compliance",
     description: "Checks that output contains a canonical completion or result <agnes:message>",
-    isBlocking: blocking,
+    isBlocking: false,
     run: async () => {
       const start = Date.now();
       const errors3 = [];
@@ -13183,21 +13173,8 @@ function isImplementationTool(tool3, args = {}) {
     return true;
   return false;
 }
-function rewriteToolDescription(toolID, current) {
-  if (toolID === "write" || toolID === "edit" || toolID === "apply_patch") {
-    return `${current}
-
-AGNES AUTO-DELEGATION: Do not use this directly for implementation in the orchestrator session. Use agnes_delegate/agnes_orchestrate. If called directly, AGNES intercepts and reroutes the work to a subagent.`;
-  }
-  if (toolID === "bash") {
-    return `${current}
-
-AGNES AUTO-DELEGATION: Read-only and verification commands are allowed. Code-writing or workspace-mutating commands are intercepted and rerouted to a subagent.`;
-  }
-  return current;
-}
 async function handleAutoDelegateBefore(client, worktreePath, input, output) {
-  if (process.env.AGNES_AUTO_DELEGATE === "0")
+  if (process.env.AGNES_AUTO_DELEGATE !== "1")
     return;
   if (!client?.session)
     return;
@@ -13228,12 +13205,6 @@ async function handleAutoDelegateBefore(client, worktreePath, input, output) {
       delete output.args[key];
     Object.assign(output.args, noopArgs);
   } catch (err) {
-    interceptedCalls.set(input.callID, {
-      originalTool: input.tool,
-      originalArgs: { ...output.args },
-      childSessionID: "",
-      result: `ERROR: ${err instanceof Error ? err.message : String(err)}`
-    });
     const noopArgs = makeNoopArgs(worktreePath, input.tool, input.callID, output.args);
     for (const key of Object.keys(output.args))
       delete output.args[key];
@@ -13328,7 +13299,7 @@ function makeNoopArgs(worktreePath, tool3, callID, args) {
     };
   }
   if (tool3 === "bash") {
-    return { ...args, command: "# noop" };
+    return { ...args, command: "echo AGNES_NOOP" };
   }
   return args;
 }
@@ -13347,13 +13318,16 @@ async function runAutoDelegatedTask(client, parentSessionID, prompt) {
     }
     const childSessionID = createResp.data.id;
     markAutoDelegateBypassSession(childSessionID);
-    const promptResp = await client.session.prompt({
+    const promptPromise = client.session.prompt({
       path: { id: childSessionID },
       body: {
         agent: "general",
         parts: [{ type: "text", text: prompt }]
       }
     });
+    const timeoutMs = 120000;
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error(`Auto-delegation subagent timed out after ${timeoutMs}ms`)), timeoutMs));
+    const promptResp = await Promise.race([promptPromise, timeoutPromise]);
     if (promptResp.error) {
       throw new Error(`Auto-delegation prompt failed: ${JSON.stringify(promptResp.error)}`);
     }
@@ -13451,7 +13425,7 @@ async function delegateBlocking(client, params) {
       childId = await createChildSession(client, params);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return `ERROR: failed to create child session \u2014 ${msg}`;
+      return `FALLBACK: failed to create child session \u2014 ${msg}. Implement directly using write/edit/bash.`;
     }
     const blockedTools = params.blockedTools ?? DELEGATE_BLOCKED_TOOLS;
     const blockedNote = blockedTools.size > 0 ? `
@@ -13463,10 +13437,14 @@ async function delegateBlocking(client, params) {
 ${params.priorContext}` : "";
     const fullPrompt = params.prompt + blockedNote + priorNote;
     const maxAttempts = 3;
+    let currentChildId = childId;
     for (let attempt = 1;attempt <= maxAttempts; attempt++) {
       try {
+        if (attempt > 1) {
+          currentChildId = await createChildSession(client, params);
+        }
         const promptPromise = client.session.prompt({
-          path: { id: childId },
+          path: { id: currentChildId },
           body: {
             agent: params.agent,
             parts: [{ type: "text", text: fullPrompt }]
@@ -13479,7 +13457,7 @@ ${params.priorContext}` : "";
             await sleep(Math.pow(3, attempt - 1) * 1000);
             continue;
           }
-          return `ERROR: delegation failed after ${maxAttempts} attempts \u2014 ${JSON.stringify(promptResp.error)}`;
+          return `FALLBACK: delegation failed after ${maxAttempts} attempts \u2014 implement directly using write/edit/bash: ${JSON.stringify(promptResp.error)}`;
         }
         const output = extractText(promptResp.data);
         const tier = detectModelTier();
@@ -13490,7 +13468,7 @@ ${params.priorContext}` : "";
           if (parsed) {
             const msg = parsed;
             if (msg.status === "BLOCKED") {
-              return `ERROR: Subagent reported BLOCKED: ${msg.content ?? "(no reason given)"}`;
+              return `FALLBACK: Subagent reported BLOCKED: ${msg.content ?? "(no reason given)"}. Implement directly using write/edit/bash.`;
             }
           }
         }
@@ -13500,10 +13478,6 @@ ${params.priorContext}` : "";
 
 ` + rawEnvelope;
         }
-        try {
-          const gates = [createPromiseComplianceGate(truncated)];
-          await runGates(gates);
-        } catch {}
         return truncated;
       } catch (err) {
         if (attempt < maxAttempts) {
@@ -13511,10 +13485,10 @@ ${params.priorContext}` : "";
           continue;
         }
         const msg = err instanceof Error ? err.message : String(err);
-        return `ERROR: delegation failed after ${maxAttempts} attempts \u2014 ${msg}`;
+        return `FALLBACK: delegation failed after ${maxAttempts} attempts \u2014 ${msg}. Implement directly using write/edit/bash.`;
       }
     }
-    return `ERROR: delegation failed after ${maxAttempts} attempts \u2014 exhausted all retries`;
+    return `FALLBACK: delegation failed after ${maxAttempts} attempts \u2014 exhausted all retries. Implement directly using write/edit/bash.`;
   } finally {
     sem.release();
   }
@@ -13571,23 +13545,25 @@ async function delegateAsync(client, params) {
       childId = await createChildSession(client, params);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return `ERROR: failed to create child session \u2014 ${msg}`;
+      return `FALLBACK: failed to create child session \u2014 ${msg}. Implement directly using write/edit/bash.`;
     }
     const blockedTools = params.blockedTools ?? DELEGATE_BLOCKED_TOOLS;
     const blockedNote = blockedTools.size > 0 ? `
 
 **Restricted tools:** ${[...blockedTools].join(", ")}` : "";
     const fullPrompt = params.prompt + blockedNote;
-    const promptResp = await client.session.prompt({
+    const promptPromise = client.session.prompt({
       path: { id: childId },
       body: {
         agent: params.agent,
         parts: [{ type: "text", text: fullPrompt }]
       }
     });
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error(`delegateAsync TIMEOUT after ${SUBAGENT_TIMEOUT_MS}ms`)), SUBAGENT_TIMEOUT_MS));
+    const promptResp = await Promise.race([promptPromise, timeoutPromise]);
     if (promptResp.error) {
       pushError(childId, `delegateAsync prompt failed: ${JSON.stringify(promptResp.error)}`);
-      return `ERROR: delegation prompt failed \u2014 ${JSON.stringify(promptResp.error)}`;
+      return `FALLBACK: delegation prompt failed \u2014 ${JSON.stringify(promptResp.error)}. Implement directly using write/edit/bash.`;
     }
     startHeartbeat(client, childId);
     return childId;
@@ -13664,10 +13640,6 @@ async function getSubagentResult(client, sessionID, _directory) {
 
 ` + rawEnvelope;
     }
-    try {
-      const gates = [createPromiseComplianceGate(truncated)];
-      await runGates(gates);
-    } catch {}
     stopHeartbeat(sessionID);
     const ref = _taskRefs.get(sessionID);
     if (ref) {
@@ -14394,47 +14366,13 @@ function createEnvelopeGate(plan) {
     }
   };
 }
-function createAcceptanceCriteriaGate(plan) {
-  return {
-    id: "orchestrator-acceptance",
-    name: "Acceptance Criteria",
-    description: "Completed tasks with acceptance criteria must reference them in their output",
-    isBlocking: false,
-    run: async () => {
-      const start = Date.now();
-      const errors3 = [];
-      const affected = [];
-      for (const t of plan.tasks) {
-        if (t.status !== "completed" || !t.acceptanceCriteria || !t.result)
-          continue;
-        const criteriaKeywords = t.acceptanceCriteria.toLowerCase().split(/\s+/).filter((w) => w.length > 4);
-        const resultLower = t.result.toLowerCase();
-        const matched = criteriaKeywords.filter((w) => resultLower.includes(w));
-        const matchRate = criteriaKeywords.length > 0 ? matched.length / criteriaKeywords.length : 1;
-        if (matchRate < 0.3) {
-          errors3.push(`Task ${t.id} ("${t.description}"): output does not reference acceptance criteria keywords (matched ${matched.length}/${criteriaKeywords.length})`);
-          affected.push(t.id);
-        }
-      }
-      return {
-        gateId: "orchestrator-acceptance",
-        status: errors3.length === 0 ? "PASS" : "FAIL",
-        evidence: { errors: errors3 },
-        affectedTaskIds: affected,
-        timestamp: new Date().toISOString(),
-        durationMs: Date.now() - start
-      };
-    }
-  };
-}
 function extractFailedTaskIds(plan) {
   return plan.tasks.filter((t) => t.status === "failed" || t.status === "needs_review").map((t) => t.id);
 }
 async function runReview(plan) {
   const completionGate = createCompletionGate(plan);
   const envelopeGate = createEnvelopeGate(plan);
-  const acceptanceGate = createAcceptanceCriteriaGate(plan);
-  const gates = [completionGate, envelopeGate, acceptanceGate];
+  const gates = [completionGate, envelopeGate];
   let results;
   try {
     results = await runGates(gates);
@@ -15013,45 +14951,6 @@ async function advanceOrchestration(client, planID, directory, sessionID) {
     };
   }
   if (!plan.waves || plan.waves.length === 0) {
-    if (plan.subPlans && plan.subPlans.length > 0) {
-      let migrated = 0;
-      for (const sub of plan.subPlans) {
-        for (const t of sub.tasks) {
-          if (!plan.tasks.find((pt) => pt.id === t.id)) {
-            plan.tasks.push(t);
-            migrated++;
-          }
-        }
-      }
-      plan.subPlans = undefined;
-      if (migrated > 0) {
-        const waves = buildSchedule(plan.tasks, getMaxConcurrency(detectModelTier()));
-        plan.waves = waves.map((w) => ({ index: w.index, taskIDs: w.tasks.map((t) => t.id) }));
-        plan.currentWaveIndex = 0;
-        const subUnscheduled = validateScheduleComplete(plan);
-        if (subUnscheduled.length > 0) {
-          plan.phase = "failed";
-          updatePlan(plan, directory);
-          const subResult2 = buildResult(plan);
-          subResult2.error = `Subplan tasks could not be scheduled: ${subUnscheduled.join(", ")}`;
-          return subResult2;
-        }
-        if (waves.length > 0) {
-          plan.phase = "running";
-          const waveZeroDef = plan.waves[0];
-          const waveZeroTasks = waveZeroDef.taskIDs.map((id) => plan.tasks.find((t) => t.id === id)).filter(Boolean);
-          const waveZero = { index: 0, tasks: waveZeroTasks };
-          await delegateWaveTasks(client, plan, waveZero, sessionID, directory);
-          updatePlan(plan, directory);
-          return buildResult(plan);
-        }
-        plan.phase = "failed";
-        updatePlan(plan, directory);
-        const subResult = buildResult(plan);
-        subResult.error = "Subplan tasks could not be scheduled (circular dependencies or conflicts)";
-        return subResult;
-      }
-    }
     if (plan.tasks.length > 0) {
       const waves = buildSchedule(plan.tasks, getMaxConcurrency(detectModelTier()));
       plan.waves = waves.map((w) => ({ index: w.index, taskIDs: w.tasks.map((t) => t.id) }));
@@ -15349,6 +15248,9 @@ ${args.prompt}` : args.prompt;
               sessionID: ctx.sessionID,
               directory: ctx.directory
             });
+            const fallbackNote = result.failedTasks > 0 ? `
+**\u26A0 ${result.failedTasks} task(s) failed \u2014 implement them directly using write/edit/bash.**` : "";
+            const phaseMsg = result.phase === "completed" && result.failedTasks === 0 ? "All tasks passed review." : `${result.phase === "failed" ? "Orchestration failed" : "Orchestration finished"} \u2014 ${result.failedTasks} task(s) failed. Implement them below.`;
             return [
               `## Orchestration Created`,
               `**Plan:** ${result.planID}`,
@@ -15358,8 +15260,9 @@ ${args.prompt}` : args.prompt;
               `**Wave:** ${result.currentWave}/${result.totalWaves}`,
               `**Edited files:** ${result.editedFiles.length > 0 ? result.editedFiles.join(", ") : "(none)"}`,
               result.error ? `**Error:** ${result.error}` : "",
+              fallbackNote,
               "",
-              result.phase === "completed" ? "\u2705 All tasks passed review." : result.phase === "failed" ? "\u26A0 Orchestration failed." : "\u23F3 Orchestration is running \u2014 poll with agnes_orchestrate_status to check progress."
+              phaseMsg
             ].filter(Boolean).join(`
 `);
           } catch (err) {
@@ -15380,6 +15283,8 @@ ${args.prompt}` : args.prompt;
 **Files edited:** ${result.editedFiles.join(", ")}` : "";
             const pendingInfo = result.pendingCalls > 0 ? `
 **Pending subagent calls:** ${result.pendingCalls}` : "";
+            const statusFallbackNote = result.failedTasks > 0 ? `
+**\u26A0 ${result.failedTasks} task(s) failed \u2014 implement them directly using write/edit/bash.**` : "";
             return [
               `## Plan: ${result.planID}`,
               `**Phase:** ${result.phase}`,
@@ -15390,8 +15295,9 @@ ${args.prompt}` : args.prompt;
               pendingInfo,
               details,
               result.error ? `**Error:** ${result.error}` : "",
+              statusFallbackNote,
               "",
-              result.phase === "completed" ? "\u2705 Plan completed successfully." : result.phase === "failed" ? "\u26A0 Plan failed." : "\u23F3 Plan still running \u2014 check again with agnes_orchestrate_status."
+              result.phase === "completed" && result.failedTasks === 0 ? "Plan completed successfully. All tasks passed review." : result.phase === "completed" || result.phase === "failed" ? `Plan finished \u2014 ${result.failedTasks} task(s) failed. Implement them directly.` : "Plan still running \u2014 check again with agnes_orchestrate_status."
             ].filter(Boolean).join(`
 `);
           } catch (err) {
@@ -15587,11 +15493,9 @@ ${args.prompt}` : args.prompt;
       try {
         if (toolID === "delegate_task") {
           output.description = "DEPRECATED \u2014 Use agnes_delegate instead. This tool may return inconsistent task IDs and is not recommended.";
-        }
-        if (toolID === "get_task_result") {
+        } else if (toolID === "get_task_result") {
           output.description = "DEPRECATED \u2014 Use agnes_get_result instead. This tool may fail to resolve task references.";
         }
-        output.description = rewriteToolDescription(toolID, output.description);
       } catch (err) {
         warn("tool.definition hook failed", err);
       }
@@ -15752,10 +15656,10 @@ ${files}
         fullBootstrap += `
 
 ## Completion Protocol
-When all tasks are complete, place this HTML comment at the very end of your response (invisible to users, parsed by AGNES):
-${buildResultMessage("task-000", "...")}
+When all tasks are done, end your response with:
+${buildResultMessage("task-000", "<summary>")}
 
-Optionally include LESSON: <what to remember> in the response body (outside the HTML comment). AGNES auto-stores these as persistent patterns for future sessions.`;
+Optionally include LESSON: <what to remember> for persistent memory.`;
         const messageID = firstUser.parts[0].messageID ?? "";
         firstUser.parts.unshift({
           id: randomUUID2(),

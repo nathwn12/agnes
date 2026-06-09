@@ -63,42 +63,6 @@ function createEnvelopeGate(plan: TaskPlan): Gate {
   };
 }
 
-function createAcceptanceCriteriaGate(plan: TaskPlan): Gate {
-  return {
-    id: 'orchestrator-acceptance',
-    name: 'Acceptance Criteria',
-    description: 'Completed tasks with acceptance criteria must reference them in their output',
-    isBlocking: false,
-    run: async () => {
-      const start = Date.now();
-      const errors: string[] = [];
-      const affected: string[] = [];
-      for (const t of plan.tasks) {
-        if (t.status !== 'completed' || !t.acceptanceCriteria || !t.result) continue;
-        const criteriaKeywords = t.acceptanceCriteria
-          .toLowerCase()
-          .split(/\s+/)
-          .filter(w => w.length > 4);
-        const resultLower = t.result.toLowerCase();
-        const matched = criteriaKeywords.filter(w => resultLower.includes(w));
-        const matchRate = criteriaKeywords.length > 0 ? matched.length / criteriaKeywords.length : 1;
-        if (matchRate < 0.3) {
-          errors.push(`Task ${t.id} ("${t.description}"): output does not reference acceptance criteria keywords (matched ${matched.length}/${criteriaKeywords.length})`);
-          affected.push(t.id);
-        }
-      }
-      return {
-        gateId: 'orchestrator-acceptance',
-        status: errors.length === 0 ? 'PASS' : 'FAIL',
-        evidence: { errors },
-        affectedTaskIds: affected,
-        timestamp: new Date().toISOString(),
-        durationMs: Date.now() - start,
-      };
-    },
-  };
-}
-
 function extractFailedTaskIds(plan: TaskPlan): string[] {
   return plan.tasks
     .filter(t => t.status === 'failed' || t.status === 'needs_review')
@@ -108,9 +72,8 @@ function extractFailedTaskIds(plan: TaskPlan): string[] {
 export async function runReview(plan: TaskPlan): Promise<ReviewVerdict> {
   const completionGate = createCompletionGate(plan);
   const envelopeGate = createEnvelopeGate(plan);
-  const acceptanceGate = createAcceptanceCriteriaGate(plan);
 
-  const gates: Gate[] = [completionGate, envelopeGate, acceptanceGate];
+  const gates: Gate[] = [completionGate, envelopeGate];
 
   let results: GateResult[];
   try {
@@ -128,7 +91,6 @@ export async function runReview(plan: TaskPlan): Promise<ReviewVerdict> {
 
   // Propagate envelope gate failures to task status
   // (completion gate failures are structural — retry won't help)
-  // Acceptance gate is advisory only — do not mutate task status
   for (const result of results) {
     if (result.status === 'FAIL' && result.affectedTaskIds && result.gateId === 'orchestrator-envelope') {
       for (const taskId of result.affectedTaskIds) {

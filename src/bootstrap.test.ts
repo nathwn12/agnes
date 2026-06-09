@@ -8,10 +8,10 @@ describe('getBootstrapContent', () => {
     expect(content!).toContain('AGNES');
   });
 
-  test('includes the Constitution preamble', () => {
+  test('includes the Orchestrator Protocol header', () => {
     const content = getBootstrapContent();
     expect(content).not.toBeNull();
-    expect(content!).toMatch(/CONSTITUTION OF AGNES/);
+    expect(content!).toMatch(/Orchestrator Protocol/);
   });
 
   test('includes delegation protocol', () => {
