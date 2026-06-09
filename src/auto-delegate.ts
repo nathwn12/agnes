@@ -157,12 +157,6 @@ export async function handleAutoDelegateBefore(
     for (const key of Object.keys(output.args)) delete output.args[key];
     Object.assign(output.args, noopArgs);
   } catch (err) {
-    interceptedCalls.set(input.callID, {
-      originalTool: input.tool,
-      originalArgs: { ...output.args },
-      childSessionID: '',
-      result: `ERROR: ${err instanceof Error ? err.message : String(err)}`,
-    });
     const noopArgs = makeNoopArgs(worktreePath, input.tool, input.callID, output.args);
     for (const key of Object.keys(output.args)) delete output.args[key];
     Object.assign(output.args, noopArgs);
@@ -267,7 +261,7 @@ function makeNoopArgs(
   }
 
   if (tool === 'bash') {
-    return { ...args, command: '# noop' };
+    return { ...args, command: 'echo AGNES_NOOP' };
   }
 
   return args;
@@ -294,13 +288,18 @@ async function runAutoDelegatedTask(
     const childSessionID = createResp.data.id;
     markAutoDelegateBypassSession(childSessionID);
 
-    const promptResp = await client.session.prompt({
+    const promptPromise = client.session.prompt({
       path: { id: childSessionID },
       body: {
         agent: 'general',
         parts: [{ type: 'text', text: prompt }],
       },
     });
+    const timeoutMs = 120_000;
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`Auto-delegation subagent timed out after ${timeoutMs}ms`)), timeoutMs)
+    );
+    const promptResp = await Promise.race([promptPromise, timeoutPromise]);
     if (promptResp.error) {
       throw new Error(`Auto-delegation prompt failed: ${JSON.stringify(promptResp.error)}`);
     }
