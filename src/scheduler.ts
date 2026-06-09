@@ -84,8 +84,6 @@ function detectFileConflicts(tasks: TaskItem[]): FileConflict[] {
 
 function resolveConflicts(
   wave: Wave,
-  _allTasks: TaskItem[],
-  _maxParallel: number,
 ): { resolved: Wave[]; demoted: TaskItem[] } {
   const conflicts = detectFileConflicts(wave.tasks);
   if (conflicts.length === 0) {
@@ -94,9 +92,8 @@ function resolveConflicts(
 
   const conflicted = new Set<string>();
   for (const c of conflicts) {
-    if (!conflicted.has(c.taskA)) {
-      conflicted.add(c.taskB);
-    }
+    conflicted.add(c.taskA);
+    conflicted.add(c.taskB);
   }
 
   const keep: TaskItem[] = [];
@@ -122,31 +119,25 @@ export function buildSchedule(tasks: TaskItem[], maxParallel: number): Wave[] {
 
   const waves = topologicalWaveSort(onlyPending);
 
-  const resolvedWaves: Wave[] = [];
-  const allDemoted: TaskItem[] = [];
+  const result: Wave[] = [];
+  let totalIndex = 0;
 
   for (const wave of waves) {
-    const { resolved, demoted } = resolveConflicts(wave, tasks, maxParallel);
-    resolvedWaves.push(...resolved);
-    allDemoted.push(...demoted);
-  }
+    const { resolved, demoted } = resolveConflicts(wave);
 
-  if (allDemoted.length > 0) {
-    let idx = resolvedWaves.length;
-    for (const task of allDemoted) {
-      resolvedWaves.push({ index: idx++, tasks: [task] });
+    // Add resolved tasks (capped by maxParallel)
+    for (const r of resolved) {
+      for (let i = 0; i < r.tasks.length; i += maxParallel) {
+        result.push({ index: totalIndex++, tasks: r.tasks.slice(i, i + maxParallel) });
+      }
+    }
+
+    // Insert conflict-demoted tasks right after their resolved wave,
+    // BEFORE the next topological wave, preserving dependency ordering
+    for (const task of demoted) {
+      result.push({ index: totalIndex++, tasks: [task] });
     }
   }
 
-  const capped: Wave[] = [];
-  for (const wave of resolvedWaves) {
-    for (let i = 0; i < wave.tasks.length; i += maxParallel) {
-      capped.push({
-        index: capped.length,
-        tasks: wave.tasks.slice(i, i + maxParallel),
-      });
-    }
-  }
-
-  return capped;
+  return result;
 }

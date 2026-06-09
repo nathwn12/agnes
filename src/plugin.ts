@@ -39,6 +39,7 @@ import {
   handleAutoDelegateAfter,
   handleAutoDelegateBefore,
   rewriteToolDescription,
+  cleanupTmpFiles,
 } from './auto-delegate.js';
 
 const _bootstrapInjectedSessions = new Set<string>();
@@ -540,6 +541,7 @@ export const AgnesPlugin: Plugin = async (input) => {
         memoryStore.save();
         todoStore.save();
         gcPlans(worktreePath);
+        cleanupTmpFiles(worktreePath);
       } catch (err) {
         logger.warn('Failed to clean up session state', err);
       }

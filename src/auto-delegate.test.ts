@@ -67,6 +67,56 @@ describe('auto-delegation classification', () => {
     expect(isImplementationTool('bash', { command: 'sed -i s/a/b/g src/file.ts' })).toBe(true);
     expect(isImplementationTool('bash', { command: 'git commit -m test' })).toBe(true);
   });
+
+  test('classifies PowerShell mutating cmdlets as implementation', () => {
+    expect(isImplementationTool('bash', { command: 'Set-Content -Path file.txt -Value "data"' })).toBe(true);
+    expect(isImplementationTool('bash', { command: 'New-Item -Path dir -ItemType Directory' })).toBe(true);
+    expect(isImplementationTool('bash', { command: 'Remove-Item -Recurse -Force .\\temp' })).toBe(true);
+    expect(isImplementationTool('bash', { command: 'Copy-Item src\\a.ts dst\\b.ts -Force' })).toBe(true);
+    expect(isImplementationTool('bash', { command: 'Move-Item old.ts new.ts' })).toBe(true);
+    expect(isImplementationTool('bash', { command: 'Out-File -FilePath log.txt -InputObject "done"' })).toBe(true);
+  });
+
+  test('classifies pwsh/powershell executor calls as implementation', () => {
+    expect(isImplementationTool('bash', { command: 'pwsh -Command "New-Item -Path test -ItemType Directory"' })).toBe(true);
+    expect(isImplementationTool('bash', { command: 'powershell -Command "Remove-Item file.txt"' })).toBe(true);
+  });
+
+  test('allows read-only pwsh/powershell wrapper calls', () => {
+    expect(isImplementationTool('bash', { command: 'pwsh -Command "Get-ChildItem -Path src"' })).toBe(false);
+    expect(isImplementationTool('bash', { command: 'powershell -Command "Get-Content file.txt"' })).toBe(false);
+    expect(isImplementationTool('bash', { command: 'pwsh -Command "Test-Path file.txt"' })).toBe(false);
+    expect(isImplementationTool('bash', { command: 'pwsh -Command \'Select-String -Pattern "foo" src/*.ts\'' })).toBe(false);
+  });
+
+  test('allows plain pwsh/powershell -File invocations as mutating', () => {
+    expect(isImplementationTool('bash', { command: 'pwsh -File script.ps1' })).toBe(true);
+    expect(isImplementationTool('bash', { command: 'powershell -F setup.ps1' })).toBe(true);
+  });
+
+  test('classifies compound pwsh pipe with mutating cmdlet as implementation', () => {
+    expect(isImplementationTool('bash', { command: 'Get-ChildItem | Remove-Item -Force' })).toBe(true);
+    expect(isImplementationTool('bash', { command: 'Get-Content src.txt | Set-Content dst.txt' })).toBe(true);
+  });
+
+  test('allows PowerShell read-only cmdlets', () => {
+    expect(isImplementationTool('bash', { command: 'Get-ChildItem -Path src' })).toBe(false);
+    expect(isImplementationTool('bash', { command: 'Get-Content file.txt' })).toBe(false);
+    expect(isImplementationTool('bash', { command: 'Select-String -Pattern "foo" src/*.ts' })).toBe(false);
+    expect(isImplementationTool('bash', { command: 'Test-Path file.txt' })).toBe(false);
+  });
+
+  test('classifies find -delete and find -exec as implementation', () => {
+    expect(isImplementationTool('bash', { command: 'find . -name "*.log" -delete' })).toBe(true);
+    expect(isImplementationTool('bash', { command: 'find /tmp -type f -exec rm {} \\;' })).toBe(true);
+    expect(isImplementationTool('bash', { command: 'find . -exec mv {} /dest/ \\;' })).toBe(true);
+    expect(isImplementationTool('bash', { command: 'find . -depth -execdir rm {} \\;' })).toBe(true);
+  });
+
+  test('allows plain find without destructive flags', () => {
+    expect(isImplementationTool('bash', { command: 'find . -name "*.ts"' })).toBe(false);
+    expect(isImplementationTool('bash', { command: 'find /src -type f -name "*.js"' })).toBe(false);
+  });
 });
 
 describe('auto-delegation prompts and descriptions', () => {

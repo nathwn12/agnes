@@ -23,7 +23,6 @@ export function warn(message: string, err?: unknown): void {
 }
 
 export function error(message: string, err?: unknown): void {
-  if (!ENABLED) return;
   const detail = err instanceof Error ? ` — ${err.message}\n${err.stack}` : err !== undefined ? ` — ${String(err)}` : '';
   console.error(`${prefix()} ${timestamp()} ERROR ${message}${detail}`);
 }

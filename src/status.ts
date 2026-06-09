@@ -1,7 +1,7 @@
 import type { ModelTier } from './runtime.js';
-import { detectModelTier, getSemaphore, getAsyncErrors } from './runtime.js';
+import { detectModelTier, getSemaphore, getAsyncErrors, getMaxConcurrency } from './runtime.js';
 import { getGateStats } from './verification.js';
-import { getRunningTaskCount } from './delegate.js';
+import { getRunningTaskCount, getTaskRefCount } from './delegate.js';
 import { discoverCommands } from './discovery.js';
 import type { MemoryStore } from './memory.js';
 
@@ -35,9 +35,9 @@ export function collectStatus(
   return {
     version,
     tier,
-    concurrency: { max: 3, active: sem.active, queued: sem.queued },
+    concurrency: { max: getMaxConcurrency(tier), active: sem.active, queued: sem.queued },
     commands: { total: commands.length },
-    sessions: { totalTaskRefs: 0, running: getRunningTaskCount() },
+    sessions: { totalTaskRefs: getTaskRefCount(), running: getRunningTaskCount() },
     memory: { entries: memory.entryCount, categories: catMap },
     gateStats: {
       checks: gateStats.checksPerformed,

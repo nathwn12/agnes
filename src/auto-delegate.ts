@@ -33,8 +33,9 @@ const bypassSessions = new Set<string>();
 const activeSessions = new Set<string>();
 
 const READONLY_BASH_PATTERNS = [
-  /^\s*(pwd|ls|dir|cat|echo|printf|head|tail|type|which|whoami|env|date|wc|sort|uniq|jq|rg|tree|locate)(\s|$)/i,
-  /^\s*git\s+(status|diff|log|show|branch|remote|rev-parse|merge-base|tag|describe|shortlog|whatchanged|bisect|stash\s+(list|show)|help)(\s|$)/i,
+  /^\s*(pwd|ls|dir|cat|echo|printf|head|tail|type|which|whoami|env|date|wc|sort|uniq|jq|rg|tree|locate|find|fd|stat|du|df|ps|file|diff)(\s|$)/i,
+  /^\s*(Get-ChildItem|Get-Content|Select-String|Get-Command|Get-Help|Test-Path|Get-Item|Get-ItemProperty|Get-Location|Get-Process|Get-Service|Get-Date|Write-Host|Write-Output|Get-Variable|Get-Alias|Get-Member|Get-History|Measure-Object|Group-Object|Sort-Object|Where-Object|Select-Object|ForEach-Object)\b/i,
+  /^\s*git\s+(status|diff|log|show|branch|remote|rev-parse|merge-base|tag|describe|shortlog|whatchanged|bisect|stash\s+(list|show)|help|ls-files|ls-tree|count-objects)(\s|$)/i,
   /^\s*(bun|npm|pnpm|yarn)\s+(test|run\s+(lint|typecheck|test|bundle|build|check))(\s|$)/i,
 ];
 
@@ -43,6 +44,8 @@ const MUTATING_BASH_PATTERNS = [
   /\b(sed\s+-i|perl\s+-pi|python\b|node\b|bun\s+run\s+scripts\/|touch|mkdir|rm|mv|cp|chmod|chown)\b/i,
   /\b(npm\s+install|npm\s+i|pnpm\s+add|yarn\s+add|bun\s+add)\b/i,
   /^\s*git\s+(add|commit|checkout|switch|reset|clean|merge|rebase|push|pull|restore|mv|rm|cherry-pick|revert|stash(\s+(push|save|drop|pop|apply))?|submodule(\s+(add|update|init))?)(\s|$)/i,
+  /\b(Set-Content|Add-Content|New-Item|Remove-Item|Copy-Item|Move-Item|Rename-Item|Out-File|Invoke-WebRequest|Invoke-RestMethod)\b/i,
+  /^\s*find\s+.*\s+-(delete|exec(dir)?)\b/i,
 ];
 
 export function markAutoDelegateBypassSession(sessionID: string): void {
@@ -55,14 +58,50 @@ export function clearAutoDelegationState(): void {
   activeSessions.clear();
 }
 
+export function cleanupTmpFiles(worktreePath: string, maxAgeMs = 24 * 60 * 60 * 1000): number {
+  const tmpDir = path.join(worktreePath, '.agnes', 'tmp');
+  let deleted = 0;
+  try {
+    if (!fs.existsSync(tmpDir)) return 0;
+    const entries = fs.readdirSync(tmpDir, { withFileTypes: true });
+    const now = Date.now();
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const filePath = path.join(tmpDir, entry.name);
+      try {
+        const stat = fs.statSync(filePath);
+        if (now - stat.mtimeMs > maxAgeMs) {
+          fs.rmSync(filePath, { force: true });
+          deleted++;
+        }
+      } catch { /* skip if stat fails */ }
+    }
+  } catch { /* silent */ }
+  return deleted;
+}
+
 export function isImplementationTool(tool: string, args: Record<string, unknown> = {}): boolean {
   if (tool === 'write' || tool === 'edit' || tool === 'apply_patch') return true;
   if (tool !== 'bash') return false;
 
   const command = String(args.command ?? '').trim();
   if (!command) return false;
+  // Check mutating patterns first — compound commands like "Get-ChildItem | Remove-Item"
+  // match read-only at the start but ARE mutating. Mutating wins.
+  if (MUTATING_BASH_PATTERNS.some(pattern => pattern.test(command))) return true;
   if (READONLY_BASH_PATTERNS.some(pattern => pattern.test(command))) return false;
-  return MUTATING_BASH_PATTERNS.some(pattern => pattern.test(command));
+
+  // For pwsh/powershell wrappers, classify by inner command
+  const pwshMatch = command.match(/^\s*(pwsh|powershell)\s+-(Command|C)\s+/i);
+  if (pwshMatch) {
+    const inner = command.slice(pwshMatch[0].length).replace(/^["']/, '');
+    if (/^\s*(Get-|Test-|Select-|Write-Host|Write-Output)\b/i.test(inner)) return false;
+    return true;
+  }
+  const pwshFileMatch = command.match(/^\s*(pwsh|powershell)\s+-(File|F)\s+/i);
+  if (pwshFileMatch) return true; // External script files are always potentially mutating
+
+  return true;
 }
 
 export function buildAutoDelegationSystemPrompt(): string {

@@ -1,6 +1,7 @@
 import type { TaskPlan } from './planner.js';
 import { runGates } from './verification.js';
 import type { Gate, GateResult } from './verification.js';
+import { hasCompletionSignal } from './verification.js';
 
 export interface ReviewVerdict {
   passed: boolean;
@@ -17,7 +18,7 @@ function createCompletionGate(plan: TaskPlan): Gate {
     isBlocking: true,
     run: async () => {
       const start = Date.now();
-      const failed = plan.tasks.filter(t => t.status !== 'completed');
+      const failed = plan.tasks.filter(t => t.status !== 'completed' && t.status !== 'pending');
       const errors = failed.map(
         t =>
           `Task ${t.id} ("${t.description}"): status = ${t.status}${t.error ? `, error = ${t.error}` : ''}`,
@@ -33,37 +34,64 @@ function createCompletionGate(plan: TaskPlan): Gate {
   };
 }
 
-function createFileConflictGate(plan: TaskPlan): Gate {
+function createEnvelopeGate(plan: TaskPlan): Gate {
   return {
-    id: 'orchestrator-file-conflict',
-    name: 'File Conflict',
-    description: 'No two tasks edited overlapping files without coordination',
-    isBlocking: true,
+    id: 'orchestrator-envelope',
+    name: 'Completion Envelope',
+    description: 'Each completed task output must contain a valid AGNES completion envelope',
+    isBlocking: false,
     run: async () => {
       const start = Date.now();
       const errors: string[] = [];
-
-      const fileOwners = new Map<string, string[]>();
+      const affected: string[] = [];
       for (const t of plan.tasks) {
-        if (t.status !== 'completed') continue;
-        for (const f of t.files) {
-          if (!fileOwners.has(f)) fileOwners.set(f, []);
-          fileOwners.get(f)!.push(t.id);
+        if (t.status !== 'completed' || !t.result) continue;
+        if (!hasCompletionSignal(t.result)) {
+          errors.push(`Task ${t.id} ("${t.description}"): output is missing AGNES completion envelope`);
+          affected.push(t.id);
         }
       }
-
-      for (const [file, owners] of fileOwners) {
-        if (owners.length > 1) {
-          errors.push(
-            `File "${file}" was edited by multiple tasks: ${owners.join(', ')}`,
-          );
-        }
-      }
-
       return {
-        gateId: 'orchestrator-file-conflict',
+        gateId: 'orchestrator-envelope',
         status: errors.length === 0 ? 'PASS' : 'FAIL',
         evidence: { errors },
+        affectedTaskIds: affected,
+        timestamp: new Date().toISOString(),
+        durationMs: Date.now() - start,
+      };
+    },
+  };
+}
+
+function createAcceptanceCriteriaGate(plan: TaskPlan): Gate {
+  return {
+    id: 'orchestrator-acceptance',
+    name: 'Acceptance Criteria',
+    description: 'Completed tasks with acceptance criteria must reference them in their output',
+    isBlocking: false,
+    run: async () => {
+      const start = Date.now();
+      const errors: string[] = [];
+      const affected: string[] = [];
+      for (const t of plan.tasks) {
+        if (t.status !== 'completed' || !t.acceptanceCriteria || !t.result) continue;
+        const criteriaKeywords = t.acceptanceCriteria
+          .toLowerCase()
+          .split(/\s+/)
+          .filter(w => w.length > 4);
+        const resultLower = t.result.toLowerCase();
+        const matched = criteriaKeywords.filter(w => resultLower.includes(w));
+        const matchRate = criteriaKeywords.length > 0 ? matched.length / criteriaKeywords.length : 1;
+        if (matchRate < 0.3) {
+          errors.push(`Task ${t.id} ("${t.description}"): output does not reference acceptance criteria keywords (matched ${matched.length}/${criteriaKeywords.length})`);
+          affected.push(t.id);
+        }
+      }
+      return {
+        gateId: 'orchestrator-acceptance',
+        status: errors.length === 0 ? 'PASS' : 'FAIL',
+        evidence: { errors },
+        affectedTaskIds: affected,
         timestamp: new Date().toISOString(),
         durationMs: Date.now() - start,
       };
@@ -79,11 +107,39 @@ function extractFailedTaskIds(plan: TaskPlan): string[] {
 
 export async function runReview(plan: TaskPlan): Promise<ReviewVerdict> {
   const completionGate = createCompletionGate(plan);
-  const conflictGate = createFileConflictGate(plan);
+  const envelopeGate = createEnvelopeGate(plan);
+  const acceptanceGate = createAcceptanceCriteriaGate(plan);
 
-  const gates: Gate[] = [completionGate, conflictGate];
+  const gates: Gate[] = [completionGate, envelopeGate, acceptanceGate];
 
-  const results = await runGates(gates);
+  let results: GateResult[];
+  try {
+    results = await runGates(gates);
+  } catch (err) {
+    // Blocking gate threw — catch here so orchestrator retry path is used instead of plan failure
+    results = [{
+      gateId: 'orchestrator-completion',
+      status: 'FAIL',
+      evidence: { errors: [err instanceof Error ? err.message : String(err)] },
+      timestamp: new Date().toISOString(),
+      durationMs: 0,
+    }];
+  }
+
+  // Propagate envelope gate failures to task status
+  // (completion gate failures are structural — retry won't help)
+  // Acceptance gate is advisory only — do not mutate task status
+  for (const result of results) {
+    if (result.status === 'FAIL' && result.affectedTaskIds && result.gateId === 'orchestrator-envelope') {
+      for (const taskId of result.affectedTaskIds) {
+        const task = plan.tasks.find(t => t.id === taskId);
+        if (task?.status === 'completed') {
+          task.status = 'needs_review';
+        }
+      }
+    }
+  }
+
   const failedGates = results.filter(r => r.status === 'FAIL');
   const passed = failedGates.length === 0;
 

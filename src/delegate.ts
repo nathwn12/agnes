@@ -4,6 +4,8 @@ import * as logger from './logger.js';
 import { markAutoDelegateBypassSession } from './auto-delegate.js';
 import { runGates, createPromiseComplianceGate } from './verification.js';
 import { detectModelTier, getMaxResultChars, truncateResult, getSemaphore, MAX_DELEGATE_DEPTH, pushError, extractText } from './runtime.js';
+import { parseAgnesMessage } from './protocol.js';
+import { extractCanonicalAgnesMessageEnvelope } from './verification.js';
 
 const SUBAGENT_TIMEOUT_MS = 120_000; // 2 min per subagent
 const SESSION_TTL_MS = 10 * 60 * 1000; // 10 min orphan cleanup
@@ -21,7 +23,14 @@ function setDepth(sessionID: string, depth: number): void {
 }
 
 export function resetDepthTracking(): void {
+  for (const key of _heartbeatIntervals.keys()) {
+    stopHeartbeat(key);
+  }
   _sessionDepth.clear();
+}
+
+export function getTaskRefCount(): number {
+  return _taskRefs.size;
 }
 
 const DELEGATE_BLOCKED_TOOLS = new Set([
@@ -203,39 +212,37 @@ export async function delegateAsync(
 ): Promise<string> {
   const sem = getSemaphore();
   await sem.acquire();
+  let childId: string;
   try {
-    let childId: string;
-    try {
-      childId = await createChildSession(client, params);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return `ERROR: failed to create child session — ${msg}`;
-    }
-
-    const blockedTools = params.blockedTools ?? DELEGATE_BLOCKED_TOOLS;
-    const blockedNote = blockedTools.size > 0
-      ? `\n\n**Restricted tools:** ${[...blockedTools].join(', ')}`
-      : '';
-    const fullPrompt = params.prompt + blockedNote;
-
-    const promptResp = await client.session.prompt({
-      path: { id: childId },
-      body: {
-        agent: params.agent,
-        parts: [{ type: 'text', text: fullPrompt }],
-      },
-    });
-
-    if (promptResp.error) {
-      pushError(childId, `delegateAsync prompt failed: ${JSON.stringify(promptResp.error)}`);
-      return `ERROR: delegation prompt failed — ${JSON.stringify(promptResp.error)}`;
-    }
-
-    startHeartbeat(client, childId);
-    return childId; // session ID for polling
-  } finally {
+    childId = await createChildSession(client, params);
+  } catch (err) {
     sem.release();
+    const msg = err instanceof Error ? err.message : String(err);
+    return `ERROR: failed to create child session — ${msg}`;
   }
+  sem.release(); // Release before prompt — async tasks are independent
+
+  const blockedTools = params.blockedTools ?? DELEGATE_BLOCKED_TOOLS;
+  const blockedNote = blockedTools.size > 0
+    ? `\n\n**Restricted tools:** ${[...blockedTools].join(', ')}`
+    : '';
+  const fullPrompt = params.prompt + blockedNote;
+
+  const promptResp = await client.session.prompt({
+    path: { id: childId },
+    body: {
+      agent: params.agent,
+      parts: [{ type: 'text', text: fullPrompt }],
+    },
+  });
+
+  if (promptResp.error) {
+    pushError(childId, `delegateAsync prompt failed: ${JSON.stringify(promptResp.error)}`);
+    return `ERROR: delegation prompt failed — ${JSON.stringify(promptResp.error)}`;
+  }
+
+  startHeartbeat(client, childId);
+  return childId; // session ID for polling
 }
 
 export async function getSubagentResult(
@@ -291,7 +298,37 @@ export async function getSubagentResult(
     const output = extractText(lastMsg);
     const tier = detectModelTier();
     const maxChars = getMaxResultChars(tier);
-    const truncated = truncateResult(output, maxChars);
+
+    // Extract AGNES envelope from full output BEFORE truncation
+    // to ensure BLOCKED signals survive long outputs
+    const rawEnvelope = extractCanonicalAgnesMessageEnvelope(output);
+    if (rawEnvelope) {
+      const parsed = parseAgnesMessage(rawEnvelope);
+      if (parsed) {
+        const msg = parsed as unknown as Record<string, unknown>;
+        if (msg.status === 'BLOCKED') {
+          stopHeartbeat(sessionID);
+          const ref = _taskRefs.get(sessionID);
+          if (ref) {
+            ref.status = 'failed';
+            ref.lastHeartbeat = Date.now();
+            _taskRefsDirty = true;
+            debouncedFlush();
+          }
+          return { status: 'error', error: `Subagent reported BLOCKED: ${msg.content ?? '(no reason given)'}` };
+        }
+        if (msg.status !== 'DONE') {
+          logger.warn(`Subagent envelope status is "${msg.status ?? 'undefined'}" — treating as completed anyway`);
+        }
+      }
+    }
+
+    let truncated = truncateResult(output, maxChars);
+
+    // If truncation removed the AGNES envelope, re-append it so review gates can find it
+    if (rawEnvelope && !truncated.includes('\xA7AM') && output.length > maxChars) {
+      truncated += '\n\n' + rawEnvelope;
+    }
 
     try {
       const gates = [createPromiseComplianceGate(truncated)];

@@ -1,6 +1,8 @@
-# AGNES — OpenCode Plugin (v0.36.0)
+# AGNES — OpenCode Plugin (v0.38.1)
 
-Orchestrator plugin: decomposes work, delegates to subagents, synthesizes results. Never implements in the orchestrator session.
+AGNES adds delegation, orchestration, auto-delegation, memory, todos, and protocol-enforced subagent handoff to OpenCode. It provides tools for subagent dispatch (`agnes_delegate`/`agnes_get_result`), multi-task orchestration (`agnes_orchestrate`/`agnes_orchestrate_status`), memory (`agnes_memory`), task tracking (`agnes_todo`), diagnostics (`agnes_status`), context management (`agnes_compress`), and command management (`agnes_reload_commands`).
+
+**Core promise:** The orchestrator session never implements directly — implementation is always delegated to subagents. Auto-delegation intercepts direct write/edit/bash calls and reroutes them. The AGNES envelope protocol (`§AM{...}`) provides structured completion/blocked signaling from subagents.
 
 ## Commands
 
@@ -27,11 +29,20 @@ CI order: `lint → typecheck → test → bundle`
 | `src/delegate.ts` | Subagent delegation: `delegateBlocking` (sync, 3× retry), `delegateAsync` (fire-and-forget), `getSubagentResult` (poll). Persistent task ref store at `.agnes/task-refs.json` |
 | `src/runtime.ts` | Model-tier detection (DeepSeek → always large), concurrency (3/5/10), result truncation (2K/4K/8K chars), YOLO mode, Semaphore |
 | `src/protocol.ts` | `<agnes:message>` protocol — compact `§AM{...}` format with key-shortening + legacy HTML comment parsing |
-| `src/schema.ts` | Type definitions + validation for 5 message types (task/result/error/status/completion) |
 | `src/verification.ts` | Promise Compliance Gate — non-blocking check for completion envelope in output |
 | `src/discovery.ts` | 3-layer command scanning: bundled → `~/.config/opencode/commands/` → `.opencode/commands/`, deduped by name |
 | `src/plugin-support.ts` | Project profile detection (lang, package manager from lockfiles) |
-| `src/logger.ts` | Stderr logger — **silent by default**, enable with `AGNES_DEBUG=1` |
+| `src/logger.ts` | Stderr logger — silent by default (use `AGNES_DEBUG=1`); `logger.error()` always writes |
+| `src/auto-delegate.ts` | Auto-delegation: intercepts write/edit/bash calls in orchestrator, reroutes to subagent |
+| `src/orchestrator.ts` | Plan decomposition (auto via subagent or from `tasksJSON`), wave scheduling, subagent dispatch, review, retry |
+| `src/planner.ts` | Plan CRUD (create/save/load/update), plan GC, task ID generation |
+| `src/scheduler.ts` | Topological wave sorting, file-conflict detection, parallel-cap execution scheduling |
+| `src/reviewer.ts` | Review gates: task completion, file conflicts, envelope presence, acceptance criteria |
+| `src/memory.ts` | MemoryStore: CRUD + TTL-based expiry on user/project/session/pattern/pref entries |
+| `src/todo.ts` | TodoStore: CRUD + status tracking (pending/in_progress/completed/blocked), auto-prune |
+| `src/status.ts` | `collectStatus()`: aggregates version, tier, concurrency, commands, sessions, memory, gate stats, async errors |
+| `src/compressor.ts` | Session summary getter/setter for compaction context injection |
+| `src/persist.ts` | Debounced file writer (`createDebouncedFileWriter`), `ensureDir`, `loadJsonFile` |
 
 ## Key Details
 
@@ -39,7 +50,7 @@ CI order: `lint → typecheck → test → bundle`
 - **Lockfile:** `bun.lock`. Never `package-lock.json`.
 - **Build target:** Bun (`--target bun`). Single-file bundle.
 - **Bootstrap injection:** Via `experimental.chat.messages.transform` (injects into first user message). Also re-injected on session compaction. Skips when bootstrap already present or when `agent` type part detected (subagent-directed).
-- **Tools:** Use `agnes_delegate` / `agnes_get_result`. Built-in `delegate_task` / `get_task_result` are deprecated (description patched in `tool.definition` hook).
+- **Tools:** Use `agnes_delegate` / `agnes_get_result`. Built-in `delegate_task` / `get_task_result` are deprecated (description patched in `tool.definition` hook). Additional tools: `agnes_orchestrate`, `agnes_orchestrate_status`, `agnes_memory`, `agnes_todo`, `agnes_status`, `agnes_reload_commands`, `agnes_compress`.
 - **Delegation:** Creates child sessions via `client.session.create`. Blocking: awaits prompt result. Async: fire-and-forget, returns session ID for polling.
 - **Retry:** 3 attempts, exponential backoff (1s, 3s, 9s). 120s subagent timeout. 10min orphan cleanup.
 - **YOLO mode:** Activated by `--yolo`, `--auto`, `/yolo` in first user message. Skips question gates, max parallelism.

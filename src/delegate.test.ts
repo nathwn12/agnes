@@ -56,7 +56,6 @@ function makeMockClient(overrides?: Record<string, unknown>) {
           });
           return { error: null };
         }
-        // Store user message synchronously; schedule assistant (simulates real server)
         const userMsg = { info: { role: 'user' }, parts: [{ type: 'text', text: opts.body.parts[0].text }] as Array<{ type: string; text?: string }> };
         const existing = store.get(opts.path.id);
         if (existing) {
@@ -64,19 +63,32 @@ function makeMockClient(overrides?: Record<string, unknown>) {
         } else {
           store.set(opts.path.id, { messages: [userMsg] });
         }
+
+        // Determine envelope based on test override
+        const envelope = overrides?.blockedEnvelope
+          ? '\xA7AM{"t":"result","i":"task-000","s":"BLOCKED","c":"cannot proceed - missing dependency"}'
+          : '\xA7AM{"t":"completion","i":"task-000","s":"DONE","c":"done","a":{}}';
+        const missingEnvelope = overrides?.missingEnvelope;
+        const longOutput = overrides?.longOutput;
+
         setTimeout(() => {
           const session = store.get(opts.path.id);
           if (session) {
+            const body = longOutput ? 'x'.repeat(8500) : `Result from ${opts.body.agent}: ${opts.body.parts[0].text}`;
+            const responseText = missingEnvelope ? body : `${body}\n\n${envelope}`;
             session.messages.push({
               info: { role: 'assistant' },
-              parts: [{ type: 'text', text: `Result from ${opts.body.agent}: ${opts.body.parts[0].text}\n\n\xA7AM{"t":"completion","i":"task-000","s":"DONE","c":"done","a":{}}` }],
+              parts: [{ type: 'text', text: responseText }],
             });
           }
         }, 10);
+
+        const body = longOutput ? 'x'.repeat(8500) : `Result from ${opts.body.agent}: ${opts.body.parts[0].text}`;
+        const immediateText = missingEnvelope ? body : `${body}\n\n${envelope}`;
         return {
           data: {
             info: { role: 'assistant' },
-            parts: [{ type: 'text', text: `Result from ${opts.body.agent}: ${opts.body.parts[0].text}\n\n\xA7AM{"t":"completion","i":"task-000","s":"DONE","c":"done","a":{}}` }],
+            parts: [{ type: 'text', text: immediateText }],
           },
           error: null,
         };
@@ -148,7 +160,6 @@ describe('getSubagentResult', () => {
   test('returns pending when assistant has not responded yet', async () => {
     const client = makeMockClient();
     const ref = await delegateAsync(client, defaultParams);
-    // Mock schedules assistant message with setTimeout(10), so immediate poll = pending
     const resultA = await getSubagentResult(client, ref, defaultParams.directory);
     expect(resultA.status).toBe('pending');
   });
@@ -184,6 +195,37 @@ describe('getSubagentResult', () => {
     const client = makeMockClient({ messagesError: true });
     const result = await getSubagentResult(client, 'ses_error', defaultParams.directory);
     expect(result.status).toBe('error');
+  });
+
+  test('returns error when AGNES envelope says BLOCKED', async () => {
+    const client = makeMockClient({ blockedEnvelope: true });
+    const ref = await delegateAsync(client, defaultParams);
+    await new Promise(r => setTimeout(r, 20));
+    const result = await getSubagentResult(client, ref, defaultParams.directory);
+    expect(result.status).toBe('error');
+    expect(result.error).toContain('BLOCKED');
+    expect(result.error).toContain('cannot proceed');
+  });
+
+  test('still returns completed when envelope is missing (backward compat)', async () => {
+    const client = makeMockClient({ missingEnvelope: true });
+    const ref = await delegateAsync(client, defaultParams);
+    await new Promise(r => setTimeout(r, 20));
+    const result = await getSubagentResult(client, ref, defaultParams.directory);
+    expect(result.status).toBe('completed');
+    expect(result.output).not.toContain('\xA7AM');
+  });
+
+  test('re-appends envelope to truncated long output', async () => {
+    const client = makeMockClient({ longOutput: true });
+    const ref = await delegateAsync(client, defaultParams);
+    await new Promise(r => setTimeout(r, 20));
+    const result = await getSubagentResult(client, ref, defaultParams.directory);
+    expect(result.status).toBe('completed');
+    expect(result.output).toContain('\xA7AM');
+    // Output should be shorter than raw 8500+envelope but still have the envelope
+    expect(result.output!.length).toBeLessThanOrEqual(8000 + 200); // maxChars + margin
+    expect(result.output!.length).toBeGreaterThan(5000);
   });
 });
 

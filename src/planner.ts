@@ -16,6 +16,7 @@ export interface TaskItem {
   error?: string;
   sessionID?: string;
   retryCount: number;
+  acceptanceCriteria?: string;
 }
 
 interface WaveDef {
@@ -111,20 +112,23 @@ export function gcPlans(worktreePath: string, maxAgeDays = 7, maxFiles = 50): nu
       .sort((a, b) => a.mtime - b.mtime);
 
     const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+    // files sorted by mtime ascending — expired ones are at the front
+    let firstActive = 0;
     for (const file of files) {
       if (file.mtime < cutoff) {
         fs.rmSync(file.path, { force: true });
         deleted++;
+        firstActive++;
+      } else {
+        break; // remaining files are younger than cutoff
       }
     }
 
-    const remaining = files.filter(f => {
-      try { fs.accessSync(f.path, fs.constants.F_OK); return true; } catch { return false; }
-    });
-    while (remaining.length > maxFiles) {
-      const oldest = remaining.shift();
-      if (oldest) {
-        fs.rmSync(oldest.path, { force: true });
+    const active = files.slice(firstActive);
+    if (active.length > maxFiles) {
+      const toRemove = active.length - maxFiles;
+      for (const f of active.slice(0, toRemove)) {
+        fs.rmSync(f.path, { force: true });
         deleted++;
       }
     }

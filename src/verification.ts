@@ -9,6 +9,7 @@ export interface GateResult {
   gateId: string;
   status: GateStatus;
   evidence: { errors: string[] };
+  affectedTaskIds?: string[];
   timestamp: string;
   durationMs: number;
 }
@@ -84,32 +85,39 @@ export async function runGates(gates: Gate[]): Promise<GateResult[]> {
   return results;
 }
 
-function extractCanonicalAgnesMessageEnvelope(text: string): string | null {
-  if (text.includes('\xA7AM')) {
-    const idx = text.indexOf('\xA7AM');
-    if (idx === -1) return null;
+export function extractCanonicalAgnesMessageEnvelope(text: string): string | null {
+  // Find the LAST §AM envelope (subagents may emit progress markers before final completion)
+  const lastIdx = text.lastIndexOf('\xA7AM');
+  if (lastIdx !== -1) {
     let depth = 0;
     let inString = false;
     let escape = false;
     let started = false;
-    for (let i = idx; i < text.length; i++) {
+    for (let i = lastIdx; i < text.length; i++) {
       const ch = text[i];
+      if (escape) { escape = false; continue; }
       if (ch === '\\' && inString) { escape = true; continue; }
       if (ch === '"' && !escape) { inString = !inString; continue; }
       if (!inString) {
         if (ch === '{') { depth++; started = true; }
         else if (ch === '}') { depth--; }
-        if (started && depth === 0) return text.slice(idx, i + 1);
+        if (started && depth === 0) return text.slice(lastIdx, i + 1);
       }
       escape = false;
     }
     return null;
   }
-  const match = text.match(/<!--\s*<agnes:message>[\s\S]*?<\/agnes:message>\s*-->/);
-  return match?.[0] ?? null;
+  // Legacy format — find the LAST occurrence
+  let lastMatch: RegExpExecArray | null = null;
+  const re = /<!--\s*<agnes:message>[\s\S]*?<\/agnes:message>\s*-->/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    lastMatch = match;
+  }
+  return lastMatch?.[0] ?? null;
 }
 
-function hasCompletionSignal(text: string): boolean {
+export function hasCompletionSignal(text: string): boolean {
   const envelope = extractCanonicalAgnesMessageEnvelope(text);
   if (!envelope) return false;
   const parsed = parseAgnesMessage(envelope);

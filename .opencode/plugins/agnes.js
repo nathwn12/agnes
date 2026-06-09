@@ -12567,8 +12567,6 @@ function warn(message, err) {
   console.error(`${prefix()} ${timestamp()} WARN ${message}${detail}`);
 }
 function error45(message, err) {
-  if (!ENABLED)
-    return;
   const detail = err instanceof Error ? ` \u2014 ${err.message}
 ${err.stack}` : err !== undefined ? ` \u2014 ${String(err)}` : "";
   console.error(`${prefix()} ${timestamp()} ERROR ${message}${detail}`);
@@ -13039,16 +13037,18 @@ async function runGates(gates) {
   return results;
 }
 function extractCanonicalAgnesMessageEnvelope(text) {
-  if (text.includes("\xA7AM")) {
-    const idx = text.indexOf("\xA7AM");
-    if (idx === -1)
-      return null;
+  const lastIdx = text.lastIndexOf("\xA7AM");
+  if (lastIdx !== -1) {
     let depth = 0;
     let inString = false;
     let escape = false;
     let started = false;
-    for (let i = idx;i < text.length; i++) {
+    for (let i = lastIdx;i < text.length; i++) {
       const ch = text[i];
+      if (escape) {
+        escape = false;
+        continue;
+      }
       if (ch === "\\" && inString) {
         escape = true;
         continue;
@@ -13065,14 +13065,19 @@ function extractCanonicalAgnesMessageEnvelope(text) {
           depth--;
         }
         if (started && depth === 0)
-          return text.slice(idx, i + 1);
+          return text.slice(lastIdx, i + 1);
       }
       escape = false;
     }
     return null;
   }
-  const match = text.match(/<!--\s*<agnes:message>[\s\S]*?<\/agnes:message>\s*-->/);
-  return match?.[0] ?? null;
+  let lastMatch = null;
+  const re = /<!--\s*<agnes:message>[\s\S]*?<\/agnes:message>\s*-->/g;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    lastMatch = match;
+  }
+  return lastMatch?.[0] ?? null;
 }
 function hasCompletionSignal(text) {
   const envelope = extractCanonicalAgnesMessageEnvelope(text);
@@ -13113,18 +13118,44 @@ var interceptedCalls = new Map;
 var bypassSessions = new Set;
 var activeSessions = new Set;
 var READONLY_BASH_PATTERNS = [
-  /^\s*(pwd|ls|dir|cat|echo|printf|head|tail|type|which|whoami|env|date|wc|sort|uniq|jq|rg|tree|locate)(\s|$)/i,
-  /^\s*git\s+(status|diff|log|show|branch|remote|rev-parse|merge-base|tag|describe|shortlog|whatchanged|bisect|stash\s+(list|show)|help)(\s|$)/i,
+  /^\s*(pwd|ls|dir|cat|echo|printf|head|tail|type|which|whoami|env|date|wc|sort|uniq|jq|rg|tree|locate|find|fd|stat|du|df|ps|file|diff)(\s|$)/i,
+  /^\s*(Get-ChildItem|Get-Content|Select-String|Get-Command|Get-Help|Test-Path|Get-Item|Get-ItemProperty|Get-Location|Get-Process|Get-Service|Get-Date|Write-Host|Write-Output|Get-Variable|Get-Alias|Get-Member|Get-History|Measure-Object|Group-Object|Sort-Object|Where-Object|Select-Object|ForEach-Object)\b/i,
+  /^\s*git\s+(status|diff|log|show|branch|remote|rev-parse|merge-base|tag|describe|shortlog|whatchanged|bisect|stash\s+(list|show)|help|ls-files|ls-tree|count-objects)(\s|$)/i,
   /^\s*(bun|npm|pnpm|yarn)\s+(test|run\s+(lint|typecheck|test|bundle|build|check))(\s|$)/i
 ];
 var MUTATING_BASH_PATTERNS = [
   />|>>|<<|\|\s*(tee|xargs)\b/i,
   /\b(sed\s+-i|perl\s+-pi|python\b|node\b|bun\s+run\s+scripts\/|touch|mkdir|rm|mv|cp|chmod|chown)\b/i,
   /\b(npm\s+install|npm\s+i|pnpm\s+add|yarn\s+add|bun\s+add)\b/i,
-  /^\s*git\s+(add|commit|checkout|switch|reset|clean|merge|rebase|push|pull|restore|mv|rm|cherry-pick|revert|stash(\s+(push|save|drop|pop|apply))?|submodule(\s+(add|update|init))?)(\s|$)/i
+  /^\s*git\s+(add|commit|checkout|switch|reset|clean|merge|rebase|push|pull|restore|mv|rm|cherry-pick|revert|stash(\s+(push|save|drop|pop|apply))?|submodule(\s+(add|update|init))?)(\s|$)/i,
+  /\b(Set-Content|Add-Content|New-Item|Remove-Item|Copy-Item|Move-Item|Rename-Item|Out-File|Invoke-WebRequest|Invoke-RestMethod)\b/i,
+  /^\s*find\s+.*\s+-(delete|exec(dir)?)\b/i
 ];
 function markAutoDelegateBypassSession(sessionID) {
   bypassSessions.add(sessionID);
+}
+function cleanupTmpFiles(worktreePath, maxAgeMs = 24 * 60 * 60 * 1000) {
+  const tmpDir = path4.join(worktreePath, ".agnes", "tmp");
+  let deleted = 0;
+  try {
+    if (!fs4.existsSync(tmpDir))
+      return 0;
+    const entries = fs4.readdirSync(tmpDir, { withFileTypes: true });
+    const now = Date.now();
+    for (const entry of entries) {
+      if (!entry.isFile())
+        continue;
+      const filePath = path4.join(tmpDir, entry.name);
+      try {
+        const stat = fs4.statSync(filePath);
+        if (now - stat.mtimeMs > maxAgeMs) {
+          fs4.rmSync(filePath, { force: true });
+          deleted++;
+        }
+      } catch {}
+    }
+  } catch {}
+  return deleted;
 }
 function isImplementationTool(tool3, args = {}) {
   if (tool3 === "write" || tool3 === "edit" || tool3 === "apply_patch")
@@ -13134,9 +13165,21 @@ function isImplementationTool(tool3, args = {}) {
   const command = String(args.command ?? "").trim();
   if (!command)
     return false;
+  if (MUTATING_BASH_PATTERNS.some((pattern) => pattern.test(command)))
+    return true;
   if (READONLY_BASH_PATTERNS.some((pattern) => pattern.test(command)))
     return false;
-  return MUTATING_BASH_PATTERNS.some((pattern) => pattern.test(command));
+  const pwshMatch = command.match(/^\s*(pwsh|powershell)\s+-(Command|C)\s+/i);
+  if (pwshMatch) {
+    const inner = command.slice(pwshMatch[0].length).replace(/^["']/, "");
+    if (/^\s*(Get-|Test-|Select-|Write-Host|Write-Output)\b/i.test(inner))
+      return false;
+    return true;
+  }
+  const pwshFileMatch = command.match(/^\s*(pwsh|powershell)\s+-(File|F)\s+/i);
+  if (pwshFileMatch)
+    return true;
+  return true;
 }
 function rewriteToolDescription(toolID, current) {
   if (toolID === "write" || toolID === "edit" || toolID === "apply_patch") {
@@ -13359,7 +13402,13 @@ function setDepth(sessionID, depth) {
   _sessionDepth.set(sessionID, depth);
 }
 function resetDepthTracking() {
+  for (const key of _heartbeatIntervals.keys()) {
+    stopHeartbeat(key);
+  }
   _sessionDepth.clear();
+}
+function getTaskRefCount() {
+  return _taskRefs.size;
 }
 var DELEGATE_BLOCKED_TOOLS = new Set([
   "agnes_delegate",
@@ -13489,35 +13538,33 @@ function startHeartbeat(client, sessionID) {
 async function delegateAsync(client, params) {
   const sem = getSemaphore();
   await sem.acquire();
+  let childId;
   try {
-    let childId;
-    try {
-      childId = await createChildSession(client, params);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return `ERROR: failed to create child session \u2014 ${msg}`;
-    }
-    const blockedTools = params.blockedTools ?? DELEGATE_BLOCKED_TOOLS;
-    const blockedNote = blockedTools.size > 0 ? `
+    childId = await createChildSession(client, params);
+  } catch (err) {
+    sem.release();
+    const msg = err instanceof Error ? err.message : String(err);
+    return `ERROR: failed to create child session \u2014 ${msg}`;
+  }
+  sem.release();
+  const blockedTools = params.blockedTools ?? DELEGATE_BLOCKED_TOOLS;
+  const blockedNote = blockedTools.size > 0 ? `
 
 **Restricted tools:** ${[...blockedTools].join(", ")}` : "";
-    const fullPrompt = params.prompt + blockedNote;
-    const promptResp = await client.session.prompt({
-      path: { id: childId },
-      body: {
-        agent: params.agent,
-        parts: [{ type: "text", text: fullPrompt }]
-      }
-    });
-    if (promptResp.error) {
-      pushError(childId, `delegateAsync prompt failed: ${JSON.stringify(promptResp.error)}`);
-      return `ERROR: delegation prompt failed \u2014 ${JSON.stringify(promptResp.error)}`;
+  const fullPrompt = params.prompt + blockedNote;
+  const promptResp = await client.session.prompt({
+    path: { id: childId },
+    body: {
+      agent: params.agent,
+      parts: [{ type: "text", text: fullPrompt }]
     }
-    startHeartbeat(client, childId);
-    return childId;
-  } finally {
-    sem.release();
+  });
+  if (promptResp.error) {
+    pushError(childId, `delegateAsync prompt failed: ${JSON.stringify(promptResp.error)}`);
+    return `ERROR: delegation prompt failed \u2014 ${JSON.stringify(promptResp.error)}`;
   }
+  startHeartbeat(client, childId);
+  return childId;
 }
 async function getSubagentResult(client, sessionID, _directory) {
   const refInfo = lookupTaskRef(sessionID);
@@ -13561,7 +13608,33 @@ async function getSubagentResult(client, sessionID, _directory) {
     const output = extractText(lastMsg);
     const tier = detectModelTier();
     const maxChars = getMaxResultChars(tier);
-    const truncated = truncateResult(output, maxChars);
+    const rawEnvelope = extractCanonicalAgnesMessageEnvelope(output);
+    if (rawEnvelope) {
+      const parsed = parseAgnesMessage(rawEnvelope);
+      if (parsed) {
+        const msg = parsed;
+        if (msg.status === "BLOCKED") {
+          stopHeartbeat(sessionID);
+          const ref2 = _taskRefs.get(sessionID);
+          if (ref2) {
+            ref2.status = "failed";
+            ref2.lastHeartbeat = Date.now();
+            _taskRefsDirty = true;
+            debouncedFlush();
+          }
+          return { status: "error", error: `Subagent reported BLOCKED: ${msg.content ?? "(no reason given)"}` };
+        }
+        if (msg.status !== "DONE") {
+          warn(`Subagent envelope status is "${msg.status ?? "undefined"}" \u2014 treating as completed anyway`);
+        }
+      }
+    }
+    let truncated = truncateResult(output, maxChars);
+    if (rawEnvelope && !truncated.includes("\xA7AM") && output.length > maxChars) {
+      truncated += `
+
+` + rawEnvelope;
+    }
     try {
       const gates = [createPromiseComplianceGate(truncated)];
       await runGates(gates);
@@ -13978,9 +14051,9 @@ function collectStatus(version2, worktreePath, memory) {
   return {
     version: version2,
     tier,
-    concurrency: { max: 3, active: sem.active, queued: sem.queued },
+    concurrency: { max: getMaxConcurrency(tier), active: sem.active, queued: sem.queued },
     commands: { total: commands.length },
-    sessions: { totalTaskRefs: 0, running: getRunningTaskCount() },
+    sessions: { totalTaskRefs: getTaskRefCount(), running: getRunningTaskCount() },
     memory: { entries: memory.entryCount, categories: catMap },
     gateStats: {
       checks: gateStats.checksPerformed,
@@ -14095,24 +14168,21 @@ function gcPlans(worktreePath, maxAgeDays = 7, maxFiles = 50) {
       mtime: fs8.statSync(path10.join(dir, e.name)).mtimeMs
     })).sort((a, b) => a.mtime - b.mtime);
     const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+    let firstActive = 0;
     for (const file2 of files) {
       if (file2.mtime < cutoff) {
         fs8.rmSync(file2.path, { force: true });
         deleted++;
+        firstActive++;
+      } else {
+        break;
       }
     }
-    const remaining = files.filter((f) => {
-      try {
-        fs8.accessSync(f.path, fs8.constants.F_OK);
-        return true;
-      } catch {
-        return false;
-      }
-    });
-    while (remaining.length > maxFiles) {
-      const oldest = remaining.shift();
-      if (oldest) {
-        fs8.rmSync(oldest.path, { force: true });
+    const active = files.slice(firstActive);
+    if (active.length > maxFiles) {
+      const toRemove = active.length - maxFiles;
+      for (const f of active.slice(0, toRemove)) {
+        fs8.rmSync(f.path, { force: true });
         deleted++;
       }
     }
@@ -14188,16 +14258,15 @@ function detectFileConflicts(tasks) {
   }
   return conflicts;
 }
-function resolveConflicts(wave, _allTasks, _maxParallel) {
+function resolveConflicts(wave) {
   const conflicts = detectFileConflicts(wave.tasks);
   if (conflicts.length === 0) {
     return { resolved: [wave], demoted: [] };
   }
   const conflicted = new Set;
   for (const c of conflicts) {
-    if (!conflicted.has(c.taskA)) {
-      conflicted.add(c.taskB);
-    }
+    conflicted.add(c.taskA);
+    conflicted.add(c.taskB);
   }
   const keep = [];
   const demoted = [];
@@ -14217,29 +14286,20 @@ function resolveConflicts(wave, _allTasks, _maxParallel) {
 function buildSchedule(tasks, maxParallel) {
   const onlyPending = tasks.filter((t) => t.status === "pending" || t.status === "needs_review");
   const waves = topologicalWaveSort(onlyPending);
-  const resolvedWaves = [];
-  const allDemoted = [];
+  const result = [];
+  let totalIndex = 0;
   for (const wave of waves) {
-    const { resolved, demoted } = resolveConflicts(wave, tasks, maxParallel);
-    resolvedWaves.push(...resolved);
-    allDemoted.push(...demoted);
-  }
-  if (allDemoted.length > 0) {
-    let idx = resolvedWaves.length;
-    for (const task of allDemoted) {
-      resolvedWaves.push({ index: idx++, tasks: [task] });
+    const { resolved, demoted } = resolveConflicts(wave);
+    for (const r of resolved) {
+      for (let i = 0;i < r.tasks.length; i += maxParallel) {
+        result.push({ index: totalIndex++, tasks: r.tasks.slice(i, i + maxParallel) });
+      }
+    }
+    for (const task of demoted) {
+      result.push({ index: totalIndex++, tasks: [task] });
     }
   }
-  const capped = [];
-  for (const wave of resolvedWaves) {
-    for (let i = 0;i < wave.tasks.length; i += maxParallel) {
-      capped.push({
-        index: capped.length,
-        tasks: wave.tasks.slice(i, i + maxParallel)
-      });
-    }
-  }
-  return capped;
+  return result;
 }
 
 // src/reviewer.ts
@@ -14251,7 +14311,7 @@ function createCompletionGate(plan) {
     isBlocking: true,
     run: async () => {
       const start = Date.now();
-      const failed = plan.tasks.filter((t) => t.status !== "completed");
+      const failed = plan.tasks.filter((t) => t.status !== "completed" && t.status !== "pending");
       const errors3 = failed.map((t) => `Task ${t.id} ("${t.description}"): status = ${t.status}${t.error ? `, error = ${t.error}` : ""}`);
       return {
         gateId: "orchestrator-completion",
@@ -14263,34 +14323,62 @@ function createCompletionGate(plan) {
     }
   };
 }
-function createFileConflictGate(plan) {
+function createEnvelopeGate(plan) {
   return {
-    id: "orchestrator-file-conflict",
-    name: "File Conflict",
-    description: "No two tasks edited overlapping files without coordination",
-    isBlocking: true,
+    id: "orchestrator-envelope",
+    name: "Completion Envelope",
+    description: "Each completed task output must contain a valid AGNES completion envelope",
+    isBlocking: false,
     run: async () => {
       const start = Date.now();
       const errors3 = [];
-      const fileOwners = new Map;
+      const affected = [];
       for (const t of plan.tasks) {
-        if (t.status !== "completed")
+        if (t.status !== "completed" || !t.result)
           continue;
-        for (const f of t.files) {
-          if (!fileOwners.has(f))
-            fileOwners.set(f, []);
-          fileOwners.get(f).push(t.id);
-        }
-      }
-      for (const [file2, owners] of fileOwners) {
-        if (owners.length > 1) {
-          errors3.push(`File "${file2}" was edited by multiple tasks: ${owners.join(", ")}`);
+        if (!hasCompletionSignal(t.result)) {
+          errors3.push(`Task ${t.id} ("${t.description}"): output is missing AGNES completion envelope`);
+          affected.push(t.id);
         }
       }
       return {
-        gateId: "orchestrator-file-conflict",
+        gateId: "orchestrator-envelope",
         status: errors3.length === 0 ? "PASS" : "FAIL",
         evidence: { errors: errors3 },
+        affectedTaskIds: affected,
+        timestamp: new Date().toISOString(),
+        durationMs: Date.now() - start
+      };
+    }
+  };
+}
+function createAcceptanceCriteriaGate(plan) {
+  return {
+    id: "orchestrator-acceptance",
+    name: "Acceptance Criteria",
+    description: "Completed tasks with acceptance criteria must reference them in their output",
+    isBlocking: false,
+    run: async () => {
+      const start = Date.now();
+      const errors3 = [];
+      const affected = [];
+      for (const t of plan.tasks) {
+        if (t.status !== "completed" || !t.acceptanceCriteria || !t.result)
+          continue;
+        const criteriaKeywords = t.acceptanceCriteria.toLowerCase().split(/\s+/).filter((w) => w.length > 4);
+        const resultLower = t.result.toLowerCase();
+        const matched = criteriaKeywords.filter((w) => resultLower.includes(w));
+        const matchRate = criteriaKeywords.length > 0 ? matched.length / criteriaKeywords.length : 1;
+        if (matchRate < 0.3) {
+          errors3.push(`Task ${t.id} ("${t.description}"): output does not reference acceptance criteria keywords (matched ${matched.length}/${criteriaKeywords.length})`);
+          affected.push(t.id);
+        }
+      }
+      return {
+        gateId: "orchestrator-acceptance",
+        status: errors3.length === 0 ? "PASS" : "FAIL",
+        evidence: { errors: errors3 },
+        affectedTaskIds: affected,
         timestamp: new Date().toISOString(),
         durationMs: Date.now() - start
       };
@@ -14302,9 +14390,31 @@ function extractFailedTaskIds(plan) {
 }
 async function runReview(plan) {
   const completionGate = createCompletionGate(plan);
-  const conflictGate = createFileConflictGate(plan);
-  const gates = [completionGate, conflictGate];
-  const results = await runGates(gates);
+  const envelopeGate = createEnvelopeGate(plan);
+  const acceptanceGate = createAcceptanceCriteriaGate(plan);
+  const gates = [completionGate, envelopeGate, acceptanceGate];
+  let results;
+  try {
+    results = await runGates(gates);
+  } catch (err) {
+    results = [{
+      gateId: "orchestrator-completion",
+      status: "FAIL",
+      evidence: { errors: [err instanceof Error ? err.message : String(err)] },
+      timestamp: new Date().toISOString(),
+      durationMs: 0
+    }];
+  }
+  for (const result of results) {
+    if (result.status === "FAIL" && result.affectedTaskIds && result.gateId === "orchestrator-envelope") {
+      for (const taskId of result.affectedTaskIds) {
+        const task = plan.tasks.find((t) => t.id === taskId);
+        if (task?.status === "completed") {
+          task.status = "needs_review";
+        }
+      }
+    }
+  }
   const failedGates = results.filter((r) => r.status === "FAIL");
   const passed = failedGates.length === 0;
   const failedTaskIds = extractFailedTaskIds(plan);
@@ -14312,8 +14422,46 @@ async function runReview(plan) {
 }
 
 // src/orchestrator.ts
+function findTopLevelBracket(text, open, close) {
+  const start = text.indexOf(open);
+  if (start === -1)
+    return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start;i < text.length; i++) {
+    const ch = text[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\" && inString) {
+      escape = true;
+      continue;
+    }
+    if (ch === '"' && !escape) {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (ch === open)
+        depth++;
+      else if (ch === close) {
+        depth--;
+        if (depth === 0)
+          return text.slice(start, i + 1);
+      }
+    }
+  }
+  return null;
+}
 function buildTaskPrompt(task, plan) {
   const completionMarker = buildResultMessage(task.id, "SUMMARY_REPLACE_ME");
+  const acceptanceNote = task.acceptanceCriteria ? `
+
+## Acceptance criteria
+${task.acceptanceCriteria}
+Verify that your implementation meets these criteria before reporting DONE.` : "";
   return `You are implementing ONE task in a larger plan.
 
 ## Goal
@@ -14323,7 +14471,7 @@ ${plan.goal}
 ${task.description}
 
 ## Files to edit
-${task.files.join(", ")}
+${task.files.join(", ")}${acceptanceNote}
 
 ## Instructions
 1. Implement exactly what's described above. No more, no less.
@@ -14338,6 +14486,84 @@ ${completionMarker}
 Replace SUMMARY_REPLACE_ME with a brief summary of what you implemented.
 Status DONE if everything works. Status BLOCKED if you cannot proceed.
 `;
+}
+async function decomposeGoal(client, goal, sessionID, directory) {
+  const completionMarker = buildResultMessage("_decomposer", "done");
+  const prompt = `You are a task decomposer for a software engineering plan. Given a goal, break it into specific implementation tasks.
+
+Goal: ${goal}
+
+Return a JSON array of tasks. Each task object has these fields:
+- "id": unique string like "task-0001"
+- "description": clear description of ONE thing to implement (1-2 sentences)
+- "files": array of file paths this task will affect (use realistic paths relative to project root)
+- "dependsOn": array of task IDs this depends on (empty array if none)
+- "agent": "general" for implementation tasks, "explore" for research/investigation tasks
+- "acceptanceCriteria": (optional) specific conditions that must be true for this task to be done
+
+Rules:
+- Each task should be independently implementable by one subagent
+- Maximum 20 tasks
+- Order tasks by dependency (tasks with no deps first)
+- A task that reads but doesn't write files can use agent "explore"
+- Respond with ONLY the JSON array and the completion marker below, no other text
+
+## Completion protocol
+When done, place this marker at the very end of your response:
+${completionMarker}`;
+  const result = await delegateBlocking(client, {
+    agent: "general",
+    description: `Decompose: ${goal.substring(0, 80)}`,
+    prompt,
+    sessionID,
+    directory
+  });
+  if (result.startsWith("ERROR:")) {
+    throw new Error(`Goal decomposition failed: ${result}`);
+  }
+  const jsonStr = findTopLevelBracket(result, "[", "]");
+  if (!jsonStr) {
+    throw new Error("Decomposition returned no valid JSON \u2014 subagent did not respond with task list");
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    throw new Error("Decomposition returned invalid JSON");
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error("Decomposition returned empty task list");
+  }
+  return parsed.map((t, i) => {
+    const rawId = typeof t.id === "string" && t.id ? t.id : generateTaskID();
+    return {
+      id: rawId,
+      description: typeof t.description === "string" && t.description ? t.description : `Task ${i + 1}`,
+      files: Array.isArray(t.files) ? t.files : [],
+      dependsOn: Array.isArray(t.dependsOn) ? t.dependsOn : [],
+      agent: t.agent === "explore" ? "explore" : "general",
+      acceptanceCriteria: typeof t.acceptanceCriteria === "string" ? t.acceptanceCriteria : undefined
+    };
+  });
+}
+function validateScheduleComplete(plan) {
+  const scheduledIds = new Set;
+  for (const w of plan.waves ?? []) {
+    for (const id of w.taskIDs) {
+      scheduledIds.add(id);
+    }
+  }
+  return plan.tasks.filter((t) => (t.status === "pending" || t.status === "needs_review") && !scheduledIds.has(t.id)).map((t) => t.id);
+}
+function validateDependencies(tasks) {
+  const ids = new Set(tasks.map((t) => t.id));
+  for (const t of tasks) {
+    for (const dep of t.dependsOn) {
+      if (!ids.has(dep)) {
+        throw new Error(`Task "${t.id}" depends on "${dep}" which does not exist`);
+      }
+    }
+  }
 }
 function trackEditedFiles(plan, tasks) {
   for (const task of tasks) {
@@ -14398,12 +14624,30 @@ async function pollWaveTasks(client, tasks, directory) {
     }
     const sub = r.value;
     if (sub.status === "completed") {
-      task.result = sub.output;
-      task.status = "completed";
-      changed = true;
-      const lessonMatch = sub.output?.match(/LESSON:\s*(.+)/);
-      if (lessonMatch) {
-        info(`Lesson from task ${task.id}: ${lessonMatch[1]}`);
+      let isBlocked = false;
+      let blockedReason = "";
+      if (sub.output) {
+        const envelope = sub.output.match(/\xA7AM\{.*\}/);
+        if (envelope) {
+          const parsed = parseAgnesMessage(envelope[0]);
+          if (parsed && parsed.status === "BLOCKED") {
+            isBlocked = true;
+            blockedReason = String(parsed.content ?? "Subagent reported BLOCKED");
+          }
+        }
+      }
+      if (isBlocked) {
+        task.error = blockedReason;
+        task.status = "failed";
+        changed = true;
+      } else {
+        task.result = sub.output;
+        task.status = "completed";
+        changed = true;
+        const lessonMatch = sub.output?.match(/LESSON:\s*(.+)/);
+        if (lessonMatch) {
+          info(`Lesson from task ${task.id}: ${lessonMatch[1]}`);
+        }
       }
     } else if (sub.status === "error") {
       task.error = sub.error;
@@ -14419,37 +14663,50 @@ async function createOrchestration(client, params) {
   const maxParallel = getMaxConcurrency(tier);
   const maxIter = params.maxIterations ?? 3;
   const RESERVED_PREFIXES = ["_", "sys", "meta"];
-  function validateTaskID(id, existing) {
-    if (existing.has(id))
-      return null;
-    for (const prefix2 of RESERVED_PREFIXES) {
-      if (id.startsWith(prefix2))
-        return generateTaskID();
+  function normalizeTaskIDs(input, existingIDs) {
+    const result = [];
+    const idMap = new Map;
+    for (const t of input) {
+      const rawId = typeof t.id === "string" && t.id ? t.id : "";
+      let newId;
+      if (!rawId) {
+        newId = generateTaskID();
+      } else if (existingIDs.has(rawId) || RESERVED_PREFIXES.some((p) => rawId.startsWith(p))) {
+        if (existingIDs.has(rawId)) {
+          warn(`Duplicate task ID "${rawId}" \u2014 generating new ID`);
+        } else {
+          warn(`Task ID "${rawId}" uses reserved prefix \u2014 generating new ID`);
+        }
+        newId = generateTaskID();
+      } else {
+        newId = rawId;
+      }
+      while (existingIDs.has(newId)) {
+        newId = generateTaskID();
+      }
+      existingIDs.add(newId);
+      if (rawId && rawId !== newId) {
+        idMap.set(rawId, newId);
+      }
+      result.push({
+        id: newId,
+        description: typeof t.description === "string" && t.description ? t.description : `Task ${result.length + 1}`,
+        files: Array.isArray(t.files) ? t.files : [],
+        dependsOn: Array.isArray(t.dependsOn) ? [...t.dependsOn] : [],
+        agent: t.agent === "explore" ? "explore" : "general",
+        acceptanceCriteria: typeof t.acceptanceCriteria === "string" ? t.acceptanceCriteria : undefined
+      });
     }
-    existing.add(id);
-    return id;
+    for (const t of result) {
+      t.dependsOn = t.dependsOn.map((d) => idMap.get(d) ?? d);
+    }
+    return { tasks: result, idMap };
   }
   function splitPlanIfNeeded(plan2) {
     const MAX_TASKS = 50;
-    const SUBPLAN_SIZE = 25;
     if (plan2.tasks.length <= MAX_TASKS)
       return plan2;
-    const subPlans = [];
-    const depth = (plan2.depth ?? 0) + 1;
-    if (depth > 3) {
-      plan2.phase = "failed";
-      error45("Maximum plan nesting depth exceeded (3)");
-      return plan2;
-    }
-    for (let i = 0;i < plan2.tasks.length; i += SUBPLAN_SIZE) {
-      const chunk = plan2.tasks.slice(i, i + SUBPLAN_SIZE);
-      const sub = createPlan(`${plan2.goal} (sub-plan ${Math.floor(i / SUBPLAN_SIZE) + 1})`, plan2.maxIterations);
-      sub.tasks = chunk;
-      sub.depth = depth;
-      subPlans.push(sub);
-    }
-    plan2.subPlans = subPlans;
-    plan2.tasks = [];
+    info(`Large plan: ${plan2.tasks.length} tasks \u2014 all will be scheduled across waves`);
     return plan2;
   }
   let plan;
@@ -14476,56 +14733,186 @@ async function createOrchestration(client, params) {
     }
     plan = loaded;
     plan.sessionID = params.sessionID;
+    try {
+      validateDependencies(plan.tasks);
+    } catch (err) {
+      return {
+        planID: params.planID,
+        goal: plan.goal,
+        phase: "failed",
+        iterations: 0,
+        maxIterations: maxIter,
+        totalTasks: plan.tasks.length,
+        completedTasks: 0,
+        runningTasks: 0,
+        failedTasks: 0,
+        editedFiles: [],
+        currentWave: 0,
+        totalWaves: 0,
+        passed: false,
+        pendingCalls: 0,
+        error: `Loaded plan has invalid dependencies: ${err instanceof Error ? err.message : String(err)}`
+      };
+    }
   } else {
     plan = createPlan(params.goal, maxIter);
     plan.sessionID = params.sessionID;
-    if (params.tasks && params.tasks.length > 0) {
-      const seenIDs = new Set;
-      plan.tasks = [];
-      for (const t of params.tasks) {
-        const validID = validateTaskID(t.id, seenIDs);
-        if (!validID) {
-          warn(`Duplicate task ID "${t.id}" \u2014 skipping`);
-          continue;
-        }
-        const adjustedID = validID !== t.id ? validID : t.id;
-        if (adjustedID !== t.id) {
-          warn(`Task ID "${t.id}" uses reserved prefix \u2014 renamed to "${adjustedID}"`);
-        }
-        plan.tasks.push({
+    const seenIDs = new Set;
+    const inputTasks = params.tasks && params.tasks.length > 0 ? params.tasks : null;
+    if (inputTasks) {
+      const { tasks: normalized } = normalizeTaskIDs(inputTasks, seenIDs);
+      try {
+        validateDependencies(normalized);
+      } catch (err) {
+        return {
+          planID: plan.id,
+          goal: plan.goal,
+          phase: "failed",
+          iterations: 0,
+          maxIterations: maxIter,
+          totalTasks: 0,
+          completedTasks: 0,
+          runningTasks: 0,
+          failedTasks: 0,
+          editedFiles: [],
+          currentWave: 0,
+          totalWaves: 0,
+          passed: false,
+          pendingCalls: 0,
+          error: `Invalid task dependencies: ${err instanceof Error ? err.message : String(err)}`
+        };
+      }
+      plan.tasks = normalized.map((t) => ({
+        ...t,
+        status: "pending",
+        retryCount: 0,
+        result: undefined,
+        error: undefined,
+        sessionID: undefined
+      }));
+    } else {
+      try {
+        const decomposed = await decomposeGoal(client, params.goal, params.sessionID, params.directory);
+        const { tasks: normalized } = normalizeTaskIDs(decomposed, seenIDs);
+        validateDependencies(normalized);
+        plan.tasks = normalized.map((t) => ({
           ...t,
-          id: adjustedID,
           status: "pending",
           retryCount: 0,
           result: undefined,
           error: undefined,
           sessionID: undefined
-        });
+        }));
+        info(`Auto-decomposed goal into ${plan.tasks.length} tasks`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          planID: plan.id,
+          goal: plan.goal,
+          phase: "failed",
+          iterations: 0,
+          maxIterations: maxIter,
+          totalTasks: 0,
+          completedTasks: 0,
+          runningTasks: 0,
+          failedTasks: 0,
+          editedFiles: [],
+          currentWave: 0,
+          totalWaves: 0,
+          passed: false,
+          pendingCalls: 0,
+          error: `Goal decomposition failed: ${msg}`
+        };
       }
+    }
+    if (plan.tasks.length === 0) {
+      plan.phase = "failed";
+      savePlan(plan, params.directory);
+      return {
+        planID: plan.id,
+        goal: plan.goal,
+        phase: "failed",
+        iterations: 0,
+        maxIterations: maxIter,
+        totalTasks: 0,
+        completedTasks: 0,
+        runningTasks: 0,
+        failedTasks: 0,
+        editedFiles: [],
+        currentWave: 0,
+        totalWaves: 0,
+        passed: false,
+        pendingCalls: 0,
+        error: "No tasks provided and goal decomposition returned zero tasks"
+      };
     }
     splitPlanIfNeeded(plan);
     const waves = buildSchedule(plan.tasks, maxParallel);
     plan.waves = waves.map((w) => ({ index: w.index, taskIDs: w.tasks.map((t) => t.id) }));
     plan.currentWaveIndex = 0;
+    const unscheduled = validateScheduleComplete(plan);
+    if (unscheduled.length > 0) {
+      plan.phase = "failed";
+      savePlan(plan, params.directory);
+      return {
+        planID: plan.id,
+        goal: plan.goal,
+        phase: "failed",
+        iterations: 0,
+        maxIterations: maxIter,
+        totalTasks: plan.tasks.length,
+        completedTasks: 0,
+        runningTasks: 0,
+        failedTasks: 0,
+        editedFiles: [],
+        currentWave: 0,
+        totalWaves: 0,
+        passed: false,
+        pendingCalls: unscheduled.length,
+        error: `Unscheduled tasks after wave build: ${unscheduled.join(", ")}`
+      };
+    }
   }
   if (!plan.waves || plan.waves.length === 0) {
-    plan.phase = "completed";
+    if (plan.tasks.length > 0) {
+      plan.phase = "failed";
+      savePlan(plan, params.directory);
+      return {
+        planID: plan.id,
+        goal: plan.goal,
+        phase: "failed",
+        iterations: 0,
+        maxIterations: maxIter,
+        totalTasks: plan.tasks.length,
+        completedTasks: 0,
+        runningTasks: 0,
+        failedTasks: 0,
+        editedFiles: [],
+        currentWave: 0,
+        totalWaves: 0,
+        passed: false,
+        pendingCalls: 0,
+        error: `Tasks exist (${plan.tasks.length}) but scheduler could not order them \u2014 check for circular dependencies or unresolvable file conflicts`
+      };
+    }
+    plan.phase = "failed";
     savePlan(plan, params.directory);
     return {
       planID: plan.id,
       goal: plan.goal,
-      phase: "completed",
+      phase: "failed",
       iterations: 0,
       maxIterations: maxIter,
-      totalTasks: plan.tasks.length,
+      totalTasks: 0,
       completedTasks: 0,
       runningTasks: 0,
       failedTasks: 0,
       editedFiles: [],
       currentWave: 0,
       totalWaves: 0,
-      passed: true,
-      pendingCalls: 0
+      passed: false,
+      pendingCalls: 0,
+      error: "No tasks \u2014 nothing to orchestrate"
     };
   }
   if (plan.phase === "pending" || plan.phase === "scheduling") {
@@ -14562,7 +14949,94 @@ async function advanceOrchestration(client, planID, directory, sessionID) {
   if (plan.phase === "completed" || plan.phase === "failed") {
     return buildResult(plan);
   }
+  try {
+    validateDependencies(plan.tasks);
+  } catch (err) {
+    return {
+      planID,
+      goal: plan.goal,
+      phase: "failed",
+      iterations: plan.iteration,
+      maxIterations: plan.maxIterations,
+      totalTasks: plan.tasks.length,
+      completedTasks: 0,
+      runningTasks: 0,
+      failedTasks: 0,
+      editedFiles: [...plan.editedFiles],
+      currentWave: 0,
+      totalWaves: 0,
+      passed: false,
+      pendingCalls: 0,
+      error: `Loaded plan has invalid dependencies: ${err instanceof Error ? err.message : String(err)}`
+    };
+  }
   if (!plan.waves || plan.waves.length === 0) {
+    if (plan.subPlans && plan.subPlans.length > 0) {
+      let migrated = 0;
+      for (const sub of plan.subPlans) {
+        for (const t of sub.tasks) {
+          if (!plan.tasks.find((pt) => pt.id === t.id)) {
+            plan.tasks.push(t);
+            migrated++;
+          }
+        }
+      }
+      plan.subPlans = undefined;
+      if (migrated > 0) {
+        const waves = buildSchedule(plan.tasks, getMaxConcurrency(detectModelTier()));
+        plan.waves = waves.map((w) => ({ index: w.index, taskIDs: w.tasks.map((t) => t.id) }));
+        plan.currentWaveIndex = 0;
+        const subUnscheduled = validateScheduleComplete(plan);
+        if (subUnscheduled.length > 0) {
+          plan.phase = "failed";
+          updatePlan(plan, directory);
+          const subResult2 = buildResult(plan);
+          subResult2.error = `Subplan tasks could not be scheduled: ${subUnscheduled.join(", ")}`;
+          return subResult2;
+        }
+        if (waves.length > 0) {
+          plan.phase = "running";
+          const waveZeroDef = plan.waves[0];
+          const waveZeroTasks = waveZeroDef.taskIDs.map((id) => plan.tasks.find((t) => t.id === id)).filter(Boolean);
+          const waveZero = { index: 0, tasks: waveZeroTasks };
+          await delegateWaveTasks(client, plan, waveZero, sessionID, directory);
+          updatePlan(plan, directory);
+          return buildResult(plan);
+        }
+        plan.phase = "failed";
+        updatePlan(plan, directory);
+        const subResult = buildResult(plan);
+        subResult.error = "Subplan tasks could not be scheduled (circular dependencies or conflicts)";
+        return subResult;
+      }
+    }
+    if (plan.tasks.length > 0) {
+      const waves = buildSchedule(plan.tasks, getMaxConcurrency(detectModelTier()));
+      plan.waves = waves.map((w) => ({ index: w.index, taskIDs: w.tasks.map((t) => t.id) }));
+      plan.currentWaveIndex = 0;
+      const rawUnscheduled = validateScheduleComplete(plan);
+      if (rawUnscheduled.length > 0) {
+        plan.phase = "failed";
+        updatePlan(plan, directory);
+        const schedResult2 = buildResult(plan);
+        schedResult2.error = `Tasks could not be scheduled: ${rawUnscheduled.join(", ")}`;
+        return schedResult2;
+      }
+      if (waves.length > 0) {
+        plan.phase = "running";
+        const waveZeroDef = plan.waves[0];
+        const waveZeroTasks = waveZeroDef.taskIDs.map((id) => plan.tasks.find((t) => t.id === id)).filter(Boolean);
+        const waveZero = { index: 0, tasks: waveZeroTasks };
+        await delegateWaveTasks(client, plan, waveZero, sessionID, directory);
+        updatePlan(plan, directory);
+        return buildResult(plan);
+      }
+      plan.phase = "failed";
+      updatePlan(plan, directory);
+      const schedResult = buildResult(plan);
+      schedResult.error = `Tasks exist (${plan.tasks.length}) but could not be scheduled \u2014 check for circular dependencies`;
+      return schedResult;
+    }
     plan.phase = "completed";
     updatePlan(plan, directory);
     return buildResult(plan);
@@ -14594,7 +15068,16 @@ async function advanceOrchestration(client, planID, directory, sessionID) {
     return buildResult(plan);
   }
   trackEditedFiles(plan, waveTasks);
-  const verdict = await runReview(plan);
+  let verdict;
+  try {
+    verdict = await runReview(plan);
+  } catch (err) {
+    plan.phase = "failed";
+    updatePlan(plan, directory);
+    const errResult = buildResult(plan);
+    errResult.error = `Review gate threw: ${err instanceof Error ? err.message : String(err)}`;
+    return errResult;
+  }
   if (verdict.passed) {
     if (waveIdx + 1 < plan.waves.length) {
       plan.currentWaveIndex = waveIdx + 1;
@@ -14622,6 +15105,14 @@ async function advanceOrchestration(client, planID, directory, sessionID) {
       const waves = buildSchedule(plan.tasks, getMaxConcurrency(detectModelTier()));
       plan.waves = waves.map((w) => ({ index: w.index, taskIDs: w.tasks.map((t) => t.id) }));
       plan.currentWaveIndex = 0;
+      const unscheduled = validateScheduleComplete(plan);
+      if (unscheduled.length > 0) {
+        plan.phase = "failed";
+        updatePlan(plan, directory);
+        const retryResult = buildResult(plan);
+        retryResult.error = `Unscheduled tasks after retry: ${unscheduled.join(", ")}`;
+        return retryResult;
+      }
       if (plan.waves.length > 0) {
         const retryWaveDef = plan.waves[0];
         const retryTasks = retryWaveDef.taskIDs.map((id) => plan.tasks.find((t) => t.id === id)).filter(Boolean);
@@ -14642,7 +15133,7 @@ function buildResult(plan) {
   const failed = allTasks.filter((t) => t.status === "failed").length;
   const pending = allTasks.filter((t) => t.status === "pending" || t.status === "needs_review").length;
   const waveCount = plan.waves?.length ?? 0;
-  const passed = plan.phase === "completed" && failed === 0;
+  const passed = plan.phase === "completed" && failed === 0 && pending === 0 && running === 0;
   return {
     planID: plan.id,
     goal: plan.goal,
@@ -15152,6 +15643,7 @@ ${files}
         memoryStore.save();
         todoStore.save();
         gcPlans(worktreePath);
+        cleanupTmpFiles(worktreePath);
       } catch (err) {
         warn("Failed to clean up session state", err);
       }
