@@ -1,4 +1,4 @@
-# AGNES — OpenCode Plugin (v0.39.1)
+# AGNES — OpenCode Plugin (v0.39.2)
 
 AGNES adds delegation, orchestration, auto-delegation, memory, todos, and protocol-enforced subagent handoff to OpenCode. It provides tools for subagent dispatch (`agnes_delegate`/`agnes_get_result`), multi-task orchestration (`agnes_orchestrate`/`agnes_orchestrate_status`), memory (`agnes_memory`), task tracking (`agnes_todo`), diagnostics (`agnes_status`), context management (`agnes_compress`), and command management (`agnes_reload_commands`).
 
